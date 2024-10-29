@@ -581,18 +581,7 @@ class ModelComponent:
                 # the image in the FileStore, then we should check the MD5 sums. If the
                 # MD5 sums differ, than we need to re-upload the image.
                 if upload_date is None:
-                    try:
-                        with self._image_cache_progress as progress:
-                            update_cache = progress.add_task(
-                                description=f"Adding {end_path} to cache."
-                            )
-                            self.image_store.add_image_file(path)
-                    except rich.errors.LiveError:
-                        update_cache = self._image_cache_progress.add_task(
-                            description=f"Adding {end_path} to cache."
-                        )
-                        self.image_store.add_image_file(path)
-                    self._image_cache_progress.stop_task(update_cache)
+                    self._update_image_cache(f"Adding {end_path} to cache.", path)
                     ret_val.append("no_date")
                 elif last_modified_date != upload_date:
                     # If date is different then hash it
@@ -600,18 +589,7 @@ class ModelComponent:
                     store_hash = self.image_store.get_file_hash(os.path.basename(path))
                     # If hashes differ upload new image
                     if disk_hash != store_hash:
-                        try:
-                            with self._image_cache_progress as progress:
-                                update_cache = progress.add_task(
-                                    description="Updating {end_path} in cache."
-                                )
-                                self.image_store.add_image_file(path)
-                        except rich.errors.LiveError:
-                            update_cache = self._image_cache_progress.add_task(
-                                description="Updating {end_path} in cache."
-                            )
-                            self.image_store.add_image_file(path)
-                        self._image_cache_progress.stop_task(update_cache)
+                        self._update_image_cache(f"Updating {end_path} in cache.", path)
                         ret_val.append("new_hash")
                     else:
                         ret_val.append("same_hash")
@@ -619,6 +597,23 @@ class ModelComponent:
                     ret_val.append(False)
 
         return ret_val
+
+    def _use_live_image_cache_progress(method):
+        # Use a live progress bar if it exists already
+        def _inner(self, *args, **kwargs):
+            try:
+                with self._image_cache_progress:
+                    return method(self, *args, **kwargs)
+            except rich.errors.LiveError:
+                return method(self, *args, **kwargs)
+
+        return _inner
+
+    @_use_live_image_cache_progress
+    def _update_image_cache(self, task_description, path):
+        task = self._image_cache_progress.add_task(description=task_description)
+        self.image_store.add_image_file(path)
+        self._image_cache_progress.stop_task(task)
 
     def set_dependency_graph_id(self, new_id):
         """
