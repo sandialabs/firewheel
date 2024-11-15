@@ -21,11 +21,11 @@ Therefore, it is trivial to run hundreds of experiments and collect results on t
 Getting Started
 ***************
 
-* For a crash course on key FIREWHEEL concepts and on using FIREWHEEL please see our :ref:`quickstart-guide` guide.
-* To learn why experimentation may be the right tool to answer certain kinds of questions (and when it is probably the wrong tool) see :ref:`emulytics-introduction`.
-* An overview of FIREWHEEL including how FIREWHEEL can help a researcher implement high-quality emulation-based experiments, hardware requirements, software architecture, and known security security concerns is provided in :ref:`FIREWHEEL-introduction`.
-* An in-depth review of important FIREWHEEL concepts, is located in :ref:`FIREWHEEL-concepts`.
-* The CLI reference documentation can be found in :ref:`cli`.
+* For a crash course on key FIREWHEEL concepts and on using FIREWHEEL please see our `quickstart-guide <https://sandialabs.github.io/firewheel/quickstart.html>`_ guide.
+* To learn why experimentation may be the right tool to answer certain kinds of questions (and when it is probably the wrong tool) review our documentation on `Cyber Experimentation <https://sandialabs.github.io/firewheel/emulytics.html>`_.
+* An overview of FIREWHEEL including how FIREWHEEL can help a researcher implement high-quality emulation-based experiments, hardware requirements, software architecture, and known security security concerns is provided in our `System Overview <https://sandialabs.github.io/firewheel/system/index.html>`.
+* An in-depth review of important FIREWHEEL concepts, is located `here <https://sandialabs.github.io/firewheel/concepts.html>`_.
+* The CLI reference documentation can be found `here <https://sandialabs.github.io/firewheel/cli/index.html>`_.
 
 
 ****************************
@@ -36,9 +36,9 @@ If you have questions you'd like to ask the developers which our documentation d
 
 Please report any bugs that you find on our GitHub page.
 We happily accept pull requests (PR), big or small.
-Please see the :ref:`contributing` for more information.
+Please see the `Contributor Guide <https://sandialabs.github.io/firewheel/developer/contributing.html>`_ for more information.
 
-Any security-related issues should be reported directly to the developers at: ``firewheel AT sandia DOT gov`` (see :ref:`SECURITY <security>`) for more information.
+Any security-related issues should be reported directly to the developers at: ``firewheel AT sandia DOT gov`` (see `SECURITY.md <https://sandialabs.github.io/firewheel/developer/security.html>`_) for more information.
 
 *******
 License
@@ -46,7 +46,7 @@ License
 Copyright 2024 National Technology & Engineering Solutions of Sandia, LLC (NTESS).
 Under the terms of Contract DE-NA0003525 with NTESS, the U.S. Government retains certain rights in this software.
 
-Please see :ref:`LICENSE <license>` for more information.
+Please see `LICENSE <https://sandialabs.github.io/firewheel/developer/license.html>`_ for more information.
 
 ************************
 Research Using FIREWHEEL
