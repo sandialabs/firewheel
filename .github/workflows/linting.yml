@@ -5,9 +5,9 @@ name: Linting
 
 on:
   push:
-    branches: [ "feature-github-actions" ]
+    branches: []
   pull_request:
-    branches: [ "feature-github-actions" ]
+    branches: [ "main" ]
 
 jobs:
   lint:
