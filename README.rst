@@ -5,6 +5,8 @@ FIREWHEEL
 .. image:: https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg
     :target: CODE_OF_CONDUCT.md
 
+.. image:: https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%7C%203.11%7C%203.12%7C%203.13-blue
+
 .. readme-inclusion-marker
 
 FIREWHEEL is an experiment orchestration tool that assists a user in building and controlling, repeatable experiments of distributed network systems at any scale.
