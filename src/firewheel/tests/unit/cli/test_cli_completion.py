@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 
+from firewheel.config import config
 from firewheel.cli.completion import COMPLETION_SCRIPT_PATH
 from firewheel.cli.completion.actions import (
     _keyboard_interruptable,
@@ -95,8 +96,8 @@ class CliCompletionTemplatingTestCase(unittest.TestCase):
         mock_handle.write.assert_called_once()
         script_content = mock_handle.write.call_args.args[0]
         filled_placeholders = [
-            'fw_venv="/opt/firewheel/fwpy"',
-            'python_bin="python3"',
+            f"fw_venv=\"{config['python']['venv']}\"",
+            f"python_bin=\"{config['python']['bin']}\"",
         ]
         assert all(_ in script_content for _ in filled_placeholders)
 
