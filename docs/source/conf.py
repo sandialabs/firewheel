@@ -337,7 +337,7 @@ class ModelComponentDocumentation:
         This function overwrites the existing ``model_components/index.rst`` file.
 
         Args:
-            basepath (str): The path for adding the index file.
+            basepath (pathlib.Path): The path for adding the index file.
         """
         # Get the list of model components
         index = """.. _available_model_components:
@@ -349,7 +349,7 @@ Model Component Documentation
 """
 
         # First remove all existing symlinks
-        all_files = [basepath / f for f in Path(basepath).iterdir()]
+        all_files = [basepath / f for f in basepath.iterdir()]
         for f in all_files:
             if f.is_symlink():
                 f.unlink()
@@ -402,13 +402,13 @@ Model Component Documentation
 
                 print(f"README PATH={readme_path}")
                 self.sym_link_directories(
-                    readme_path, Path(basepath) / f"{mc.name}{readme_path.suffix}"
+                    readme_path, basepath / f"{mc.name}{readme_path.suffix}"
                 )
                 index += f"    {mc.name}\n"
 
             index += "\n"
 
-        with (Path(basepath) / "index.rst").open("w") as index_file:
+        with (basepath / "index.rst").open("w") as index_file:
             index_file.write(index)
 
     def sym_link_directories(self, curr, new):
@@ -423,12 +423,13 @@ Model Component Documentation
             new.unlink()
         new.symlink_to(curr)
 
+# Check to see if we should include model component documentation
+path = Path("model_components")
+if path.exists():
+    # Load all model components into the path
+    mcd = ModelComponentDocumentation()
+    mcd.get_mc_list()
 
-# Load all model components into the path
-mcd = ModelComponentDocumentation()
-mcd.get_mc_list()
-
-# Build out the new model components TOCTREE
-path = "model_components"
-mcd.make_index(path)
-autodoc_mock_imports = list(mcd.mock_import_set)
+    # Build out the new model components TOCTREE
+    mcd.make_index(path)
+    autodoc_mock_imports = list(mcd.mock_import_set)
