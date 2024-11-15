@@ -100,7 +100,11 @@ dev = [
 ]
 
 [project.urls]  # Optional
-"Homepage" = "https://www.sandia.gov/emulytics"
+homepage = "https://www.sandia.gov/emulytics"
+documentation = "https://sandialabs.github.io/firewheel/"
+repository = "https://github.com/sandialabs/firewheel/"
+issue_tracker = "https://github.com/sandialabs/firewheel/issues"
+changelog = "https://sandialabs.github.io/firewheel/developer/changelog.html"
 
 [project.scripts]
 firewheel = "firewheel.cli.firewheel_cli:main"
