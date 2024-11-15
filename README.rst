@@ -23,7 +23,7 @@ Getting Started
 
 * For a crash course on key FIREWHEEL concepts and on using FIREWHEEL please see our `quickstart-guide <https://sandialabs.github.io/firewheel/quickstart.html>`_ guide.
 * To learn why experimentation may be the right tool to answer certain kinds of questions (and when it is probably the wrong tool) review our documentation on `Cyber Experimentation <https://sandialabs.github.io/firewheel/emulytics.html>`_.
-* An overview of FIREWHEEL including how FIREWHEEL can help a researcher implement high-quality emulation-based experiments, hardware requirements, software architecture, and known security security concerns is provided in our `System Overview <https://sandialabs.github.io/firewheel/system/index.html>`.
+* An overview of FIREWHEEL including how FIREWHEEL can help a researcher implement high-quality emulation-based experiments, hardware requirements, software architecture, and known security security concerns is provided in our `System Overview <https://sandialabs.github.io/firewheel/system/index.html>`_.
 * An in-depth review of important FIREWHEEL concepts, is located `here <https://sandialabs.github.io/firewheel/concepts.html>`_.
 * The CLI reference documentation can be found `here <https://sandialabs.github.io/firewheel/cli/index.html>`_.
 
