@@ -31,9 +31,9 @@ For this example, we assume that ``repo`` is a valid entry in a users ``~/.ssh/c
 .. code-block:: bash
 
     Host repo
-        Hostname gitlab.com
+        Hostname github.com
         User git
-        IdentityFile=~/.ssh/gitlab_key
+        IdentityFile=~/.ssh/github_key
 
 .. code-block:: bash
 

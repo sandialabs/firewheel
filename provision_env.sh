@@ -23,7 +23,7 @@
 : ${DEFAULT_OUTPUT_DIR:=/tmp/firewheel}
 # FIREWHEEL model component settings
 : ${MC_DIR:=${FIREWHEEL_ROOT_DIR}/model_components}
-: ${MC_REPO_GROUP:="https://gitlab.com/firewheel/model_components"}
+: ${MC_REPO_GROUP:="https://github.com/sandialabs"}
 : ${MC_BRANCH:="main"}
 # FIREWHEEL Python environment settings
 : ${FIREWHEEL_VENV:=${FIREWHEEL_ROOT_DIR}/fwpy}
