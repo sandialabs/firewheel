@@ -22,7 +22,7 @@ keywords = [
     "experimentation",
     "minimega",
 ]
-license = {file = "LICENSE"}
+license = {text = "Apache License (2.0)"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -30,7 +30,7 @@ classifiers = [
     "Intended Audience :: Information Technology",
     "Intended Audience :: Telecommunications Industry",
     "Intended Audience :: Science/Research",
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3 :: Only",
