@@ -13,7 +13,6 @@ from rich.columns import Columns
 from rich.console import Console
 from rich.markdown import Markdown
 
-import firewheel
 from firewheel.cli import utils
 from firewheel.config import Config
 from firewheel.lib.log import Log

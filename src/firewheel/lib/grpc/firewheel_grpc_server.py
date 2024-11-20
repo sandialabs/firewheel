@@ -11,7 +11,6 @@ from importlib.metadata import version
 import grpc
 from google.protobuf.json_format import Parse, MessageToDict
 
-import firewheel
 from firewheel.config import Config
 from firewheel.lib.log import Log
 from firewheel.lib.grpc import firewheel_grpc_pb2, firewheel_grpc_pb2_grpc
