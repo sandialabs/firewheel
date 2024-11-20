@@ -116,9 +116,6 @@ get_fw_tab_completion_script = "firewheel.cli.completion.prepare_completion_scri
 # Required for tox documentation building
 firewheel = ["firewheel.yaml"]
 
-[tool.setuptools.dynamic]
-version = {attr = "firewheel.__version__"}
-
 [tool.setuptools_scm]
 
 [tool.doc8]

@@ -5,6 +5,7 @@ import uuid
 import tempfile
 import unittest
 import unittest.mock
+from importlib.metadata import version
 
 import firewheel
 from firewheel.config import Config
@@ -277,7 +278,7 @@ class CliTestCase(unittest.TestCase):
         args = ""
         cli.do_version(args)
 
-        self.assertEqual(mock_stdout.getvalue().strip(), firewheel.__version__)
+        self.assertEqual(mock_stdout.getvalue().strip(), version("firewheel"))
 
     def test_do_exit(self):
         cli = FirewheelCLI()

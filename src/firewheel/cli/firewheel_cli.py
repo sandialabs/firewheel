@@ -7,6 +7,7 @@ import logging
 import textwrap
 from math import floor
 from uuid import uuid4
+from importlib.metadata import version
 
 from rich.columns import Columns
 from rich.console import Console
@@ -953,7 +954,7 @@ see :ref:`cli_helper_section`."""
         # Write to the history file.
         if not self.interactive:
             self.write_history(f"version {arg}")
-        print(firewheel.__version__)
+        print(version("firewheel"))
 
     def help_list(self):
         """Help message for the list command.

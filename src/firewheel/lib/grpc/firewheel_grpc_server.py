@@ -6,6 +6,7 @@ import contextlib
 from typing import Iterable
 from datetime import datetime
 from concurrent import futures
+from importlib.metadata import version
 
 import grpc
 from google.protobuf.json_format import Parse, MessageToDict
@@ -52,7 +53,7 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
 
         self.log.info("Initialized FirewheelServicer log.")
         self.server_start_time = datetime.utcnow()
-        self.version = firewheel.__version__
+        self.version = version("firewheel")
         self.cache_dir = os.path.join(
             config["grpc"]["root_dir"], config["grpc"]["cache_dir"]
         )
