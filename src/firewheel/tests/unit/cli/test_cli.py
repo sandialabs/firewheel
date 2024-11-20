@@ -7,7 +7,6 @@ import unittest
 import unittest.mock
 from importlib.metadata import version
 
-import firewheel
 from firewheel.config import Config
 from firewheel.cli.utils import HelperNotFoundError
 from firewheel.cli.firewheel_cli import FirewheelCLI
