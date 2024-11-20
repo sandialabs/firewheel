@@ -8,6 +8,8 @@ FIREWHEEL
     :target: https://pypi.org/project/firewheel/
 .. image:: https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg
     :target: https://sandialabs.github.io/firewheel/developer/code_of_conduct.html
+.. image:: https://www.bestpractices.dev/projects/9722/badge
+   :target: https://www.bestpractices.dev/projects/9722
 
 .. readme-inclusion-marker
 
