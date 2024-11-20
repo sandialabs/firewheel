@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+* Using built-in tools to automatically version FIREWHEEL.
+* Adding the horizontal logo for FIREWHEEL to the README.
+* Fixing the license appearance on PyPI.
+* Fixing a few references to GitLab that should be GitHub.
 
 ### Deprecated
 
