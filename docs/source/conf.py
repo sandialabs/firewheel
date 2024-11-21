@@ -13,7 +13,8 @@
 import sys
 import importlib.util
 from pathlib import Path
-from importlib.metadata import metadata, version
+from importlib.metadata import version as importlib_version
+from importlib.metadata import metadata
 
 import sphinx_rtd_theme  # noqa: F401
 
@@ -32,10 +33,10 @@ project_copyright = (
 author = "Sandia National Laboratories"
 
 # The short X.Y version
-version = version("firewheel")
+version = importlib_version("firewheel")
 
 # The full version, including alpha/beta/rc tags
-release = version("firewheel")
+release = importlib_version("firewheel")
 
 
 # -- General configuration ---------------------------------------------------
