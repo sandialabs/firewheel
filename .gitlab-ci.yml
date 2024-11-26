@@ -91,30 +91,20 @@ cache:
 
 .install_mcs_docker: &install_mcs_docker
   - mkdir model_components
+  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials
   - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/base.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/linux.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/utilities.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/layer2.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/ntp.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/dns.git
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/vyos.git
-  - firewheel repository install base
   - firewheel repository install linux
   - firewheel repository install utilities
   - firewheel repository install layer2
   - firewheel repository install ntp
   - firewheel repository install dns
   - firewheel repository install vyos
-  - echo "Installing Tutorial MCs"
-  - mkdir tutorials; pushd tutorials;
-  - echo -e
-      ".. _tutorials_mc_repo:\n\n*********\nTutorials\n*********\n\nThis Model Component repository contains several MCs which are used as examples in FIREWHEEL tutorials." >> README.rst
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/tutorials/simple-server.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/tutorials/bios.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/tutorials/acme.git
-  - popd
-  - firewheel repository install tutorials
   - popd
 
 
@@ -621,73 +611,10 @@ docs:
     name: "${CI_PROJECT_NAME}_${CI_JOB_NAME}_${CI_COMMIT_REF_NAME}"
   rules:
     - if: $CI_COMMIT_BRANCH =~ /^documentation.*$/
-    - if: $CI_COMMIT_BRANCH =~ /^renovate.*$/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   tags:
     - $CI_DOCKER_RUNNER
 
-
-###############################
-# Deploy Stages
-#
-# This includes:
-# * build: Building the FIREWHEEL wheel file
-# * pages: Publishing the GitLab pages.
-###############################
-build:
-  before_script:
-    - *create_venv
-    - *install_firewheel
-  stage: deploy
-  script:
-    - pip install twine
-    - tox -e build
-    - headerToken="JOB-TOKEN:"" $CI_JOB_TOKEN"
-    - rm -f packages_to_remove.txt
-    - nextLink="${CI_API_V4_URL}/projects/$CI_PROJECT_ID/packages?page=1&per_page=100&order_by=created_at&sort=asc"
-    # Query the Gitlab API to get a list of packages for the given project ID.
-    - response=$(curl --header "$headerToken" -si -w "\n%{http_code},%{size_header},%{size_download}" "$nextLink")
-    # Extract the HTTP code.
-    - httpCode=$(echo "$response" | sed -n '$ s/^\([0-9]*\),.*$/\1/ p')
-    - |-
-        if [ $httpCode != 200 ]; then
-          echo "Unable to list Gitlab packages, no cleanup can be done" && return 1;
-        fi
-    # Extract the response header size.
-    - headerSize=$(echo "$response" | sed -n '$ s/^[0-9]*,\([0-9]*\),.*$/\1/ p')
-    # Extract the response body size.
-    - bodySize=$(echo "$response" | sed -n '$ s/^.*,\([0-9]*\)$/\1/ p')
-    # Extract the response headers.
-    - headers="${response:0:${headerSize}}"
-    # Extract the response body.
-    - body="${response:${headerSize}:${bodySize}}"
-    - echo $body | python3 -c 'import sys, json; body=json.load(sys.stdin); item=[pkg["id"] for pkg in body if pkg["name"] == "firewheel"]; print(item[0])' >> packages_to_remove.txt
-    # Loop over the list of packages to delete and remove each of them using Gitlab's API.
-    - |-
-        if [ -s packages_to_remove.txt ]; then
-          echo "$(cat packages_to_remove.txt | wc -l) packages will be removed."
-          cat packages_to_remove.txt | while read PACKAGE_ID
-          do
-            DELETION_STATUS=$(curl --request DELETE --header "$headerToken" "${CI_API_V4_URL}/projects/$CI_PROJECT_ID/packages/$PACKAGE_ID" -w '%{http_code}' -s)
-            if [ $DELETION_STATUS == 204 ]; then
-              echo "Package $PACKAGE_ID has been deleted successfully"
-            else
-              echo "/!\ Unable to delete package $PACKAGE_ID"
-            fi
-          done
-        else
-          echo "No package to delete"
-        fi
-    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
-  artifacts:
-    paths:
-      - dist/*.whl
-  needs: []
-  tags:
-    - ubuntu2204
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      allow_failure: true
 
 pages:
   image: $DOCKER_REGISTRY/python:3.11
