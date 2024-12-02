@@ -8,6 +8,8 @@ on:
     branches: [ "*" ]
   pull_request:
     branches: [ "main" ]
+  # Allow reuse across the FIREWHEEL ecosystem
+  workflow_call:
 
 jobs:
   lint:

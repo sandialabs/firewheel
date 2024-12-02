@@ -11,6 +11,8 @@ name: Upload Python Package
 on:
   release:
     types: [published]
+  # Allow reuse across the FIREWHEEL ecosystem
+  workflow_call:
 
 permissions:
   contents: read
