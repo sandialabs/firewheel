@@ -63,7 +63,7 @@ dependencies = [
     "networkx>=2.3,<=3.4.2",
     "protobuf>=5.0.0,<=5.28.3",
     "ClusterShell<=1.9.2",
-    "pytest<=8.3.3",
+    "pytest<=8.3.4",
     "python-dotenv<=1.0.1",
     "PyYAML<=6.0.2",
     "qemu.qmp==0.0.3",
