@@ -8,9 +8,11 @@ from pathlib import Path
 from datetime import datetime
 
 import networkx as nx
-from rich.console import Console, Group
+from rich.abc import RichRenderable
+from rich.console import Console, Group, NULL_FILE
 from rich.live import Live
 from rich.progress import Progress
+from rich.text import Text
 
 from firewheel.config import config
 from firewheel.lib.log import Log
@@ -42,6 +44,35 @@ class InvalidStateError(Exception):
     """
     This is caused if the dependency graph is in an invalid state.
     """
+
+
+class ModelComponentsConsoleDisplay(Console, RichRenderable):
+    """
+    A special rich console that is also a renderable.
+
+    This object allows model component output to be displayed below any
+    native FIREWHEEL progress bars. It is passed to the plugin class
+    upon instantiation.
+    """
+
+    def __init__(self, *args, **kwargs):
+        for kwarg_name in ("record", "file", "force_terminal"):
+            if kwarg_name in kwargs:
+                raise ValueError(
+                    "The {self.__class__.__name__} does not permit a value "
+                    "for keyword argument '{kwarg_name}'."
+                )
+        super().__init__(*args, **kwargs, record=True)
+
+    @property
+    def file(self):
+        # A standard console uses stderr as the output file for printed text.
+        # Instead, this object renders recorded text, and so stderr should NOT be used
+        return NULL_FILE
+
+    def __rich_console__(self, console, options):
+        # Text is exported with ANSI codes; convert this back to a renderable object
+        yield Text.from_ansi(self.export_text(clear=False, styles=True))
 
 
 class ModelComponentManager:
@@ -572,7 +603,7 @@ class ModelComponentManager:
 
         return found_plugin_class
 
-    def process_model_component(self, mc, experiment_graph):
+    def process_model_component(self, mc, experiment_graph, console=None):
         """
         This method helps process model components for execution. It:
         * Uploads/prepares any necessary files (images/vm_resources).
@@ -583,6 +614,8 @@ class ModelComponentManager:
             mc (ModelComponent): The model component to process.
             experiment_graph (ExperimentGraph): The experiment graph. This is passed
                 to the plugin and also returned by this method.
+            console (rich.console.Console): A separate console to use for
+                displaying information from the MC.
 
         Returns:
             tuple: Tuple containing a bool of whether errors occurred and the
@@ -652,7 +685,9 @@ class ModelComponentManager:
             # We want all errors from running the plugin (including any ImportError)
             # to propagate up, so don't run this in the try/except block.
             plugin_log = Log(name=mc.name).log
-            plugin_instance = plugin_class(experiment_graph, plugin_log)
+            plugin_instance = plugin_class(
+                experiment_graph, plugin_log, console=console
+            )
             if "" in mc.arguments["plugin"]:
                 args = mc.arguments["plugin"][""]
                 if not isinstance(args, list):
@@ -728,8 +763,9 @@ class ModelComponentManager:
         mc_list = self.get_ordered_model_component_list()
         mc_progress = Progress(console=self.console)
         mc_image_progress = ModelComponent.default_image_cache_progress
+        mc_console = ModelComponentsConsoleDisplay()
 
-        display_group = Group(mc_progress, mc_image_progress)
+        display_group = Group(mc_progress, mc_image_progress, mc_console)
 
         with Live(display_group):
             process_task = mc_progress.add_task(
@@ -741,7 +777,7 @@ class ModelComponentManager:
                 self.log.debug("Processing model component %s", mc.name)
                 start = datetime.now()
                 error, experiment_graph = self.process_model_component(
-                    mc, experiment_graph
+                    mc, experiment_graph, console=mc_console
                 )
                 end = datetime.now()
                 errors_list.append(
