@@ -226,7 +226,7 @@ class ScheduleEntry:
             str: A string representation of a ScheduleEntry.
         """
         string = (
-            f"{type(self)}(\n"
+            f"{self.__class__.__name__}(\n"
             f"\tstart_time={self.start_time},\n"
             f"\texecutable={self.executable},\n"
             f"\targuments={self.arguments},\n"
