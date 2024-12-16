@@ -33,110 +33,25 @@ import sys
 from time import sleep
 
 from rich.live import Live
-from rich.console import Console
+from rich.console import Console, Group
 
-import firewheel.vm_resource_manager.api as vm_resource_api
-from firewheel.cli.utils import RichDefaultTable
-from firewheel.lib.minimega.api import minimegaAPI
-
-
-def vm_mix():
-    """
-    Create a table showing the mix of VMs in the current experiment.
-
-    Returns:
-        table (firewheel.cli.RichDefaultTable): A table giving the mix of VMs in the experiment.
-    """
-    mm_api = minimegaAPI()
-    mm_vms = mm_api.mm_vms()
-
-    active_exp_present = False
-    # Check if an experiment is running
-    if vm_resource_api.get_experiment_launch_time() is not None or mm_api.mm_vms():
-        active_exp_present = True
-
-    mm_state_dict = {}
-    if active_exp_present:
-        vm_resource_vms = vm_resource_api.get_vm_states()
-
-        for vm_name, vm_dict in mm_vms.items():
-            mm_state = vm_dict["state"]
-            vm_resource_state = vm_resource_vms.get(vm_name, "None")
-
-            if mm_state not in mm_state_dict:
-                mm_state_dict[mm_state] = {}
-            if vm_resource_state not in mm_state_dict[mm_state]:
-                mm_state_dict[mm_state][vm_resource_state] = []
-
-            mm_state_dict[mm_state][vm_resource_state].append(vm_dict["image"])
-
-    total_scheduled = 0
-    rows = []
-    for mm_state in sorted(mm_state_dict.keys()):
-        for vm_resource_state in sorted(mm_state_dict[mm_state].keys()):
-            if vm_resource_state == "None":
-                continue
-            os_set = set(mm_state_dict[mm_state][vm_resource_state])
-            for op_sys in sorted(os_set):
-                count = mm_state_dict[mm_state][vm_resource_state].count(op_sys)
-                total_scheduled += count
-                mm_state_str = mm_state
-                vm_resource_state_str = vm_resource_state
-                if "run" in mm_state.lower():
-                    mm_state_str = f"[green]{mm_state}"
-                if "error" in mm_state.lower():
-                    mm_state_str = f"[red]{mm_state}"
-                if "configuring" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "configured" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[green]{vm_resource_state}"
-                if "uninitialized" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "error" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[red]{vm_resource_state}"
-                rows.append([op_sys, mm_state_str, vm_resource_state_str, str(count)])
-
-    table = build_table(rows, total_scheduled)
-    return table
-
-
-def build_table(rows, total_scheduled):
-    """
-    Construct a table given rows of VM information.
-
-    Args:
-        rows (list): A list of information per set of VMs (each list element
-            representing one row in the output VM mix table).
-        total_scheduled (int): The total number of VMs scheduled in the experiment.
-
-    Returns:
-        firewheel.cli.utils.RichDefaultTable: A table giving the mix of VMs in the experiment.
-    """
-    table = RichDefaultTable(
-        title="VM Mix",
-        show_footer=True,
-    )
-    table.add_column("VM Image")
-    table.add_column("Power State")
-    table.add_column("VM Resource State", footer="[b]Total Scheduled")
-    table.add_column("Count", footer=f"[b]{total_scheduled}")
-    # Add custom rows to the table
-    if not rows:
-        rows.append(["N/A", "N/A", "N/A", "0"])
-    for row in rows:
-        table.add_row(*row)
-    return table
+from firewheel.cli.vm_utils import VMMixTable, ScheduleProgress
 
 
 def main():
-    """
-    Provide the primary update functionality for VM Mix.
-    """
+    """Provide the primary update functionality for VM Mix."""
     console = Console()
-    with Live(vm_mix(), console=console, screen=False, refresh_per_second=1) as live:
+    mix_table = VMMixTable()
+    schedule_progress = ScheduleProgress(console=console)
+    negative_time_progress = schedule_progress.add_negative_time_task()
+
+    display_group = Group(mix_table, schedule_progress)
+    with Live(display_group, console=console, screen=False, refresh_per_second=10) as live:
         while True:
+            display_group.renderables[0] = VMMixTable()
+            schedule_progress.update_negative_time_task()
+            live.update(display_group)
             sleep(2)
-            live.update(vm_mix())
 
 
 if __name__ == "__main__":
