@@ -1,19 +1,22 @@
 import os
+import json
+from pathlib import Path
 
 from importlib_metadata import entry_points
 
 from firewheel.config import config
 from firewheel.lib.log import Log
-from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
 
 
 class RepositoryDb:
     """
-    Provides an interface to the Repository database on the gRPC service.
+    Provides an interface to the Repository database.
+    This database is functionally a JSON file which stores a list of locally installed
+    model component repositories which are uniquely identified by their path.
 
-    Repositories in the database are uniquely identified by their path.
+    A repository, as stored in the database, is expected to have the form:
 
-    A repository, as stored in the database, is expected to have the form::
+    .. code-block:: json
 
         {
             "path": ""
@@ -23,28 +26,18 @@ class RepositoryDb:
 
     def __init__(
         self,
-        host=config["grpc"]["hostname"],
-        port=config["grpc"]["port"],
-        db=config["grpc"]["db"],
+        db_basepath=config["system"]["default_output_dir"],
+        db_filename="repositories.json",
     ):
         """
-        Set up the connection to the gRPC server.
+        Set up the class variables and path to the RepositoryDB file.
 
         Args:
-            host (str): The GRPC server IP/hostname.
-            port (int): The GRPC server port.
-            db (str): The GRPC database.
+            db_basepath (str): The base path where the RepositoryDB file is stored.
+            db_filename (str): The name of the RepositoryDB file. Defaults to "repositories.json".
         """
         self.log = Log(name="RepositoryDb").log
-        self.grpc_client = None
-        if host:
-            self.grpc_client = FirewheelGrpcClient(hostname=host, port=port, db=db)
-
-    def close(self):
-        """
-        Close the database connection.
-        """
-        self.grpc_client.close()
+        self.db_file = Path(db_basepath) / Path(db_filename)
 
     def list_repositories(self):
         """
@@ -60,9 +53,10 @@ class RepositoryDb:
         """
         entries = []
 
-        # Add all model component repositories identified by the gRPC client
-        if self.grpc_client is not None:
-            entries.extend(list(self.grpc_client.list_repositories()))
+        # Add all local model component repositories
+        with self.db_file.open("r") as db:
+            local_entries = json.load(db)
+            entries.extend(local_entries)
 
         # Add all model components that have been added via entry points
         for entry in entry_points(group="firewheel.mc_repo"):
@@ -78,7 +72,20 @@ class RepositoryDb:
             repository (dict): A repository dictionary to add. See format for the database.
         """
         self._validate_repository(repository)
-        self.grpc_client.set_repository(repository)
+
+        # Get all local model component repositories
+        if self.db_file.exists():
+            with self.db_file.open("r") as db:
+                entries = json.load(db)
+        else:
+            # No database file exists yet.
+            entries = []
+
+        entries.append(repository)
+        with self.db_file.open("w") as db:
+            json.dump(db, entries)
+
+        self.log.debug("Added repository: %s", repository)
 
     def delete_repository(self, repository):
         """
@@ -92,8 +99,28 @@ class RepositoryDb:
             error occurred.
         """
         self._validate_repository(repository)
-        result = self.grpc_client.remove_repository(repository)["removed_count"]
-        return result
+
+        # Get all local model component repositories
+        if self.db_file.exists():
+            with self.db_file.open("r") as db:
+                entries = json.load(db)
+        else:
+            # No database file exists yet.
+            entries = []
+
+        try:
+            entries.remove(repository)
+            self.log.debug("Removed repository: %s", repository)
+        except ValueError:
+            self.log.debug(
+                "%s repository did not exist and could not be removed.", repository
+            )
+            return 0
+
+        with self.db_file.open("w") as db:
+            json.dump(db, entries)
+
+        return 1
 
     def _validate_repository(self, repository):
         """

@@ -9,7 +9,7 @@ from concurrent import futures
 from importlib.metadata import version
 
 import grpc
-from google.protobuf.json_format import Parse, MessageToDict
+from google.protobuf.json_format import Parse
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
@@ -61,24 +61,6 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
         for db in ["test", "prod"]:
             os.makedirs(os.path.join(self.cache_dir, db), exist_ok=True)
             self._init_db(db)
-
-    def _write_repository_db_to_file(self, db):
-        """
-        Utility function for writing the RepositoryDb to a file.
-
-        Args:
-            db (RepositoryDb): The database to write to a file.
-        """
-        path = os.path.join(self.cache_dir, db, "repositories")
-        self.log.info(
-            "writing repositories=%s to %s", self.dbs[db]["repositories"], path
-        )
-        with open(path, "w", encoding="utf8") as repositories_file:
-            for repository in self.dbs[db]["repositories"].values():
-                json_repository = MessageToDict(
-                    repository, preserving_proto_field_name=True
-                )
-                repositories_file.write(json.dumps(json_repository) + "\n")
 
     def _read_repository_db_from_file(self, db):
         """
@@ -139,7 +121,6 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
         self.dbs[db_name]["ready_states"] = {"N/A", "configured"}
         self.dbs[db_name]["experiment_start_times"] = []
         self.dbs[db_name]["experiment_launch_time"] = None
-        self._read_repository_db_from_file(db_name)
 
     def GetInfo(self, request, context):  # noqa: N802,ARG002
         """
@@ -255,85 +236,6 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
         with contextlib.suppress(KeyError):
             self.dbs[db]["experiment_start_times"] = []
         return firewheel_grpc_pb2.InitializeExperimentStartTimeResponse()
-
-    def SetRepository(self, request, context):  # noqa: N802,ARG002
-        """
-        Sets a repository.
-
-        Args:
-            request (firewheel_grpc_pb2.Repository): The gRPC request.
-            context (grpc._server._Context): The gRPC context.
-
-        Returns:
-            firewheel_grpc_pb2.SetRepositoryResponse: Empty message on success.
-        """
-        db = request.db
-        self.dbs[db]["repositories"][request.path] = request
-        self._write_repository_db_to_file(db)
-        return firewheel_grpc_pb2.SetRepositoryResponse()
-
-    def RemoveRepository(self, request, context):  # noqa: N802,ARG002
-        """
-        Removes a repository.
-
-        Args:
-            request (firewheel_grpc_pb2.Repository): The gRPC request.
-            context (grpc._server._Context): The gRPC context.
-
-        Returns:
-            firewheel_grpc_pb2.RemoveRepositoryResponse.
-        """
-        db = request.db
-        removed_count = None
-        try:
-            del self.dbs[db]["repositories"][request.path]
-            removed_count = 1
-        except KeyError:
-            removed_count = 0
-        response = firewheel_grpc_pb2.RemoveRepositoryResponse(
-            removed_count=removed_count
-        )
-        self._write_repository_db_to_file(db)
-        return response
-
-    def RemoveAllRepositories(self, request, context):  # noqa: N802,ARG002
-        """
-        Removes all repositories.
-
-        Args:
-            request (firewheel_grpc_pb2.RemoveAllpositories): The gRPC request.
-            context (grpc._server._Context): The gRPC context.
-
-        Returns:
-            firewheel_grpc_pb2.RemoveAllRepositoriesResponse.
-        """
-        db = request.db
-        removed_count = len(self.dbs[db]["repositories"])
-        self.dbs[db]["repositories"] = {}
-        response = firewheel_grpc_pb2.RemoveAllRepositoriesResponse(
-            removed_count=removed_count
-        )
-        self._write_repository_db_to_file(db)
-        return response
-
-    def ListRepositories(  # noqa: N802
-        self,
-        request,
-        context,  # noqa: ARG002
-    ) -> Iterable[firewheel_grpc_pb2.Repository]:
-        """
-        Iterates through all requested repositories.
-
-        Args:
-            request (firewheel_grpc_pb2.ListRepositoriesRequest): The gRPC request.
-            context (grpc._server._Context): The gRPC context.
-
-        Yields:
-            firewheel_grpc_pb2.Repository: The iterated repositories.
-        """
-        db = request.db
-        current_repositories = copy.deepcopy(self.dbs[db]["repositories"])
-        yield from current_repositories.values()
 
     def CountVMMappingsNotReady(self, request, context):  # noqa: N802,ARG002
         """

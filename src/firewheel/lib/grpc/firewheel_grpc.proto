@@ -10,15 +10,6 @@ package firewheel_grpc;
 
 
 service Firewheel {
-  // Set a repository.
-  rpc SetRepository(Repository) returns (SetRepositoryResponse) {}
-  // Remove a repository.
-  rpc RemoveRepository(Repository) returns (RemoveRepositoryResponse) {}
-  // List all repositories.
-  rpc ListRepositories(ListRepositoriesRequest) returns (stream Repository) {}
-  // Remove all repositories.
-  rpc RemoveAllRepositories(RemoveAllRepositoriesRequest) returns (RemoveAllRepositoriesResponse) {}
-
   // Gets the gRPC server info.
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
 
@@ -50,28 +41,6 @@ service Firewheel {
   // Initializes the experiment launch time.
   rpc InitializeExperimentStartTime(InitializeExperimentStartTimeRequest) returns (InitializeExperimentStartTimeResponse) {}
 
-}
-
-message Repository {
-    string db = 1;
-    string path = 2;
-}
-
-message SetRepositoryResponse {
-}
-
-message RemoveRepositoryResponse {
-    int32 removed_count = 1;
-}
-
-message ListRepositoriesRequest {
-    string db = 1;
-}
-message RemoveAllRepositoriesRequest {
-    string db = 1;
-}
-message RemoveAllRepositoriesResponse {
-    int32 removed_count = 1;
 }
 
 message GetInfoRequest {
