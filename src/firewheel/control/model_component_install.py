@@ -19,7 +19,7 @@ class InstallPrompt(PromptBase[str]):
         "y - yes, install execute this script\n"
         "n - no, do not execute this script\n"
         "v - view, see the script text\n"
-        "vc - view color, see the script text with color support, must use"
+        "vc - view color, see the script text with color support, must use "
         "a system pager which supports this behavior (e.g. PAGER='less -R')\n"
         "q - quit, exit immediately\n"
     )
