@@ -8,7 +8,9 @@ from pathlib import Path
 from datetime import datetime
 
 import networkx as nx
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
+from rich.progress import Progress
 
 from firewheel.config import config
 from firewheel.lib.log import Log
@@ -48,31 +50,29 @@ class ModelComponentManager:
     ensures that all the constraints (dependencies) are met by model components.
     """
 
-    def __init__(self, repository_db=None, attribute_defaults_config=None):
+    def __init__(
+        self, repository_db=None, attribute_defaults_config=None, console=None
+    ):
         """
         Initialize class variables.
 
         Args:
             repository_db (RepositoryDb): Users can provide a different repository
-                                          database.
+                database.
             attribute_defaults_config (dict): A set of default attributes to use when
-                                              selecting model components.
+                selecting model components.
+            console (rich.console.Console): A console to use for displaying
+                information to the user.
         """
         self.dg = None
-
-        if attribute_defaults_config is None:
-            self.attribute_defaults = config["attribute_defaults"]
-        else:
-            self.attribute_defaults = attribute_defaults_config
-
-        if repository_db:
-            self.repository_db = repository_db
-        else:
-            self.repository_db = RepositoryDb()
-
+        self.repository_db = repository_db or RepositoryDb()
+        self.attribute_defaults = (
+            attribute_defaults_config or config["attribute_defaults"]
+        )
+        self.console = console or Console()
         self.log = Log(name="ModelComponentManager").log
 
-    def get_ordered_model_component_list(self):
+    def get_ordered_model_component_list(self):  # noqa: DOC502
         """
         Get an ordered list of model components from the dependency graph.
 
@@ -82,11 +82,12 @@ class ModelComponentManager:
         Raises:
             InvalidStateError: If the dependency graph does not exist.
         """
-        if not self.dg:
-            raise InvalidStateError("Dependency graph not constructed yet.")
+        self._validate_dependency_graph()
         return self.dg.get_ordered_entity_list()
 
-    def get_default_component_for_attribute(self, attribute, install_mcs=None):
+    def get_default_component_for_attribute(
+        self, attribute, install_mcs=None, image_cache_progress=None
+    ):
         """
         Get the default model component which provides a given attribute. We
         first, check for a single model component installed that provides the
@@ -99,6 +100,9 @@ class ModelComponentManager:
                 will defer to the default defined by the model component
                 object's constructor. If set to :py:data:`False`, model
                 components will not be installed.
+            image_cache_progress (rich.progress.Progress): An optional
+                progress object to use for displaying the status of image
+                cache updates. The object is passed to the ``ModelComponent``.
 
         Returns:
             ModelComponent: The model component which provides the attribute.
@@ -130,6 +134,7 @@ class ModelComponentManager:
                     name=self.attribute_defaults[attribute],
                     repository_db=self.repository_db,
                     install=install_mcs,
+                    image_cache_progress=image_cache_progress,
                 )
 
                 _depends, provides, _precedes = found_default_component.get_attributes()
@@ -183,203 +188,228 @@ class ModelComponentManager:
             RuntimeError: If there is an infinite loop building the graph.
         """
         self.dg = ModelComponentDependencyGraph()
+        mc_image_cache_progress = ModelComponent.default_image_cache_progress
+
         changed = True
+        dependency_graph_progress = Progress(console=self.console)
+        with dependency_graph_progress as dg_progress:
 
-        # Insert the initial model components into the graph.
-        # Duplicate graph insertions allowed.
-        mc_depends_components = []
-        prev_component = None
-        for grouping, component in enumerate(initial_component_list):
-            mc_depends = component.get_model_component_depends()
-            for mcdep_name in mc_depends:
-                mcdep = ModelComponent(
-                    name=mcdep_name,
-                    repository_db=self.repository_db,
-                    install=install_mcs,
-                )
-                mc_depends_components.append((mcdep, component, grouping))
+            # Insert the initial model components into the graph.
+            # Duplicate graph insertions allowed.
+            add_specified_mcs = dg_progress.add_task(
+                "Adding specified model components to the graph",
+                total=len(initial_component_list),
+            )
 
-            self.dg.insert(component, grouping, duplicate=True)
-            if prev_component is not None:
-                self.dg.associate_model_components(prev_component, component)
-            prev_component = component
+            mc_depends_components = []
+            prev_component = None
+            for grouping, component in enumerate(initial_component_list):
+                mc_depends = component.get_model_component_depends()
+                for mcdep_name in mc_depends:
+                    mcdep = ModelComponent(
+                        name=mcdep_name,
+                        repository_db=self.repository_db,
+                        install=install_mcs,
+                        image_cache_progress=mc_image_cache_progress,
+                    )
+                    mc_depends_components.append((mcdep, component, grouping))
 
-        # Did anything change this iteration? If no, we are finished.
-        loops = 0
-        while changed is True:
-            loops += 1
-            if loops > 1000:
-                self.log.critical(
-                    "Apparent infinite loop building dependency graph. "
-                    "mc_depends_components: %s",
-                    mc_depends_components,
-                )
-                raise RuntimeError("Apparent infinite loop building dependency graph!")
-            changed = False
+                self.dg.insert(component, grouping, duplicate=True)
+                if prev_component is not None:
+                    self.dg.associate_model_components(prev_component, component)
+                prev_component = component
+                dg_progress.update(add_specified_mcs, advance=1)
 
-            # Process the mc_depends_components.
-            # Duplicate graph insertions not allowed.
-            next_mc_dep_comp = []
-            inner_loops = 0
-            while len(mc_depends_components) > 0:
-                inner_loops += 1
-                if inner_loops > 1000:
+            # Did anything change this iteration? If no, we are finished.
+            add_dependency_mcs = dg_progress.add_task(
+                "Adding model component dependencies to the graph",
+                total=None,
+            )
+
+            loops = 0
+            while changed is True:
+                loops += 1
+                if loops > 1000:
                     self.log.critical(
-                        "Apparent mc_depends_components infinite loop: %s",
+                        "Apparent infinite loop building dependency graph. "
+                        "mc_depends_components: %s",
                         mc_depends_components,
                     )
-                    raise RuntimeError("Apparent mc_depends_components infinite loop")
-                changed = True
-                for component, parent, grouping in mc_depends_components:
+                    raise RuntimeError("Apparent infinite loop building dependency graph!")
+                changed = False
+
+                # Process the mc_depends_components.
+                # Duplicate graph insertions not allowed.
+                next_mc_dep_comp = []
+                inner_loops = 0
+                while len(mc_depends_components) > 0:
+                    inner_loops += 1
+                    if inner_loops > 1000:
+                        self.log.critical(
+                            "Apparent mc_depends_components infinite loop: %s",
+                            mc_depends_components,
+                        )
+                        raise RuntimeError("Apparent mc_depends_components infinite loop")
+                    changed = True
+                    for component, parent, grouping in mc_depends_components:
+                        did_insert = self.dg.insert(component, grouping, duplicate=False)
+                        # If more than one of a particular component is present, it had
+                        # to have been specified more than once in the initial_component
+                        # list. In this case, there must be an ordering relationship
+                        # among the multiple occurrences.
+                        # We will build the new ordering relationship among the first
+                        # occurrence of component and the parent.
+                        if not did_insert:
+                            try:
+                                component = self.dg.get_first(component)
+                            except UnsatisfiableDependenciesError:
+                                self._dependency_cycle_handler()
+                        else:
+                            mc_depends = component.get_model_component_depends()
+                            for mcdep_name in mc_depends:
+                                mcdep = ModelComponent(
+                                    name=mcdep_name,
+                                    repository_db=self.repository_db,
+                                    install=install_mcs,
+                                    image_cache_progress=mc_image_cache_progress,
+                                )
+                                next_mc_dep_comp.append((mcdep, component, grouping))
+                        self.dg.associate_model_components(component, parent)
+                    mc_depends_components = next_mc_dep_comp
+                    next_mc_dep_comp = []
+
+                # For each attribute with in degree 0, find the default component
+                # that provides the attribute.
+                unsat_attr = self.dg.get_in_degree_zero_constraints()
+                self.log.debug("Have unsatisfied graph constraints: %s", unsat_attr)
+                for attr, grouping in unsat_attr:
+                    # We should double check if the previously loaded component resolved
+                    # any of our unsatified attributes. If the current attribute
+                    # is no longer unstatified, we can continue.
+                    if attr not in dict(self.dg.get_in_degree_zero_constraints()):
+                        continue
+                    changed = True
+                    component = self.get_default_component_for_attribute(
+                        attr,
+                        install_mcs=install_mcs,
+                        image_cache_progress=mc_image_cache_progress,
+                    )
                     did_insert = self.dg.insert(component, grouping, duplicate=False)
-                    # If more than one of a particular component is present, it had
-                    # to have been specified more than once in the initial_component
-                    # list. In this case, there must be an ordering relationship
-                    # among the multiple occurrences.
-                    # We will build the new ordering relationship among the first
-                    # occurrence of component and the parent.
-                    if not did_insert:
-                        try:
-                            component = self.dg.get_first(component)
-                        except UnsatisfiableDependenciesError:
-                            self._dependency_cycle_handler()
-                    else:
+                    if did_insert:
                         mc_depends = component.get_model_component_depends()
                         for mcdep_name in mc_depends:
                             mcdep = ModelComponent(
                                 name=mcdep_name,
                                 repository_db=self.repository_db,
                                 install=install_mcs,
-                            )
-                            next_mc_dep_comp.append((mcdep, component, grouping))
-                    self.dg.associate_model_components(component, parent)
-                mc_depends_components = next_mc_dep_comp
-                next_mc_dep_comp = []
-
-            # For each attribute with in degree 0, find the default component
-            # that provides the attribute.
-            unsat_attr = self.dg.get_in_degree_zero_constraints()
-            self.log.debug("Have unsatisfied graph constraints: %s", unsat_attr)
-            for attr, grouping in unsat_attr:
-                # We should double check if the previously loaded component resolved
-                # any of our unsatified attributes. If the current attribute
-                # is no longer unstatified, we can continue.
-                if attr not in dict(self.dg.get_in_degree_zero_constraints()):
-                    continue
-                changed = True
-                component = self.get_default_component_for_attribute(
-                    attr, install_mcs=install_mcs
-                )
-                did_insert = self.dg.insert(component, grouping, duplicate=False)
-                if did_insert:
-                    mc_depends = component.get_model_component_depends()
-                    for mcdep_name in mc_depends:
-                        mcdep = ModelComponent(
-                            name=mcdep_name,
-                            repository_db=self.repository_db,
-                            install=install_mcs,
-                        )
-                        mc_depends_components.append((mcdep, component, grouping))
-
-            # We now need to order any `precedes` model components
-            for component, grouping in self.dg.get_ordered_entity_list_with_grouping():
-                # Get any preceded model components
-                mc_precedes = component.get_model_component_precedes()
-                for mcdef_name in mc_precedes:
-                    # Get a list of MCs currently in the graph by name
-                    # This is easier to verify than by Object
-                    mc_list = self.dg.get_ordered_entity_list()
-                    cur_mc_list = [mc.name for mc in mc_list]
-                    try:
-                        # If there is an instance of the preceded MC in the graph
-                        # Then we can locate that instance and check to see if
-                        # it is already correctly ordered.
-                        mc_index = cur_mc_list.index(mcdef_name)
-                        mc = mc_list[mc_index]
-
-                        # If the ordering is NOT correct, then we need to build
-                        # an association to ensure ordering correctness.
-                        if not self.check_list_ordering(
-                            mc_list, component.name, mc.name
-                        ):
-                            self.dg.associate_model_components(component, mc)
-                    except ValueError:
-                        # If there is not an existing instance of the model component in
-                        # the graph. It should be added.
-                        mc = ModelComponent(
-                            name=mcdef_name,
-                            repository_db=self.repository_db,
-                            install=install_mcs,
-                        )
-                        self.dg.insert(mc, grouping, duplicate=False)
-
-                        # Once the new MC is added to the graph, we need to identify
-                        # all dependencies within that MC and add them to the
-                        # mc_depends_components list.
-                        mc_depends = mc.get_model_component_depends()
-                        for mcdep_name in mc_depends:
-                            mcdep = ModelComponent(
-                                name=mcdep_name,
-                                repository_db=self.repository_db,
-                                install=install_mcs,
-                            )
-                            mc_depends_components.append((mcdep, mc, grouping))
-
-                        # Finally, we need to add the newly added MC to the mc_depends_components
-                        # list and ensure that the loop takes at least one more iteration.
-                        mc_depends_components.append((component, mc, grouping))
-                        changed = True
-
-                # Get any preceded attributes
-                attr_precedes = component.get_attribute_precedes()
-
-                # Iterate through all preceded attributes
-                for attr in attr_precedes:
-                    mc_list = self.dg.get_ordered_entity_list()
-                    cur_mc_list = [mc.name for mc in mc_list]
-
-                    # Get the default MC for the given attribute
-                    mc = self.get_default_component_for_attribute(
-                        attr, install_mcs=install_mcs
-                    )
-                    try:
-                        # If there is an instance of the preceded MC in the graph
-                        # Then we can locate that instance and check to see if
-                        # it is already correctly ordered.
-                        mc_index = cur_mc_list.index(mc.name)
-                        mc = mc_list[mc_index]
-
-                        # If the ordering is NOT correct, then we need to build
-                        # an association to ensure ordering correctness.
-                        if not self.check_list_ordering(
-                            mc_list, component.name, mc.name
-                        ):
-                            self.dg.associate_model_components(component, mc)
-                    except ValueError:
-                        # If there is not an existing instance of the model component in
-                        # the graph. It should be added.
-                        self.dg.insert(mc, grouping, duplicate=False)
-
-                        # Once the new MC is added to the graph, we need to identify
-                        # all dependencies within that MC and add them to the
-                        # mc_depends_components list.
-                        mc_depends = mc.get_model_component_depends()
-                        for mcdep_name in mc_depends:
-                            mcdep = ModelComponent(
-                                name=mcdep_name,
-                                repository_db=self.repository_db,
-                                install=install_mcs,
+                                image_cache_progress=mc_image_cache_progress,
                             )
                             mc_depends_components.append((mcdep, component, grouping))
 
-                        # Finally, we need to add the newly added MC to the mc_depends_components
-                        # list and ensure that the loop takes at least one more iteration.
-                        mc_depends_components.append((component, mc, grouping))
-                        changed = True
+                # We now need to order any `precedes` model components
+                for component, grouping in self.dg.get_ordered_entity_list_with_grouping():
+                    # Get any preceded model components
+                    mc_precedes = component.get_model_component_precedes()
+                    for mcdef_name in mc_precedes:
+                        # Get a list of MCs currently in the graph by name
+                        # This is easier to verify than by Object
+                        mc_list = self.dg.get_ordered_entity_list()
+                        cur_mc_list = [mc.name for mc in mc_list]
+                        try:
+                            # If there is an instance of the preceded MC in the graph
+                            # Then we can locate that instance and check to see if
+                            # it is already correctly ordered.
+                            mc_index = cur_mc_list.index(mcdef_name)
+                            mc = mc_list[mc_index]
 
-            # Check for cycles. If one is found our graph cannot be satisfied.
-            if self.dg.has_cycles():
-                self._dependency_cycle_handler()
+                            # If the ordering is NOT correct, then we need to build
+                            # an association to ensure ordering correctness.
+                            if not self.check_list_ordering(
+                                mc_list, component.name, mc.name
+                            ):
+                                self.dg.associate_model_components(component, mc)
+                        except ValueError:
+                            # If there is not an existing instance of the model component in
+                            # the graph. It should be added.
+                            mc = ModelComponent(
+                                name=mcdef_name,
+                                repository_db=self.repository_db,
+                                install=install_mcs,
+                                image_cache_progress=mc_image_cache_progress,
+                            )
+                            self.dg.insert(mc, grouping, duplicate=False)
+
+                            # Once the new MC is added to the graph, we need to identify
+                            # all dependencies within that MC and add them to the
+                            # mc_depends_components list.
+                            mc_depends = mc.get_model_component_depends()
+                            for mcdep_name in mc_depends:
+                                mcdep = ModelComponent(
+                                    name=mcdep_name,
+                                    repository_db=self.repository_db,
+                                    install=install_mcs,
+                                    image_cache_progress=mc_image_cache_progress,
+                                )
+                                mc_depends_components.append((mcdep, mc, grouping))
+
+                            # Finally, we need to add the newly added MC to the mc_depends_components
+                            # list and ensure that the loop takes at least one more iteration.
+                            mc_depends_components.append((component, mc, grouping))
+                            changed = True
+
+                    # Get any preceded attributes
+                    attr_precedes = component.get_attribute_precedes()
+
+                    # Iterate through all preceded attributes
+                    for attr in attr_precedes:
+                        mc_list = self.dg.get_ordered_entity_list()
+                        cur_mc_list = [mc.name for mc in mc_list]
+
+                        # Get the default MC for the given attribute
+                        mc = self.get_default_component_for_attribute(
+                            attr, install_mcs=install_mcs
+                        )
+                        try:
+                            # If there is an instance of the preceded MC in the graph
+                            # Then we can locate that instance and check to see if
+                            # it is already correctly ordered.
+                            mc_index = cur_mc_list.index(mc.name)
+                            mc = mc_list[mc_index]
+
+                            # If the ordering is NOT correct, then we need to build
+                            # an association to ensure ordering correctness.
+                            if not self.check_list_ordering(
+                                mc_list, component.name, mc.name
+                            ):
+                                self.dg.associate_model_components(component, mc)
+                        except ValueError:
+                            # If there is not an existing instance of the model component in
+                            # the graph. It should be added.
+                            self.dg.insert(mc, grouping, duplicate=False)
+
+                            # Once the new MC is added to the graph, we need to identify
+                            # all dependencies within that MC and add them to the
+                            # mc_depends_components list.
+                            mc_depends = mc.get_model_component_depends()
+                            for mcdep_name in mc_depends:
+                                mcdep = ModelComponent(
+                                    name=mcdep_name,
+                                    repository_db=self.repository_db,
+                                    install=install_mcs,
+                                    image_cache_progress=mc_image_cache_progress,
+                                )
+                                mc_depends_components.append((mcdep, component, grouping))
+
+                            # Finally, we need to add the newly added MC to the mc_depends_components
+                            # list and ensure that the loop takes at least one more iteration.
+                            mc_depends_components.append((component, mc, grouping))
+                            changed = True
+
+                # Check for cycles. If one is found our graph cannot be satisfied.
+                if self.dg.has_cycles():
+                    self._dependency_cycle_handler()
+
+            dg_progress.update(add_dependency_mcs, total=1, completed=1)
 
     def check_list_ordering(self, cur_mc_list, parent, component):
         """
@@ -671,8 +701,7 @@ class ModelComponentManager:
             f"{inspect.signature(plugin_instance.run)}", **fill_params
         )
 
-        console = Console()
-        console.print(
+        self.console.print(
             "\n\n[b red]Failed to initialize the plugin for model component "
             f"[magenta]{mc_name}[/magenta]."
             f"\n[yellow]Arguments:\n[magenta]{filled_args}[/magenta]"
@@ -681,9 +710,9 @@ class ModelComponentManager:
             f"\n[cyan]{filled_sig}[/cyan]"
         )
 
-    def build_experiment_graph(self):
+    def build_experiment_graph(self):  # noqa: DOC502
         """
-        Builds the experiment graph by processing all the model components
+        Builds the experiment graph by processing all the model components.
 
         Returns:
             list: A list of errors that were reported when trying to execute.
@@ -691,22 +720,41 @@ class ModelComponentManager:
         Raises:
             InvalidStateError: If the dependency graph does not exist.
         """
+        self._validate_dependency_graph()
+        # Set initial values before processing MCs
         errors_list = []
-        if self.dg is None:
-            raise InvalidStateError("No dependency graph generated yet.")
         experiment_graph = None
 
-        for mc in self.get_ordered_model_component_list():
-            self.log.debug("Processing model component %s", mc.name)
-            start = datetime.now()
-            error, experiment_graph = self.process_model_component(mc, experiment_graph)
-            end = datetime.now()
-            errors_list.append(
-                {
-                    "model_component": mc.name,
-                    "errors": error,
-                    "time": (end - start).total_seconds(),
-                }
+        mc_list = self.get_ordered_model_component_list()
+        mc_progress = Progress(console=self.console)
+        mc_image_progress = ModelComponent.default_image_cache_progress
+
+        display_group = Group(mc_progress, mc_image_progress)
+
+        with Live(display_group):
+            process_task = mc_progress.add_task(
+                description="Processing model components",
+                total=len(mc_list),
             )
 
+            for mc in mc_list:
+                self.log.debug("Processing model component %s", mc.name)
+                start = datetime.now()
+                error, experiment_graph = self.process_model_component(
+                    mc, experiment_graph
+                )
+                end = datetime.now()
+                errors_list.append(
+                    {
+                        "model_component": mc.name,
+                        "errors": error,
+                        "time": (end - start).total_seconds(),
+                    }
+                )
+                mc_progress.update(process_task, advance=1)
+
         return errors_list
+
+    def _validate_dependency_graph(self):
+        if self.dg is None:
+            raise InvalidStateError("No dependency graph generated yet.")
