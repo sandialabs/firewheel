@@ -75,7 +75,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "tox<=4.23.2",
-    "coverage<=7.6.8",
+    "coverage<=7.6.10",
     "pytest-cov<=6.0.0",
 ]
 format = [
