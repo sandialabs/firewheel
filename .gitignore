@@ -238,3 +238,5 @@ firewheel_completion.sh
 
 # Include the `src/firewheel/lib` directory
 !src/firewheel/lib
+
+experiment.history
