@@ -25,7 +25,7 @@ The following command will install all required system packages for FIREWHEEL an
 
 For users who are improving FIREWHEEL, building documentation, or running the FIREWHEEL tests, these packages are also needed::
 
-    sudo apt-get install -y graphviz texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk libenchant-dev
+    sudo apt-get install -y graphviz texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk libenchant-2-dev
 
 CentOS
 ------

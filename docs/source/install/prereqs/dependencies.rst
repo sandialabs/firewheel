@@ -86,8 +86,8 @@ Optional System Packages (for Developers)
     + Ubuntu Package(s): ``texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk``
 - Enchant:
     + Purpose: For checking documentation spelling.
-    + Ubuntu Package(s): ``libenchant-dev``
-    + CentOS Package(s): ``enchant-devel``
+    + Ubuntu Package(s): ``libenchant-2-dev``
+    + CentOS Package(s): ``enchant2-devel``
 
 Python Dependencies
 ===================
