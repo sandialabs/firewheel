@@ -13,6 +13,9 @@ on:
     types: [published]
   # Allow reuse across the FIREWHEEL ecosystem
   workflow_call:
+    secrets:
+      PYPI_API_TOKEN:
+        required: true
 
 permissions:
   contents: read
