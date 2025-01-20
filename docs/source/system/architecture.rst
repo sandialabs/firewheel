@@ -98,8 +98,6 @@ Once the *VM Resource Manager* has successfully finished monitoring and managing
 Analytics
 ---------
 
-Once the experiment is launched, it is important to gather and analyze experimental data.
-To assist with this task, FIREWHEEL installs Elasticsearch, Logstash, and Kibana, more commonly known as an ELK stack.
-Data from VM Resources can be ingested into ELK by printing to Standard Output (`stdout`).
-To make greater use of the ELK stack, VM Resources can also print to `stdout` in JSON format which will be added to Elasticsearch.
-Once the data has been ingested, users can use Kibana to create dashboards which visually display experimental data.
+Once the experiment is launched, gathering and analyzing experimental data becomes crucial.
+To facilitate this process, FIREWHEEL provides seamless logging of VM resource output and generates JSON-formatted logs that can be easily ingested into data analysis tools such as Elasticsearch or Jupyter Notebooks.
+After the data has been ingested into your preferred tool, users can visually display the experimental data or conduct analyses as needed.

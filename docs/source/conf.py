@@ -13,11 +13,11 @@
 import sys
 import importlib.util
 from pathlib import Path
+from importlib.metadata import version as importlib_version
 from importlib.metadata import metadata
 
 import sphinx_rtd_theme  # noqa: F401
 
-import firewheel
 from firewheel.control.repository_db import RepositoryDb
 from firewheel.control.model_component_manager import ModelComponentManager
 from firewheel.control.model_component_iterator import ModelComponentIterator
@@ -33,10 +33,10 @@ project_copyright = (
 author = "Sandia National Laboratories"
 
 # The short X.Y version
-version = firewheel.__version__
+version = importlib_version("firewheel")
 
 # The full version, including alpha/beta/rc tags
-release = firewheel.__version__
+release = importlib_version("firewheel")
 
 
 # -- General configuration ---------------------------------------------------
