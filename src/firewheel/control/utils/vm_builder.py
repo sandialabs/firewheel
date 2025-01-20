@@ -206,7 +206,7 @@ class VMBuilder:
                 net_devs = len(pgrep_output.decode().strip().split("\n"))
             except Exception:  # noqa: BLE001
                 net_devs = 0
-            initial_mac = int(0x000000FFFF01)
+            initial_mac = 0x000000FFFF01
             current_mac = initial_mac + net_devs
             mac = EUI(current_mac)
             # set dialect
@@ -231,7 +231,7 @@ class VMBuilder:
                 network_config += f"pcnet,netdev=hostnet0,id=net0,mac={mac_addr}"
 
         self.mm.vm_config_qemu_append(
-            value=f"-smbios type=1,uuid={vm_uuid} " f"{network_config}"
+            value=f"-smbios type=1,uuid={vm_uuid} {network_config}"
         )
 
         # Schedule the VM to launch on the current node
