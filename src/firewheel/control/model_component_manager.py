@@ -51,8 +51,8 @@ class ModelComponentsConsoleDisplay(Console, RichRenderable):
     A special rich console that is also a renderable.
 
     This object allows model component output to be displayed below any
-    native FIREWHEEL progress bars. It is passed to the plugin class
-    upon instantiation.
+    native FIREWHEEL progress bars. It is passed to the MC installer
+    and plugin class upon instantiation.
     """
 
     def __init__(self, *args, **kwargs):
@@ -100,8 +100,13 @@ class ModelComponentManager:
         self.attribute_defaults = (
             attribute_defaults_config or config["attribute_defaults"]
         )
-        self.console = console or Console()
         self.log = Log(name="ModelComponentManager").log
+        # Set the console for native FIREWHEEL output
+        self.console = console or Console()
+
+        # Create objects to handle MC output that do not interfere with FIREWHEEL output 
+        self._mc_image_progress = ModelComponent.default_image_cache_progress
+        self._mc_console = ModelComponentsConsoleDisplay()
 
     def get_ordered_model_component_list(self):  # noqa: DOC502
         """
@@ -148,6 +153,7 @@ class ModelComponentManager:
         multiple = False
         model_component_iter = ModelComponentIterator(
             self.repository_db.list_repositories()
+            console=self._mc_console,
         )
 
         for mc in model_component_iter:
@@ -166,6 +172,7 @@ class ModelComponentManager:
                     repository_db=self.repository_db,
                     install=install_mcs,
                     image_cache_progress=image_cache_progress,
+                    console=self._mc_console,
                 )
 
                 _depends, provides, _precedes = found_default_component.get_attributes()
@@ -219,7 +226,6 @@ class ModelComponentManager:
             RuntimeError: If there is an infinite loop building the graph.
         """
         self.dg = ModelComponentDependencyGraph()
-        mc_image_cache_progress = ModelComponent.default_image_cache_progress
 
         changed = True
         dependency_graph_progress = Progress(console=self.console)
@@ -241,7 +247,8 @@ class ModelComponentManager:
                         name=mcdep_name,
                         repository_db=self.repository_db,
                         install=install_mcs,
-                        image_cache_progress=mc_image_cache_progress,
+                        image_cache_progress=self._mc_image_progress,
+                        console=self._mc_console,
                     )
                     mc_depends_components.append((mcdep, component, grouping))
 
@@ -302,7 +309,8 @@ class ModelComponentManager:
                                     name=mcdep_name,
                                     repository_db=self.repository_db,
                                     install=install_mcs,
-                                    image_cache_progress=mc_image_cache_progress,
+                                    image_cache_progress=self._mc_image_progress,
+                                    console=self._mc_console,
                                 )
                                 next_mc_dep_comp.append((mcdep, component, grouping))
                         self.dg.associate_model_components(component, parent)
@@ -323,7 +331,7 @@ class ModelComponentManager:
                     component = self.get_default_component_for_attribute(
                         attr,
                         install_mcs=install_mcs,
-                        image_cache_progress=mc_image_cache_progress,
+                        image_cache_progress=self._mc_image_progress,
                     )
                     did_insert = self.dg.insert(component, grouping, duplicate=False)
                     if did_insert:
@@ -333,7 +341,8 @@ class ModelComponentManager:
                                 name=mcdep_name,
                                 repository_db=self.repository_db,
                                 install=install_mcs,
-                                image_cache_progress=mc_image_cache_progress,
+                                image_cache_progress=self._mc_image_progress,
+                                console=self._mc_console,
                             )
                             mc_depends_components.append((mcdep, component, grouping))
 
@@ -366,7 +375,8 @@ class ModelComponentManager:
                                 name=mcdef_name,
                                 repository_db=self.repository_db,
                                 install=install_mcs,
-                                image_cache_progress=mc_image_cache_progress,
+                                image_cache_progress=self._mc_image_progress,
+                                console=self._mc_console,
                             )
                             self.dg.insert(mc, grouping, duplicate=False)
 
@@ -379,7 +389,8 @@ class ModelComponentManager:
                                     name=mcdep_name,
                                     repository_db=self.repository_db,
                                     install=install_mcs,
-                                    image_cache_progress=mc_image_cache_progress,
+                                    image_cache_progress=self._mc_image_progress,
+                                    console=self._mc_console,
                                 )
                                 mc_depends_components.append((mcdep, mc, grouping))
 
@@ -427,7 +438,8 @@ class ModelComponentManager:
                                     name=mcdep_name,
                                     repository_db=self.repository_db,
                                     install=install_mcs,
-                                    image_cache_progress=mc_image_cache_progress,
+                                    image_cache_progress=self._mc_image_progress,
+                                    console=self._mc_console,
                                 )
                                 mc_depends_components.append((mcdep, component, grouping))
 
@@ -603,7 +615,7 @@ class ModelComponentManager:
 
         return found_plugin_class
 
-    def process_model_component(self, mc, experiment_graph, console=None):
+    def process_model_component(self, mc, experiment_graph):
         """
         This method helps process model components for execution. It:
         * Uploads/prepares any necessary files (images/vm_resources).
@@ -614,8 +626,6 @@ class ModelComponentManager:
             mc (ModelComponent): The model component to process.
             experiment_graph (ExperimentGraph): The experiment graph. This is passed
                 to the plugin and also returned by this method.
-            console (rich.console.Console): A separate console to use for
-                displaying information from the MC.
 
         Returns:
             tuple: Tuple containing a bool of whether errors occurred and the
@@ -686,7 +696,7 @@ class ModelComponentManager:
             # to propagate up, so don't run this in the try/except block.
             plugin_log = Log(name=mc.name).log
             plugin_instance = plugin_class(
-                experiment_graph, plugin_log, console=console
+                experiment_graph, plugin_log, console=self._mc_console
             )
             if "" in mc.arguments["plugin"]:
                 args = mc.arguments["plugin"][""]
@@ -761,12 +771,8 @@ class ModelComponentManager:
         experiment_graph = None
 
         mc_list = self.get_ordered_model_component_list()
-        mc_progress = Progress(console=self.console)
-        mc_image_progress = ModelComponent.default_image_cache_progress
-        mc_console = ModelComponentsConsoleDisplay()
 
-        display_group = Group(mc_progress, mc_image_progress, mc_console)
-
+        display_group = Group(mc_progress, self._mc_image_progress, self._mc_console)
         with Live(display_group):
             process_task = mc_progress.add_task(
                 description="Processing model components",
@@ -777,7 +783,8 @@ class ModelComponentManager:
                 self.log.debug("Processing model component %s", mc.name)
                 start = datetime.now()
                 error, experiment_graph = self.process_model_component(
-                    mc, experiment_graph, console=mc_console
+                    mc, experiment_graph, console=self._mc_console
+
                 )
                 end = datetime.now()
                 errors_list.append(

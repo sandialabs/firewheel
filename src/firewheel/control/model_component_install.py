@@ -57,12 +57,15 @@ class ModelComponentInstall:
 
     """
 
-    def __init__(self, mc=None):
+    def __init__(self, mc=None, console=None):
         """
         Initialize the object.
 
         Args:
             mc (ModelComponent): The :py:class:`ModelComponent` to install.
+            console (rich.console.Console): A console to use for displaying
+                information to the user. If not specified, a default console
+                is created and used.
 
         Raises:
             ValueError: Caused if a user didn't specify ``mc``.
@@ -71,6 +74,7 @@ class ModelComponentInstall:
             raise ValueError("Must specify a Model Component.")
 
         self.mc = mc
+        self._console = console or Console()
         self.log = Log(name="ModelComponentInstall").log
 
     def install_mc(self, name, install_path):
@@ -85,28 +89,28 @@ class ModelComponentInstall:
             bool: True if the MC was installed successfully (or it was already
             installed), False otherwise
         """
-        console = Console()
-
         # Make the install file executable
         # We assume that it can be run with a "shebang" line
         install_path.chmod(
             install_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         )
-        console.print(f"[b green]Starting to install [cyan]{name}[/cyan]!")
+        self._console.print(f"[b green]Starting to install [cyan]{name}[/cyan]!")
         try:
             # We have already checked with the user to ensure that they want to run
             # this script.
             subprocess.run(  # nosec
                 [str(install_path)], cwd=install_path.parent, check=True
             )
-            console.print(f"[b green]Installed [cyan]{name}[/cyan]!")
+            self._console.print(f"[b green]Installed [cyan]{name}[/cyan]!")
             return True
         except subprocess.CalledProcessError as exp:
             if exp.returncode == 117:  # Structure needs cleaning
-                console.print(f"[b yellow][cyan]{name}[/cyan] is already installed!")
+                self._console.print(
+                    f"[b yellow][cyan]{name}[/cyan] is already installed!"
+                )
                 return True
 
-            console.print(f"[b red]Failed to install [cyan]{name}[/cyan]!")
+            self._console.print(f"[b red]Failed to install [cyan]{name}[/cyan]!")
             return False
 
     def run_install_script(self, insecure=False):
@@ -120,8 +124,6 @@ class ModelComponentInstall:
         Returns:
             bool: ``True`` if all MCs were installed successfully, ``False`` otherwise.
         """
-        console = Console()
-
         install_script = Path(self.mc.path) / "INSTALL"
         install_flag = Path(self.mc.path) / f".{self.mc.name}.installed"
 
@@ -134,7 +136,9 @@ class ModelComponentInstall:
         if insecure is True:
             success = self.install_mc(self.mc.name, install_script)
             if not success:
-                console.print(f"[b red]Failed to install [cyan]{self.mc.name}[/cyan].")
+                self._console.print(
+                    f"[b red]Failed to install [cyan]{self.mc.name}[/cyan]."
+                )
                 return False
             return True
 
@@ -145,7 +149,7 @@ class ModelComponentInstall:
             if value == "y":
                 success = self.install_mc(self.mc.name, install_script)
                 if not success:
-                    console.print(
+                    self._console.print(
                         f"[b red]Failed to install [cyan]{self.mc.name}[/cyan]"
                         " this may cause downstream issues!"
                     )
@@ -157,7 +161,7 @@ class ModelComponentInstall:
                     install_flag.touch()
                 break
             if value == "n":
-                console.print(
+                self._console.print(
                     f"[b red]Continuing WITHOUT running [cyan]{install_script}[/cyan]"
                     " this may cause downstream issues!"
                 )
@@ -169,8 +173,8 @@ class ModelComponentInstall:
                 style = False
                 if value == "vc":
                     style = True
-                with console.pager(styles=style):
-                    console.print(Syntax(contents, lexer="bash"))
+                with self._console.pager(styles=style):
+                    self._console.print(Syntax(contents, lexer="bash"))
             elif value.startswith("q"):
                 sys.exit(0)
         return True

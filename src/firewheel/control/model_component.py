@@ -101,10 +101,17 @@ class ModelComponent:
 
         if self.path is None:
             self._resolve_path()
+
+            if self._install is None or self._install is True:
+                installer = ModelComponentInstall(self, console=None)
+                force_install = bool(self._install)  # `None` is falsy
+                installer.run_install_script(insecure=force_install)
+
         else:
             # Resolve path ends up loading the manifest (it must anyway).
             # No need to duplicate the work.
             self.manifest = self._load_manifest(self.path)
+
 
         if self.name is None:
             self.name = self.manifest["name"]
@@ -240,10 +247,6 @@ class ModelComponent:
             if self.name == manifest["name"]:
                 self.path = path
                 self.manifest = manifest
-                if self._install is None or self._install is True:
-                    mci = ModelComponentInstall(self)
-                    # Note that ``bool(None)`` evaluates to ``False``
-                    mci.run_install_script(insecure=bool(self._install))
                 return
 
         raise ValueError(f"Unable to locate model component with name '{self.name}'.")
