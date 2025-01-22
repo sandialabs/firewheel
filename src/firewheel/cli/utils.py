@@ -1,5 +1,6 @@
 import os
 import sys
+import shlex
 from pathlib import Path
 
 from rich.table import Table
@@ -78,7 +79,7 @@ def parse_to_helper(args, helpers_dict):
         InvalidHelperTypeError: If a Helper group was specified rather than a Helper.
     """
     # Check for the Helper name in the Helpers dict.
-    args = args.split()
+    args = shlex.split(args)
     if args[0] not in helpers_dict:
         raise HelperNotFoundError("Unable to find Helper")
     # Check the type of the Helper entry.
