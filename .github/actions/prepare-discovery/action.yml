@@ -1,0 +1,15 @@
+# A composite action to install discovery
+
+name: Prepare discovery
+
+description: Install discovery
+
+runs:
+  using: composite
+  steps:
+    - name: Install discovery
+      run: |
+        wget https://github.com/mitchnegus/minimega-discovery/releases/download/firewheel-debian_faed761/discovery.deb
+        sudo dpkg -i discovery.deb
+        sudo chown -R $USER:minimega /opt/discovery
+      shell: bash
