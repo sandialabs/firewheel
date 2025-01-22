@@ -75,6 +75,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcs = [
+    "firewheel-repo-base",
+    "firewheel-repo-linux",
+    "firewheel-repo-vyos",
+]
 format = [
     "ruff==0.9.2",      # Linting/formatting
     "beautysh~=6.2.1",  # Format/lint shell scripts
@@ -92,7 +97,7 @@ docs = [
     "sphinx-design",
 ]
 dev = [
-    "firewheel[format,docs]",
+    "firewheel[mcs,format,docs]",
     "pre-commit",
 ]
 
