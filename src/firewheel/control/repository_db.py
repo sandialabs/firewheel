@@ -54,9 +54,10 @@ class RepositoryDb:
         entries = []
 
         # Add all local model component repositories
-        with self.db_file.open("r") as db:
-            local_entries = json.load(db)
-            entries.extend(local_entries)
+        if self.db_file.exists():
+            with self.db_file.open("r") as db:
+                local_entries = json.load(db)
+                entries.extend(local_entries)
 
         # Add all model components that have been added via entry points
         for entry in entry_points(group="firewheel.mc_repo"):

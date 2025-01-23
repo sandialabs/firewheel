@@ -1,7 +1,6 @@
 
 import pytest
 
-from firewheel.config import config
 from firewheel.control.repository_db import RepositoryDb
 
 
