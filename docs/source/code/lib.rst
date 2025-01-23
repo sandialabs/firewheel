@@ -77,7 +77,7 @@ FIREWHEEL gRPC Protocol
 
 This documentation was compiled using `protoc <https://github.com/protocolbuffers/protobuf>`_ and `protoc-gen-doc <https://github.com/pseudomuto/protoc-gen-doc>`_ with::
 
-    protoc --doc_out=./doc/_static/ --doc_opt=html,proto_doc.html ./grpc/firewheel_grpc.proto
+    python -m grpc_tools.protoc --plugin=protoc-gen-doc=./protoc-gen-doc --doc_out=./docs/source/_static/ --doc_opt=html,proto_doc.html --proto_path ./src/firewheel/lib/grpc firewheel_grpc.proto
 
 minimega/api.py
 ---------------
