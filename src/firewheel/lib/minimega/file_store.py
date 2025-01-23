@@ -503,6 +503,7 @@ class FileStore:
         Raises:
             FileNotFoundError: If the file is not found.
             MinimegaError: If there is an error running minimega.
+            Error: If there is an error running minimega. This is an alias for MinimegaError.
         """
 
         if not os.path.exists(cache_location):

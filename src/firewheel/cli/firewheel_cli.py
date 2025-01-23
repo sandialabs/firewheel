@@ -201,7 +201,7 @@ via `firewheel help <Helper>` as well).
         self.write_history(line)
 
         # Update the current sequence number.
-        self.session["sequence_number"] = int(floor(self.session["sequence_number"]))
+        self.session["sequence_number"] = floor(self.session["sequence_number"])
         self.session["sequence_number"] += 1
 
         return stop

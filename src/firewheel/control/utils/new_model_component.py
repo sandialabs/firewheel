@@ -452,8 +452,7 @@ class ModelComponentGenerator:
                 raise TypeError("Model Component precedes must be a list of strings.")
         else:
             raise TypeError(
-                "Model Component precedes must provide one or a "
-                "list of string names."
+                "Model Component precedes must provide one or a list of string names."
             )
         # pylint: disable=attribute-defined-outside-init
         self._model_component_precedes = value
