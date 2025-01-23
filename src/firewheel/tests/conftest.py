@@ -27,13 +27,15 @@ def pytest_configure(config: pytest.Config) -> None:
 
     This specific hook adds custom markers to the test suite, such as a
     ``long`` marker to indicate long-running tests (more than 10 seconds
-    duration).
+    duration) and the ``mcs`` marker to indicate tests that require
+    model components beyond the base FIREWHEEL package.
 
     Args:
         config (pytest.Config): The pytest config object.
     """
     markers = [
-        "long: mark test as long running"
+        "long: mark test as long running",
+        "mcs: mark test as dependent on model components",
     ]
     for marker in markers:
         config.addinivalue_line("markers", marker)

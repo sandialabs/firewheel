@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 
+import pytest
+
 from firewheel.config import config
 from firewheel.cli.completion import COMPLETION_SCRIPT_PATH
 from firewheel.cli.completion.actions import (
@@ -65,6 +67,7 @@ class CliCompletionTestCase(unittest.TestCase):
         printed_mc_names = printed_output.strip().split(" ")
         self.assertCountEqual(printed_mc_names, mock_mc_names)
 
+    @pytest.mark.mcs
     @patch("sys.stdout", new_callable=io.StringIO)
     def test_get_total_model_components_size(self, mock_stdout):
         # Check that the size is nonzero (some MCs were found)
