@@ -143,8 +143,7 @@ class ModelComponentManager:
             ) as exp:  # KeyError occurs on a failed lookup in the defaults table.
                 if multiple is True:
                     self.log.error(
-                        "Multiple providers and no default found for "
-                        'attribute "%s".',
+                        'Multiple providers and no default found for attribute "%s".',
                         attribute,
                     )
                     raise NoDefaultProviderError(
@@ -572,8 +571,7 @@ class ModelComponentManager:
             unqualified_mc_objs_path = mc.get_model_component_objects_path()
         except RuntimeError:
             self.log.exception(
-                "Unable to get model components objects path for "
-                "model component %s.",
+                "Unable to get model components objects path for model component %s.",
                 mc.name,
             )
             errors = True

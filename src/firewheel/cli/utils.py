@@ -355,8 +355,7 @@ class _SSHProtocolManager(ABC):
     @property
     def _connection_test_interval(self):
         raise NotImplementedError(
-            "Define an interval (in seconds) for testing the connection "
-            "in a subclass."
+            "Define an interval (in seconds) for testing the connection in a subclass."
         )
 
     @classmethod
