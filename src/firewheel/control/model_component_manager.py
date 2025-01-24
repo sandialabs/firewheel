@@ -705,7 +705,9 @@ class ModelComponentManager:
         for mc in self.get_ordered_model_component_list():
             self.log.debug("Processing model component %s", mc.name)
             start = datetime.now()
-            error, experiment_graph = self.process_model_component(mc, experiment_graph, dry_run)
+            error, experiment_graph = self.process_model_component(
+                mc, experiment_graph, dry_run
+            )
             end = datetime.now()
             errors_list.append(
                 {
