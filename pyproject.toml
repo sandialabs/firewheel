@@ -99,6 +99,7 @@ docs = [
 dev = [
     "firewheel[mcs,format,docs]",
     "pre-commit",
+    "tox~=4.0",
 ]
 
 [project.urls]  # Optional
