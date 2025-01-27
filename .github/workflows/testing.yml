@@ -34,8 +34,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y tar net-tools procps tmux ethtool uml-utilities \
-                                git git-lfs graphviz libenchant-2-dev \
+        sudo apt-get install -y tar net-tools procps uml-utilities \
                                 openvswitch-switch qemu-kvm qemu-utils dnsmasq \
                                 ntfs-3g iproute2 libpcap-dev
     - name: Prepare minimega
