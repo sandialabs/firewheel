@@ -25,16 +25,19 @@ class AbstractPlugin:
     This class will be inherited by all model component plugin files.
     """
 
-    def __init__(self, graph, log):
+    def __init__(self, graph, log, console=None):
         """
         Initialize the plugin.
 
         Args:
             graph (ExperimentGraph): The experiment graph in which the plugin will execute.
             log (logging.Logger): A log the plugin can use.
+            console (rich.console.Console): An optional rich console to use
+                for the MC output.
         """
         self.g = graph  # pylint: disable=invalid-name
         self.log = log
+        self.console = console
 
     def get_experiment_graph(self):
         """

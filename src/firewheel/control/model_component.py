@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 
 import yaml
+import rich
 from rich.progress import Progress, TextColumn, SpinnerColumn, TimeElapsedColumn
 
 from firewheel.lib.log import Log
@@ -24,6 +25,11 @@ class ModelComponent:
     This class defines a Model Component which is the building block
     for FIREWHEEL experiments.
     """
+    default_image_cache_progress = Progress(
+        TextColumn("[yellow]{task.description} This may take a while."),
+        SpinnerColumn(spinner_name="line"),
+        TimeElapsedColumn(),
+    )
 
     def __init__(
         self,
@@ -34,6 +40,7 @@ class ModelComponent:
         vm_resource_store=None,
         image_store=None,
         install=None,
+        image_cache_progress=None,
     ):
         """
         Constructor. Allows specification of various database objects, typically
@@ -65,6 +72,10 @@ class ModelComponent:
                 be installed. If left as :py:data:`None`, the user will
                 be prompted about whether or not the MC should be
                 installed via the ``INSTALL`` script.
+            image_cache_progress (rich.progress.Progress): The progress stlye
+                to use when displaying image related cache operations. If left
+                unset, the default progress bar style (defined by the
+                ``default_image_cache_progress`` attribute) will be used.
 
         Raises:
             ValueError: Caused if a user didn't specify name or path.
@@ -74,6 +85,9 @@ class ModelComponent:
         self.name = name
         self.path = path
         self._install = install
+        self._image_cache_progress = (
+            image_cache_progress or self.default_image_cache_progress
+        )
 
         if repository_db is not None:
             self.repository_db = repository_db
@@ -87,10 +101,17 @@ class ModelComponent:
 
         if self.path is None:
             self._resolve_path()
+
+            if self._install is None or self._install is True:
+                installer = ModelComponentInstall(self, console=None)
+                force_install = bool(self._install)  # `None` is falsy
+                installer.run_install_script(insecure=force_install)
+
         else:
             # Resolve path ends up loading the manifest (it must anyway).
             # No need to duplicate the work.
             self.manifest = self._load_manifest(self.path)
+
 
         if self.name is None:
             self.name = self.manifest["name"]
@@ -226,10 +247,6 @@ class ModelComponent:
             if self.name == manifest["name"]:
                 self.path = path
                 self.manifest = manifest
-                if self._install is None or self._install is True:
-                    mci = ModelComponentInstall(self)
-                    # Note that ``bool(None)`` evaluates to ``False``
-                    mci.run_install_script(insecure=bool(self._install))
                 return
 
         raise ValueError(f"Unable to locate model component with name '{self.name}'.")
@@ -567,15 +584,7 @@ class ModelComponent:
                 # the image in the FileStore, then we should check the MD5 sums. If the
                 # MD5 sums differ, than we need to re-upload the image.
                 if upload_date is None:
-                    with Progress(
-                        TextColumn(
-                            f"[yellow]Adding {end_path} to cache. This may take a while."
-                        ),
-                        SpinnerColumn(spinner_name="line"),
-                        TimeElapsedColumn(),
-                    ) as progress:
-                        progress.add_task(description="upload_image")
-                        self.image_store.add_image_file(path)
+                    self._update_image_cache(f"Adding {end_path} to cache.", path)
                     ret_val.append("no_date")
                 elif last_modified_date != upload_date:
                     # If date is different then hash it
@@ -583,21 +592,31 @@ class ModelComponent:
                     store_hash = self.image_store.get_file_hash(os.path.basename(path))
                     # If hashes differ upload new image
                     if disk_hash != store_hash:
-                        with Progress(
-                            TextColumn(
-                                f"[yellow]Updating {end_path} in cache. This may take a while."
-                            ),
-                            SpinnerColumn(spinner_name="line"),
-                            TimeElapsedColumn(),
-                        ) as progress:
-                            progress.add_task(description="upload_image")
-                        self.image_store.add_image_file(path)
+                        self._update_image_cache(f"Updating {end_path} in cache.", path)
                         ret_val.append("new_hash")
                     else:
                         ret_val.append("same_hash")
                 else:
                     ret_val.append(False)
+
         return ret_val
+
+    def _use_live_image_cache_progress(method):
+        # Use a live progress bar if it exists already
+        def _inner(self, *args, **kwargs):
+            try:
+                with self._image_cache_progress:
+                    return method(self, *args, **kwargs)
+            except rich.errors.LiveError:
+                return method(self, *args, **kwargs)
+
+        return _inner
+
+    @_use_live_image_cache_progress
+    def _update_image_cache(self, task_description, path):
+        task = self._image_cache_progress.add_task(description=task_description)
+        self.image_store.add_image_file(path)
+        self._image_cache_progress.stop_task(task)
 
     def set_dependency_graph_id(self, new_id):
         """
