@@ -77,12 +77,8 @@ class ModelComponentManager:
 
         Returns:
             list: The list of model components.
-
-        Raises:
-            InvalidStateError: If the dependency graph does not exist.
         """
-        if not self.dg:
-            raise InvalidStateError("Dependency graph not constructed yet.")
+        self.validate_dependency_graph()
         return self.dg.get_ordered_entity_list()
 
     def get_default_component_for_attribute(self, attribute, install_mcs=None):
@@ -689,19 +685,16 @@ class ModelComponentManager:
         Builds the experiment graph by processing all the model components.
 
         Args:
-            dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
-                or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
+            dry_run (bool): Indicates whether the model components should be
+                run (:py:data:`False`) or simply imported (i.e., checked for
+                syntax errors). Defaults to :py:data:`False`.
 
         Returns:
             list: A list of errors that were reported when trying to execute.
-
-
-        Raises:
-            InvalidStateError: If the dependency graph does not exist.
         """
+        self.validate_dependency_graph()
+        # Set initial values before processing MCs
         errors_list = []
-        if self.dg is None:
-            raise InvalidStateError("No dependency graph generated yet.")
         experiment_graph = None
 
         for mc in self.get_ordered_model_component_list():
@@ -720,3 +713,13 @@ class ModelComponentManager:
             )
 
         return errors_list
+
+    def validate_dependency_graph(self):
+        """
+        Validate the existence of the dependency graph.
+
+        Raises:
+            InvalidStateError: If the dependency graph does not exist.
+        """
+        if self.dg is None:
+            raise InvalidStateError("No dependency graph generated yet.")
