@@ -25,7 +25,6 @@ def repository_db():
         db_filename="test_repositories.json",
     )
     yield repository_db
-    repository_db.close()
 
 
 class TestRepositoryDb:
