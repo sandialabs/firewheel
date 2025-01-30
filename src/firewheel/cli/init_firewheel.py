@@ -118,16 +118,16 @@ class InitFirewheel(Cmd):
         Returns:
             bool: False if minimega is not running, True otherwise.
         """
-        status = False
         try:
             minimegaAPI()
-            status = True
-            return True
         except (RuntimeError, TimeoutError):
-            return False
+            status = False
+        else:
+            status = True
         finally:
             success_str = self._get_success_str(status)
             print(f"Checking minimega service status: {success_str}")
+        return status
 
     def _get_minimega_install_dir(self):
         # We should check that the minimega bin is in the expected location.

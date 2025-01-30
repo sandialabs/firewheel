@@ -47,7 +47,7 @@ RUN LocalPython ON control
 
 import sys
 
-from firewheel.cli.utils import SCPManager
+from firewheel.cli.ssh_manager import SCPManager
 
 if __name__ == "__main__":
     # Parse the command line inputs as an SCP command

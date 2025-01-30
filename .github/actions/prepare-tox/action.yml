@@ -1,0 +1,15 @@
+# A composite action to prepare tox-based workflows
+
+name: Prepare tox
+
+description: Prepare tox-based workflows
+
+runs:
+  using: composite
+  steps:
+    - name: Ensure upgraded pip
+      run: pip install --upgrade pip
+      shell: bash
+    - name: Install tox
+      run: pip install tox
+      shell: bash

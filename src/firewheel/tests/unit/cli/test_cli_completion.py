@@ -3,6 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 
+import pytest
+
+from firewheel.config import config
 from firewheel.cli.completion import COMPLETION_SCRIPT_PATH
 from firewheel.cli.completion.actions import (
     _keyboard_interruptable,
@@ -64,6 +67,7 @@ class CliCompletionTestCase(unittest.TestCase):
         printed_mc_names = printed_output.strip().split(" ")
         self.assertCountEqual(printed_mc_names, mock_mc_names)
 
+    @pytest.mark.mcs
     @patch("sys.stdout", new_callable=io.StringIO)
     def test_get_total_model_components_size(self, mock_stdout):
         # Check that the size is nonzero (some MCs were found)
@@ -95,8 +99,8 @@ class CliCompletionTemplatingTestCase(unittest.TestCase):
         mock_handle.write.assert_called_once()
         script_content = mock_handle.write.call_args.args[0]
         filled_placeholders = [
-            'fw_venv="/opt/firewheel/fwpy"',
-            'python_bin="python3"',
+            f"fw_venv=\"{config['python']['venv']}\"",
+            f"python_bin=\"{config['python']['bin']}\"",
         ]
         assert all(_ in script_content for _ in filled_placeholders)
 

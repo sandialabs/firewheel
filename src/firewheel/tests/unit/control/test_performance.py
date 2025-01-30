@@ -104,6 +104,7 @@ class TestPerformance:
         )
         return dict(itertools.islice(sorted_d.items(), number))
 
+    @pytest.mark.mcs
     @pytest.mark.parametrize(
         ["num_runs", "avg_threshold"],
         [
@@ -137,6 +138,7 @@ class TestPerformance:
                 f"Actual: {avg_time} seconds"
             )
 
+    @pytest.mark.mcs
     @pytest.mark.long
     @patch("sys.stdout", new_callable=io.StringIO)
     def test_individual_experiment_graph(self, mock_stdout, cache_vms):
