@@ -1,0 +1,29 @@
+# A composite action to install and initialize minimega
+
+name: Prepare minimega
+
+description: Install and initialize minimega
+
+runs:
+  using: composite
+  steps:
+    - name: Install minimega
+      run: |
+        wget https://github.com/sandia-minimega/minimega/releases/download/2.9/minimega-2.9.deb
+        sudo dpkg -i minimega-2.9.deb
+        sudo chown -R $USER:minimega $MM_INSTALL_DIR
+        sudo ln -s $MM_INSTALL_DIR/bin/minimega /usr/local/bin/minimega
+        sudo ln -s $MM_INSTALL_DIR/bin/minimega /usr/local/bin/mm
+      shell: bash
+    - name: Initialize minimega
+      run: |
+        echo -n "" | sudo $MM_INSTALL_DIR/misc/daemon/minimega.init install
+        sudo mkdir -p $(dirname $MINIMEGA_CONFIG)
+        sudo sed -i "s|MINIMEGA_DIR=\"/opt/minimega/\"|MINIMEGA_DIR=\"$MM_INSTALL_DIR/\"|g" $MINIMEGA_CONFIG
+        sudo sed -i "s|MM_RUN_PATH=\"/tmp/minimega\"|MM_RUN_PATH=\"$MM_BASE/\"|g" $MINIMEGA_CONFIG
+        sudo sed -i "s|MM_MESH_DEGREE=0|MM_MESH_DEGREE=1|g" $MINIMEGA_CONFIG
+        sudo sed -i "s|MM_LOG_LEVEL=\"error\"|MM_LOG_LEVEL=\"debug\"|g" $MINIMEGA_CONFIG
+        sudo sed -i "s|MM_LOG_FILE=\"/tmp/minimega.log\"|MM_LOG_FILE=\"$LOG_DIR/minimega.log\"|g" $MINIMEGA_CONFIG
+        sudo systemctl restart minimega
+        sudo chown -R $USER:minimega $MM_BASE $LOG_DIR
+      shell: bash

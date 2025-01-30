@@ -1,0 +1,33 @@
+# A composite action to install, configure, and initialize FIREWHEEL.
+# This action assumes that minimega and discovery have already been installed.
+
+name: Prepare FIREWHEEL
+
+description: Install, configure, and initialize FIREWHEEL
+
+runs:
+  using: composite
+  steps:
+    - name: Install FIREWHEEL
+      run: |
+        pip install --upgrade pip
+        pip install .
+        sudo ln -s $(which firewheel) /usr/local/bin/firewheel
+        ssh-keygen -t rsa -f "$HOME/.ssh/id_rsa" -N ""
+        ssh-keyscan -t rsa $(hostname) >> $HOME/.ssh/known_hosts
+        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+      shell: bash
+    - name: Configure FIREWHEEL
+      run: |
+        firewheel config set -s cluster.compute $(hostname)
+        firewheel config set -s cluster.control $(hostname)
+        firewheel config set -s grpc.hostname $GRPC_HOSTNAME
+        firewheel config set -s minimega.experiment_interface $EXPERIMENT_INTERFACE
+        firewheel config set -s logging.root_dir $LOG_DIR
+      shell: bash
+    - name: Initialize FIREWHEEL
+      run: |
+        firewheel init
+        firewheel sync  # will produce `chgrp` errors (but permissions are sufficient)
+        firewheel start
+      shell: bash

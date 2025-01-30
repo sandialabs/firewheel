@@ -3,6 +3,7 @@
 import os
 import cmd
 import sys
+import shlex
 import logging
 import textwrap
 from math import floor
@@ -1199,7 +1200,7 @@ see :ref:`cli_helper_section`."""
 def main():  # pragma: no cover
     """Provide an entry point to the FIREWHEEL CLI."""
     if len(sys.argv) > 1:
-        argstr = " ".join(sys.argv[1:])
+        argstr = shlex.join(sys.argv[1:])
         try:
             sys.exit(FirewheelCLI().onecmd(argstr))
         except KeyboardInterrupt:

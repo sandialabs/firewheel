@@ -80,6 +80,16 @@ executable_section.py
     :private-members:
     :exclude-members: __dict__,__weakref__,__module__
 
+ssh_manager.py
+-----------------
+
+.. automodule:: firewheel.cli.ssh_manager
+    :members:
+    :undoc-members:
+    :special-members:
+    :private-members:
+    :exclude-members: __dict__,__weakref__,__module__
+
 utils.py
 --------
 

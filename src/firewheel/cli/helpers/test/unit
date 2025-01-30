@@ -21,5 +21,5 @@ from firewheel import FIREWHEEL_PACKAGE_DIR
 
 if __name__ == "__main__":
     test_dir = FIREWHEEL_PACKAGE_DIR / "tests" / "unit"
-    pytest.main([str(test_dir), *sys.argv[1:]])
+    sys.exit(pytest.main([*sys.argv[1:], str(test_dir)]))
 DONE
