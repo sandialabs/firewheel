@@ -25,7 +25,7 @@ class ModelComponentManagerPrecedesTestCase(unittest.TestCase):
         os.mkdir(os.path.join(self.base_dir, self.repo_dir))
 
         self.test_manifests = []
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository(
             {"path": os.path.join(self.base_dir, self.repo_dir)}
         )
@@ -79,7 +79,7 @@ class ModelComponentManagerPrecedesTestCase(unittest.TestCase):
             if test_manifest["name"] in sys.modules:
                 del sys.modules[test_manifest["name"]]
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
     def test_simple_precede_attr(self):
         mcm = ModelComponentManager(repository_db=self.repository_db)

@@ -131,7 +131,7 @@ class Grapher(AbstractPlugin):
         with open(os.path.join(self.c14, "grapher.py"), "w", encoding="utf8") as f:
             f.write(plugin_str)
 
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository(
             {"path": os.path.join(self.base_dir, self.repo_dir)}
         )
@@ -139,7 +139,7 @@ class Grapher(AbstractPlugin):
     def tearDown(self):
         shutil.rmtree(self.base_dir)
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
         if self.c11_manifest["name"] in sys.modules:
             del sys.modules[self.c11_manifest["name"]]

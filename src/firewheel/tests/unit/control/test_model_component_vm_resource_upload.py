@@ -29,7 +29,7 @@ class ModelComponentVMResourceUploadTestCase(unittest.TestCase):
         os.mkdir(self.repo_path)
         self.mc_dir = os.path.join(self.repo_path, "mc")
 
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository({"path": self.repo_path})
 
         test_vmr_store = config["test"]["vm_resource_store_test_database"]
@@ -63,7 +63,7 @@ echo 'Hello, World!'
     def tearDown(self):
         self.vm_resource_store.remove_file("*")
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
         # remove the temp directories
         shutil.rmtree(self.tmpdir)

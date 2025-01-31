@@ -25,7 +25,7 @@ class ModelComponentImageUploadTestCase(unittest.TestCase):
         os.mkdir(self.repo_path)
         self.mc_dir = os.path.join(self.repo_path, "mc")
 
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository({"path": self.repo_path})
 
         test_image_store = config["test"]["image_db"]
@@ -59,7 +59,7 @@ echo 'Hello, World!'
     def tearDown(self):
         self.image_store.remove_file("*")
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
         # remove the temp directories
         shutil.rmtree(self.tmpdir)

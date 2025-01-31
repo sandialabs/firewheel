@@ -232,7 +232,7 @@ class ModelComponentManagerDependencyGraphTestCase(unittest.TestCase):
             self.c21,
             self.c22,
         ]
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository(
             {"path": os.path.join(self.base_dir, self.repo_dir)}
         )
@@ -244,7 +244,7 @@ class ModelComponentManagerDependencyGraphTestCase(unittest.TestCase):
             if test_manifest["name"] in sys.modules:
                 del sys.modules[test_manifest["name"]]
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
     def test_unsat_dependency_attrs(self):
         """

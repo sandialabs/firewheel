@@ -1,28 +1,19 @@
-# pylint: disable=invalid-name
-
 from firewheel.config import config
 from firewheel.control.repository_db import RepositoryDb
-from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
 
 
 def initalize_repo_db():
-    repo_client = FirewheelGrpcClient(
-        hostname=config["grpc"]["hostname"],
-        port=config["grpc"]["port"],
-        db=config["test"]["grpc_db"],
-    )
-    repo_client.remove_all_repositories()
     repository_db = RepositoryDb(
-        host=config["grpc"]["hostname"],
-        port=config["grpc"]["port"],
-        db=config["test"]["grpc_db"],
+        db_filename="test_repositories.json",
     )
-    return repository_db, repo_client
+    for repo in repository_db.list_repositories():
+        repository_db.delete_repository(repo)
+    return repository_db
 
 
-# pylint: disable=unused-argument
-def cleanup_repo_db(repository_db, repo_client):
-    repo_client.remove_all_repositories()
+def cleanup_repo_db(repository_db):
+    for repo in repository_db.list_repositories():
+        repository_db.delete_repository(repo)
 
 
 def compare_graph_structures(a, b):

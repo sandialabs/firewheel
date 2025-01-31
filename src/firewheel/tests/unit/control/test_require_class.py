@@ -291,7 +291,7 @@ class Plugin5(AbstractPlugin):
         with open(os.path.join(self.c15, "objs.py"), "w", encoding="utf8") as f:
             f.write(objs_str)
 
-        self.repository_db, self.repo_client = initalize_repo_db()
+        self.repository_db = initalize_repo_db()
         self.repository_db.add_repository(
             {"path": os.path.join(self.base_dir, self.repo_dir)}
         )
@@ -299,7 +299,7 @@ class Plugin5(AbstractPlugin):
     def tearDown(self):
         shutil.rmtree(self.base_dir)
 
-        cleanup_repo_db(self.repository_db, self.repo_client)
+        cleanup_repo_db(self.repository_db)
 
         for test_manifest in self.test_manifests:
             if test_manifest["name"] in sys.modules:
