@@ -40,7 +40,7 @@ class RepositoryDb:
         self.db_file = Path(db_basepath) / Path(db_filename)
         if not self.db_file.exists():
             with self.db_file.open("w") as db:
-                json.dump(db, [])
+                json.dump([], db)
 
     def list_repositories(self):
         """
@@ -94,7 +94,7 @@ class RepositoryDb:
 
         entries.append(repository)
         with self.db_file.open("w") as db:
-            json.dump(db, entries)
+            json.dump(entries, db)
 
         self.log.debug("Added repository: %s", repository)
 
@@ -109,8 +109,6 @@ class RepositoryDb:
             int: Number of entries removed (expect 0 or 1), or None if an
             error occurred.
         """
-        self._validate_repository(repository)
-
         # Get all local model component repositories
         if self.db_file.exists():
             with self.db_file.open("r") as db:
@@ -125,15 +123,20 @@ class RepositoryDb:
 
         try:
             entries.remove(repository)
+            self._validate_repository(repository)
             self.log.debug("Removed repository: %s", repository)
         except ValueError:
             self.log.debug(
                 "%s repository did not exist and could not be removed.", repository
             )
             return 0
+        except FileNotFoundError:
+            self.log.debug(
+                "%s repository path does not exist, but was removed anyways.", repository
+            )
 
         with self.db_file.open("w") as db:
-            json.dump(db, entries)
+            json.dump(entries, db)
 
         return 1
 
