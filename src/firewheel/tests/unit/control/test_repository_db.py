@@ -27,6 +27,7 @@ def repository_db():
     )
     yield repository_db
 
+
 @pytest.fixture
 def repository_db_test_path():
     return Path("/tmp/fw_repo_test.json")
