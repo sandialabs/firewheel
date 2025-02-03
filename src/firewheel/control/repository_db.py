@@ -38,7 +38,7 @@ class RepositoryDb:
         """
         self.log = Log(name="RepositoryDb").log
         self.db_file = Path(db_basepath) / Path(db_filename)
-        self.db_file.mkdir(parents=True, exist_ok=True)
+        self.db_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.db_file.exists():
             with self.db_file.open("w") as db:
                 json.dump([], db)
