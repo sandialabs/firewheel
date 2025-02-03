@@ -626,17 +626,14 @@ class ModelComponentManager:
             plugin_log = Log(name=mc.name).log
             plugin_instance = plugin_class(experiment_graph, plugin_log)
             if not dry_run:
-                if "" in mc.arguments["plugin"]:
-                    args = mc.arguments["plugin"][""]
-                    if not isinstance(args, list):
-                        args = [args]
-                    kwargs = {}
-                    for k in mc.arguments["plugin"]:
-                        if k:
-                            kwargs[k] = mc.arguments["plugin"][k]
-                else:
-                    args = []
-                    kwargs = mc.arguments["plugin"]
+                plugin_args = mc.arguments["plugin"].copy()
+                # Positional arguments should be formatted as a list
+                positional_args = plugin_args.pop("", [])
+                args = positional_args if isinstance(positional_args, list) else [positional_args]
+
+                # Keyword arguments are all remaining plugin arguments
+                kwargs = plugin_arguments
+
                 try:
                     plugin_instance.run(*args, **kwargs)
                 except TypeError:
