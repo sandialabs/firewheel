@@ -13,7 +13,7 @@ System Dependencies
    :start-after: dependencies-inclusion-marker
    :end-before: dependencies-inclusion-stop
 
-This section quickly outlines the system packages needed for full FIREWHEEL functionality with the exception of Python, discovery, minimega, git, and git-lfs as those are discussed in detail below.
+Below is a brief outline of the system packages needed for full FIREWHEEL functionality with the exception of Python, discovery, minimega, git, and git-lfs as those are discussed in further detail in subsequent sections.
 
 Full details about FIREWHEEL's dependencies be found in :ref:`firewheel-dependencies`.
 
