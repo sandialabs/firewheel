@@ -632,7 +632,7 @@ class ModelComponentManager:
                 args = positional_args if isinstance(positional_args, list) else [positional_args]
 
                 # Keyword arguments are all remaining plugin arguments
-                kwargs = plugin_arguments
+                kwargs = plugin_args
 
                 try:
                     plugin_instance.run(*args, **kwargs)
