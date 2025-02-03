@@ -689,10 +689,13 @@ class ModelComponentManager:
         """
         Builds the experiment graph by processing all the model components
 
-        Returns:
-            list: A list of errors that were reported when trying to execute.
+        Args:
             dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
                 or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
+                
+        Returns:
+            list: A list of errors that were reported when trying to execute.
+
 
         Raises:
             InvalidStateError: If the dependency graph does not exist.
