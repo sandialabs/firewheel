@@ -629,7 +629,11 @@ class ModelComponentManager:
                 plugin_args = mc.arguments["plugin"].copy()
                 # Positional arguments should be formatted as a list
                 positional_args = plugin_args.pop("", [])
-                args = positional_args if isinstance(positional_args, list) else [positional_args]
+                args = (
+                    positional_args
+                    if isinstance(positional_args, list)
+                    else [positional_args]
+                )
 
                 # Keyword arguments are all remaining plugin arguments
                 kwargs = plugin_args
@@ -689,7 +693,7 @@ class ModelComponentManager:
         Args:
             dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
                 or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
-                
+
         Returns:
             list: A list of errors that were reported when trying to execute.
 
