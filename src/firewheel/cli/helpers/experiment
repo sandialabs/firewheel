@@ -298,39 +298,33 @@ def run_experiment(mcm, dry_run=False, is_profile=False):
         list: A list of the experimental results.
     """
     exp_result = []
-    if dry_run is True:
-        for mc in mcm.get_ordered_model_component_list():
-            exp_result.append(
-                {"model_component": mc.name, "time": 0.0, "errors": False}
-            )
-    else:
-        try:
-            # Check if the experiment should be profiled
-            if is_profile:
-                profile = cProfile.Profile()
-                profile.enable()
+    try:
+        # Check if the experiment should be profiled
+        if is_profile:
+            profile = cProfile.Profile()
+            profile.enable()
 
-            # Build the experiment graph and execute model components
-            # per the dependency graph
-            exp_result = mcm.build_experiment_graph()
+        # Build the experiment graph and execute model components
+        # per the dependency graph
+        exp_result = mcm.build_experiment_graph(dry_run=dry_run)
 
-            # Stop the profiler (if any)
-            if is_profile:
-                profile.disable()
-                profile.dump_stats("firewheel_profile.prof")
-        except TypeError:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            # It turns out the traceback only gives infrastructure functions here,
-            # not any indication of which plugin class was the root of the error.
-            exc_str = "".join(
-                traceback.format_exception(exc_type, exc_value, exc_traceback)
-            )
-            Console(theme=cli_output_theme).print(
-                "\nAborting experiment graph processing!"
-                "\n[error]ERROR:[/error] Invalid arguments to experiment graph plugin."
-            )
-            print(f"\nDetails: {exc_str}")
-            sys.exit(errno.EINVAL)
+        # Stop the profiler (if any)
+        if is_profile:
+            profile.disable()
+            profile.dump_stats("firewheel_profile.prof")
+    except TypeError:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        # It turns out the traceback only gives infrastructure functions here,
+        # not any indication of which plugin class was the root of the error.
+        exc_str = "".join(
+            traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
+        Console(theme=cli_output_theme).print(
+            "\nAborting experiment graph processing!"
+            "\n[error]ERROR:[/error] Invalid arguments to experiment graph plugin."
+        )
+        print(f"\nDetails: {exc_str}")
+        sys.exit(errno.EINVAL)
     return exp_result
 
 
