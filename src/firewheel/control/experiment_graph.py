@@ -740,7 +740,7 @@ class Vertex(ExperimentGraphDecorable):
         """
         if not self.valid:
             raise RuntimeError("Attempted operation on invalid Vertex instance.")
-        return self.g.g.nodes[self.graph_id].get(key, default=default)
+        return self.g.g.nodes[self.graph_id].get(key, default)
 
     def get_object(self):
         """
