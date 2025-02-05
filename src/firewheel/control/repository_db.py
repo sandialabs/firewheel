@@ -30,7 +30,7 @@ class RepositoryDb:
         db_filename="repositories.json",
     ):
         """
-        Set up the class variables and path to the RepositoryDB file.
+        Set up the instance variables and path to the RepositoryDB file.
 
         Args:
             db_basepath (str): The base path where the RepositoryDB file is stored.
