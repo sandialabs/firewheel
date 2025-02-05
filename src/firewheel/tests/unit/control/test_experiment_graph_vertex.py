@@ -50,7 +50,7 @@ class ExperimentGraphVertexTestCase(unittest.TestCase):
 
     def test_get_alternate_default(self):
         v = Vertex(self.g)
-        self.assertEqualNone(v.get("name", default="test"), "test")
+        self.assertEqual(v.get("name", default="test"), "test")
 
     def test_has(self):
         v = Vertex(self.g)
