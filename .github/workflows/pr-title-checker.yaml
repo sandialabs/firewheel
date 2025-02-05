@@ -1,0 +1,60 @@
+name: "Lint Pull Request Title"
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  pull-requests: read
+
+jobs:
+  main:
+    name: Validate Pull Request Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # We modified this initial list: https://github.com/commitizen/conventional-commit-types
+          # - feat: A new feature
+          # - fix/bug: A bug fix
+          # - docs/doc/documentation: Documentation only changes
+          # - style: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
+          # - refactor: A code change that neither fixes a bug nor adds a feature
+          # - perf: A code change that improves performance
+          # - test/tests/testing: Adding missing tests or correcting existing tests
+          # - build: Changes that affect the build system or external dependencies (example scopes: minimega, discovery)
+          # - ci: Changes to our CI configuration files and scripts (example scopes: Travis, Circle, BrowserStack, SauceLabs)
+          # - chore: Other changes that don't modify src or test files
+          # - revert: Reverts a previous commit
+          # - deps/dependencies: Changes that updates dependencies
+          # - sec/security: Changes that impact security of the system
+          # - deprecate: Changes that deprecate some feature
+          types: |
+            feat
+            fix
+            bug
+            docs
+            doc
+            documentation
+            style
+            refactor
+            perf
+            test
+            tests
+            testing
+            build
+            ci
+            chore
+            revert
+            deps
+            dependencies  
+            sec
+            security
+          # Configure that a scope is not needed.
+          requireScope: false
