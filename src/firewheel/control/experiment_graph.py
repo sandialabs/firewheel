@@ -733,7 +733,7 @@ class Vertex(ExperimentGraphDecorable):
             The value of the requested attribute if the attribute is in
             the set of available attributes, else ``default``. If
             ``default`` is not given, it defaults to :py:data:`None`, so
-            that this method never raises a `KeyError`.
+            that this method never raises a :py:exc:`KeyError`.
 
         Raises:
             RuntimeError: If the :py:class:`Vertex` is not :py:attr:`Vertex.valid`.
