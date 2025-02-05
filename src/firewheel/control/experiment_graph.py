@@ -721,6 +721,27 @@ class Vertex(ExperimentGraphDecorable):
         if name:
             self.name = name
 
+    def get(self, key, default=None):
+        """
+        Dictionary-style access to read :py:class:`Vertex` attributes.
+
+        Args:
+            key (str): A key to query.
+            default: The default value to return if the key is not found.
+
+        Returns:
+            The value of the requested attribute if the attribute is in
+            the set of available attributes, else ``default``. If
+            ``default`` is not given, it defaults to :py:data:`None`, so
+            that this method never raises a `KeyError`.
+
+        Raises:
+            RuntimeError: If the :py:class:`Vertex` is not :py:attr:`Vertex.valid`.
+        """
+        if not self.valid:
+            raise RuntimeError("Attempted operation on invalid Vertex instance.")
+        return self.g.g.nodes[self.graph_id].get(key, default=default)
+
     def get_object(self):
         """
         Get the :py:class:`Vertex` object attribute (i.e. ``self``).

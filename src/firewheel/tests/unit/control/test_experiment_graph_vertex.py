@@ -41,6 +41,17 @@ class ExperimentGraphVertexTestCase(unittest.TestCase):
             # pylint: disable=pointless-statement
             v["name"]
 
+    def test_get(self):
+        v = Vertex(self.g)
+        self.assertIsNone(v.get("name"))
+
+        v["name"] = "test"
+        self.assertEqual(v.get("name"), "test")
+
+    def test_get_alternate_default(self):
+        v = Vertex(self.g)
+        self.assertEqualNone(v.get("name", default="test"), "test")
+
     def test_has(self):
         v = Vertex(self.g)
         self.assertFalse("name" in v)
