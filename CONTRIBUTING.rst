@@ -36,20 +36,22 @@ Here is how you can get started:
 #. **Submit** your contribution as a new Pull Request to the main branch.
    We are following `Conventional Commits <https://www.conventionalcommits.org>`_ for pull request titles (e.g., ``feat: My new feature``.
    The available types include:
-      - ``feat``: A new feature
-      - ``fix`` or ``bug``: A bug fix
-      - ``docs`` or ``doc`` or ``documentation``: Documentation only changes
-      - ``style``: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.)
-      - ``refactor``: A code change that neither fixes a bug nor adds a feature
-      - ``perf``: A code change that improves performance
-      - ``test`` or ``tests`` or ``testing``: Adding missing tests or correcting existing tests
-      - ``build``: Changes that affect the build system or external dependencies (example scopes: minimega, discovery)
-      - ``ci``: Changes to our CI configuration files and scripts (example scopes: GitLab, GitHub,)
-      - ``chore``: Other changes that don't modify src or test files
-      - ``revert``: Reverts a previous commit
-      - ``deps`` or ``dependencies``: Changes that updates dependencies
-      - ``sec`` or ``security``: Changes that impact security of the system
-      - ``deprecate``: Changes that deprecate some feature
+
+   - ``feat``: A new feature
+   - ``fix`` or ``bug``: A bug fix
+   - ``docs`` or ``doc`` or ``documentation``: Documentation only changes
+   - ``style``: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.)
+   - ``refactor``: A code change that neither fixes a bug nor adds a feature
+   - ``perf``: A code change that improves performance
+   - ``test`` or ``tests`` or ``testing``: Adding missing tests or correcting existing tests
+   - ``build``: Changes that affect the build system or external dependencies (example scopes: minimega, discovery)
+   - ``ci``: Changes to our CI configuration files and scripts (example scopes: GitLab, GitHub,)
+   - ``chore``: Other changes that don't modify src or test files
+   - ``revert``: Reverts a previous commit
+   - ``deps`` or ``dependencies``: Changes that updates dependencies
+   - ``sec`` or ``security``: Changes that impact security of the system
+   - ``deprecate``: Changes that deprecate some feature
+   
    Please include an appropriate summary of the work and reference any issues which will be resolved.
    For example, if the PR will address bug, also add "Fixes #123" where 123 is the issue number.
    If your code is not ready to merge, but you want to get feedback, please consider marking it as a draft.
