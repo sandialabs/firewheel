@@ -10,12 +10,14 @@ System Dependencies
 While FIREWHEEL is a Python package, it also depends on several system-level packages.
 FIREWHEEL has been tested with the following operating systems:
 
-* Ubuntu 16.04
 * Ubuntu 18.04
 * Ubuntu 20.04
+* Ubuntu 22.04
 * CentOS 7
+* RHEL 8
+* RHEL 9
 
-However, the underlying system packages likely will work on all OSes.
+The instructions provided in this documentation are tailored specifically for Ubuntu 22.04 and RHEL 9, although FIREWHEEL will likely be compatible with corresponding system packages on the majority of operating systems.
 
 .. dependencies-inclusion-stop
 
@@ -86,8 +88,8 @@ Optional System Packages (for Developers)
     + Ubuntu Package(s): ``texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk``
 - Enchant:
     + Purpose: For checking documentation spelling.
-    + Ubuntu Package(s): ``libenchant-dev``
-    + CentOS Package(s): ``enchant-devel``
+    + Ubuntu Package(s): ``libenchant-2-dev``
+    + CentOS Package(s): ``enchant2-devel``
 
 Python Dependencies
 ===================

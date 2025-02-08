@@ -15,7 +15,7 @@ Here is how you can get started:
 #. **Fork** FIREWHEEL to create your own copy of the project.
 
 #. **Create a branch** for the feature you want to work on.
-   Since the branch name will appear in the merge message, please use a sensible name such as 'fix-for-issue-123'.
+   Please use a sensible name such as 'fix-for-issue-123' or 'feat-my-new-feature'.
    Commit as you progress (``git add`` and ``git commit``).
    Use descriptive commit messages.
    Review the `Deprecation policy`_ to identify potential impact to users.
@@ -33,12 +33,30 @@ Here is how you can get started:
    To ensure you have a properly-configured development environment for running the tests, see `Build environment setup`_.
    If possible/necessary, new unit and/or functional tests should be added to ensure that the feature/bug is fully fixed.
 
-#. **Submit** your contribution as a new Pull Request to the master branch.
+#. **Submit** your contribution as a new Pull Request to the main branch.
+   We are following `Conventional Commits <https://www.conventionalcommits.org>`_ for pull request titles (e.g., ``feat: My new feature``.
+   The available types include:
+
+   - ``feat``: A new feature
+   - ``fix`` or ``bug``: A bug fix
+   - ``docs`` or ``doc`` or ``documentation``: Documentation only changes
+   - ``style``: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.)
+   - ``refactor``: A code change that neither fixes a bug nor adds a feature
+   - ``perf``: A code change that improves performance
+   - ``test`` or ``tests`` or ``testing``: Adding missing tests or correcting existing tests
+   - ``build``: Changes that affect the build system or external dependencies (example scopes: minimega, discovery)
+   - ``ci``: Changes to our CI configuration files and scripts (example scopes: GitLab, GitHub,)
+   - ``chore``: Other changes that don't modify src or test files
+   - ``revert``: Reverts a previous commit
+   - ``deps`` or ``dependencies``: Changes that updates dependencies
+   - ``sec`` or ``security``: Changes that impact security of the system
+   - ``deprecate``: Changes that deprecate some feature
+   
    Please include an appropriate summary of the work and reference any issues which will be resolved.
    For example, if the PR will address bug, also add "Fixes #123" where 123 is the issue number.
-   If your code is not ready to merge, but you want to get feedback, please consider using ``WIP: <PR Title>`` as the title of your pull request.
+   If your code is not ready to merge, but you want to get feedback, please consider marking it as a draft.
    That way we will all know that it's not yet ready to merge and that you may be interested in more fundamental comments about design.
-   When you think the pull request is ready to merge, change the title (using the *Edit* button) to remove the ``WIP:``.
+   When you think the pull request is ready to merge, remove the draft marking.
 
 #. **Wait for review**.
    When a pull request is made, at least one reviewer (the other developers and interested community members) will assess the code and write inline and/or general comments on your Pull Request (PR) to help you improve its implementation, documentation, and style.

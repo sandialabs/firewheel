@@ -13,7 +13,7 @@ System Dependencies
    :start-after: dependencies-inclusion-marker
    :end-before: dependencies-inclusion-stop
 
-This section quickly outlines the system packages needed for full FIREWHEEL functionality with the exception of Python, discovery, minimega, git, and git-lfs as those are discussed in detail below.
+Below is a brief outline of the system packages needed for full FIREWHEEL functionality with the exception of Python, discovery, minimega, git, and git-lfs as those are discussed in further detail in subsequent sections.
 
 Full details about FIREWHEEL's dependencies be found in :ref:`firewheel-dependencies`.
 
@@ -25,7 +25,7 @@ The following command will install all required system packages for FIREWHEEL an
 
 For users who are improving FIREWHEEL, building documentation, or running the FIREWHEEL tests, these packages are also needed::
 
-    sudo apt-get install -y graphviz texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk libenchant-dev
+    sudo apt-get install -y graphviz texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra latexmk libenchant-2-dev
 
 CentOS
 ------

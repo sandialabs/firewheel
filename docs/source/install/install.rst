@@ -91,7 +91,7 @@ A full list of environment variables used in ``install.sh`` is shown below.
 
 .. envvar:: PYTHON_BIN
 
-    :description: The path to the Python interpreter.
+    :description: The Python interpreter executable (a path or symlink).
     :default: ``python3``
 
 .. envvar:: PIP_ARGS
