@@ -55,7 +55,7 @@ classifiers = [
 ]
 dependencies = [
     "minimega==2.9",
-    "ClusterShell<=1.9.2",
+    "ClusterShell<=1.9.3",
     "colorama<=0.4.6",
     "coverage<=7.6.10",
     "grpcio>=1.63.0,<=1.67.0",
