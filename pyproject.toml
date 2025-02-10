@@ -81,7 +81,7 @@ mcs = [
     "firewheel-repo-vyos",
 ]
 format = [
-    "ruff==0.9.2",      # Linting/formatting
+    "ruff==0.9.6",      # Linting/formatting
     "beautysh~=6.2.1",  # Format/lint shell scripts
 ]
 docs = [
