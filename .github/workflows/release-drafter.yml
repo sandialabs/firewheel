@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Draft Release Notes
         id: draft_release
-        uses: release-drafter/release-drafter@b1476f6
+        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
         with:
           publish: ${{ steps.check-version.outputs.tag != '' }}
           tag: ${{ steps.check-version.outputs.tag }}
@@ -42,7 +42,7 @@ jobs:
       checks: write
     runs-on: ubuntu-latest
     steps:
-      - uses: danielchabr/pr-labels-checker@7145ecb
+      - uses: danielchabr/pr-labels-checker@7145ecb81a69104f99767cb133bf856e749f7e73
         with:
           hasSome: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
           githubToken: ${{ secrets.GITHUB_TOKEN }}
