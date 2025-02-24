@@ -301,8 +301,6 @@ class ModelComponentDocumentation:
                         # necessary line not in the mcm function
                         if f"{mc.name}_plugin" not in sys.modules:
                             sys.modules[f"{mc.name}_plugin"] = module
-                        else:
-                            pass
                         loaded = True
                     except FileNotFoundError as exp:
                         raise ImportError(

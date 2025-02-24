@@ -69,7 +69,7 @@ class FirewheelGrpcClient:
             "It may need to be started with `firewheel start`."
         )
         exp = ConnectionError(exp_str)
-        self.log.exception(exp)
+        self.log.error(exp)
         if error:
             raise exp
         return False
