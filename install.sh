@@ -273,7 +273,7 @@ function install_firewheel_development() {
 #######################################
 function init_firewheel() {
     firewheel config set -s system.default_output_dir "${DEFAULT_OUTPUT_DIR}"
-    firewheel config set -s cluster.compute "${FIREWHEEL_NODES}"
+    firewheel config set -s cluster.compute ${FIREWHEEL_NODES}
     firewheel config set -s cluster.control "${HEAD_NODE}"
     firewheel config set -s discovery.hostname "${DISCOVERY_HOSTNAME}"
     firewheel config set -s grpc.hostname "${GRPC_HOSTNAME}"
