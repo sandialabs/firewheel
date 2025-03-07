@@ -39,7 +39,7 @@ MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_d
 MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
 MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
 $MINIMEGA_BIN -e clear all
-$MINIMEGA_BIN -e namespace firewheel
+$MINIMEGA_BIN -e namespace "$(firewheel config get minimega.namespace)"
 $MINIMEGA_BIN -e ns add-hosts localhost
 $MINIMEGA_BIN -e ns queueing true
 
