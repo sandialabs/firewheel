@@ -66,6 +66,18 @@ fi
 
 DONE
 
+
+RUN Shell ON compute
+MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_dir)"
+MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
+MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
+
+# Ensure the specified namespace is created and that localhost is added
+$MINIMEGA_BIN -e namespace "$(firewheel config get minimega.namespace)"
+$MINIMEGA_BIN -e ns add-hosts localhost
+DONE
+
+
 RUN Python ON control
 #!/usr/bin/env python
 import sys
