@@ -287,8 +287,7 @@ class FileStore:
             host_file_path (str): The location to cache the file locally.
 
         """
-        self.log.error("Unable to decompress file: %s", tmp_local_path)
-        self.log.exception(exp)
+        self.log.error("Unable to decompress file: %s: %s", tmp_local_path, exp)
         for f_name in [tmp_local_path, host_file_path]:
             self.log.debug("Attempting to remove file=%s", f_name)
             try:

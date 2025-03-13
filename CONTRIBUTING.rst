@@ -45,7 +45,7 @@ Here is how you can get started:
    - ``perf``: A code change that improves performance
    - ``test`` or ``tests`` or ``testing``: Adding missing tests or correcting existing tests
    - ``build``: Changes that affect the build system or external dependencies (example scopes: minimega, discovery)
-   - ``ci``: Changes to our CI configuration files and scripts (example scopes: GitLab, GitHub,)
+   - ``ci``: Changes to our CI configuration files and scripts (example scopes: GitLab, GitHub)
    - ``chore``: Other changes that don't modify src or test files
    - ``revert``: Reverts a previous commit
    - ``deps`` or ``dependencies``: Changes that updates dependencies

@@ -27,7 +27,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Prepare to use tox-based environments
-      uses: ./.github/actions/prepare-tox
+      uses: sandialabs/firewheel/.github/actions/prepare-tox
     - name: Lint code
       run: |
         tox -e lint

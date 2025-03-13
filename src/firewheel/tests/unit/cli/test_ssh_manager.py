@@ -89,8 +89,16 @@ class TestSSHManager(_TestSSHProtocolManager):
             capture_output=False,
         )
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "ls -la",
+            "grep 'test string' file.txt",
+            "'grep \"test string\" file.txt'",
+        ]
+    )
     @patch("subprocess.run")
-    def test_call_ssh_with_command(self, mock_subprocess, ssh):
+    def test_call_ssh_with_command(self, mock_subprocess, command, ssh):
         # Mock a successful SSH call
         mock_subprocess.return_value.returncode = 0
 
