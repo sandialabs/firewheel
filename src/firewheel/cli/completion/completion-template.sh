@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script provides tab completion for FIREWHEEL from Bash or ZSH (non-interactive mode)
 # It iterates over the FIREWHEEL Helpers and adds them to the completion list.
 # It parses `firewheel_cli.py` to get FIREWHEEL commands.
@@ -12,8 +14,8 @@
 #######################################
 function search_model_components() {
     completion_mcs=($($SHELL -c "
-        if ! [[ -z $fw_venv ]]; then
-            source $fw_venv/bin/activate;
+        if [ -n \"$fw_venv\" ]; then
+            . \"$fw_venv/bin/activate\";
         fi;
         $python_bin -m firewheel.cli.completion.get_model_component_names
     " 2>/dev/null))
@@ -30,8 +32,8 @@ function complete_model_components() {
         search_model_components
     else
         mc_size=$($SHELL -c "
-            if ! [[ -z $fw_venv ]]; then
-                source $fw_venv/bin/activate;
+            if [ -n \"$fw_venv\" ]; then
+                . \"$fw_venv/bin/activate\";
             fi;
             $python_bin -m firewheel.cli.completion.get_total_model_components_size
         ")
@@ -105,8 +107,8 @@ function _fw_complete() {
         # This syntax will take the printed python list and convert to bash array
         # Need to execute in a new shell so to only activate venv temporarily
         fw_cmds=($($SHELL -c "
-            if ! [[ -z $fw_venv ]]; then
-                source $fw_venv/bin/activate;
+            if [ -n \"$fw_venv\" ]; then
+                . \"$fw_venv/bin/activate\";
             fi;
             $python_bin -m firewheel.cli.completion.get_available_cli_commands
         "))
