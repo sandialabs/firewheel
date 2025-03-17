@@ -9,6 +9,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 env:
   LOG_DIR: /var/log/firewheel
   MINIMEGA_CONFIG: /etc/minimega/minimega.conf

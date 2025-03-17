@@ -18,7 +18,7 @@ jobs:
           ref: ${{ github.event.release.target_commitish }}
 
       - name: Update Changelog
-        uses: stefanzweifel/changelog-updater-action@v1
+        uses: stefanzweifel/changelog-updater-action@b3a7ae7d4afc1d6982949a79bcd939fbcb245871
         with:
           latest-version: ${{ github.event.release.tag_name }}
           release-notes: ${{ github.event.release.body }}
@@ -26,7 +26,7 @@ jobs:
           parse-github-usernames: true
 
       - name: Commit updated CHANGELOG
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@c86fa26bedab90b9a250e22f66759c0c50699f15
         with:
           branch: ${{ github.event.release.target_commitish }}
           commit_message: 'docs(changelog): update changelog for version ${{ inputs.latest_version }}'
