@@ -1,0 +1,14 @@
+#!/bin/bash
+echo "$@" >> /tmp/ssh-log
+while [ "$#" -gt 0 ]; do
+    if [[ "$1" = -* ]]; then
+        shift
+        continue
+    fi
+    if [[ "$1" = *=* ]]; then
+        shift
+        continue
+    fi
+    shift
+    exec /bin/bash -c "$*"
+done

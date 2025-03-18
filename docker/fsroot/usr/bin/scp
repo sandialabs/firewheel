@@ -1,0 +1,11 @@
+#!/bin/bash
+while [[ "$1" = -* ]]; do
+    shift
+    if [[ "$1" = *=* ]]; then
+        shift
+    fi
+done
+SRC="${1##*:}"
+DST="${2##*:}"
+cp -ra $SRC $DST
+exit

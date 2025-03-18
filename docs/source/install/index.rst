@@ -13,3 +13,4 @@ This guide walks through the preparation, installation, and configuration of FIR
     prereqs
     install
     configuration
+    docker

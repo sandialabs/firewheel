@@ -1,0 +1,24 @@
+#!/bin/bash
+echo "$*" >> /tmp/sudo-cmd.log
+while [[ "$1" = -* ]]; do
+    shift
+    if [[ "$1" = *=* ]]; then
+        shift
+    fi
+done
+
+# Check for the specific command first
+if [[ "$1" = "systemctl" ]]; then
+    if [[ "$2" = "start" && "$3" = "minimega" ]]; then
+        /start-minimega.sh
+        exit $?
+    elif [[ "$2" = "restart" && "$3" = "minimega" ]]; then
+        /start-minimega.sh
+        exit $?
+    else
+        exit 0
+    fi
+fi
+
+# Execute the command if it's not systemctl or the specific command
+"$@"
