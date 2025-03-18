@@ -446,7 +446,7 @@ class SSHManager(_SSHProtocolManager):
         """
         args, optlist = super(SSHManager, cls).parse_cli_input(argv)
         # All but the first positional argument are elements of the command
-        destination, command = args[0], " ".join(args[1:])
+        destination, command = args[0], shlex.join(args[1:])
         return [destination, command], optlist
 
 
@@ -641,7 +641,7 @@ class ParallelSSHManager(_SSHProtocolManager):
         """
         args, optlist = super(ParallelSSHManager, cls).parse_cli_input(argv)
         # All but the first positional argument are elements of the command
-        destination, command = args[0], " ".join(args[1:])
+        destination, command = args[0], shlex.join(args[1:])
         return [destination, command], optlist
 
 
@@ -751,7 +751,7 @@ class SCPManager(_SSHProtocolManager):
             str: The complete SSH instruction.
         """
         instruction_options = self._prepare_options(options)
-        return f"scp {instruction_options} {' '.join(sources)} {target}"
+        return f"scp {instruction_options} {shlex.join(sources)} {target}"
 
     @classmethod
     def parse_cli_input(cls, argv):

@@ -4,16 +4,14 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  pull_request_target:
     types:
       - opened
       - reopened
-      - edited
       - synchronize
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   update_release_draft:
@@ -25,12 +23,9 @@ jobs:
       latest_version: ${{ steps.draft_release.outputs.tag_name }}
       release_notes: ${{ steps.draft_release.outputs.body }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Draft Release Notes
         id: draft_release
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
         with:
           publish: ${{ steps.check-version.outputs.tag != '' }}
           tag: ${{ steps.check-version.outputs.tag }}
@@ -47,7 +42,7 @@ jobs:
       checks: write
     runs-on: ubuntu-latest
     steps:
-      - uses: danielchabr/pr-labels-checker@v3.1
+      - uses: danielchabr/pr-labels-checker@7145ecb81a69104f99767cb133bf856e749f7e73
         with:
           hasSome: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
           githubToken: ${{ secrets.GITHUB_TOKEN }}
