@@ -25,6 +25,8 @@ def repository_db():
     repository_db = RepositoryDb(
         db_filename="test_repositories.json",
     )
+    for repo in repository_db.list_repositories():
+        repository_db.delete_repository(repo)
     yield repository_db
 
 
@@ -70,7 +72,7 @@ class TestRepositoryDb:
         assert location.exists() is True
 
         repository_db.add_repository(repo_entry)
-        repo_dict = list(repository_db.list_repositories()).pop()
+        repo_dict = list(repository_db.list_repositories())
         assert len(repo_dict) == 1
         assert self._entry_matches_repo_dict(repo_entry, repo_dict)
 
@@ -79,7 +81,7 @@ class TestRepositoryDb:
 
     def test_add_repository(self, repository_db, repo_entry):
         repository_db.add_repository(repo_entry)
-        repo_dict = list(repository_db.list_repositories()).pop()
+        repo_dict = list(repository_db.list_repositories())
         assert len(repo_dict) == 1
         assert self._entry_matches_repo_dict(repo_entry, repo_dict)
 
@@ -106,7 +108,7 @@ class TestRepositoryDb:
     def test_duplicate_repository(self, repository_db, repo_entry):
         repository_db.add_repository(repo_entry)
         repository_db.add_repository(repo_entry)
-        repo_dict = list(repository_db.list_repositories()).pop()
+        repo_dict = list(repository_db.list_repositories())
         assert len(repo_dict) == 1
         assert self._entry_matches_repo_dict(repo_entry, repo_dict)
 

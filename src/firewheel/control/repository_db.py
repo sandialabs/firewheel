@@ -79,7 +79,11 @@ class RepositoryDb:
         Args:
             repository (dict): A repository dictionary to add. See format for the database.
         """
-        self._validate_repository(repository)
+        try:
+            self._validate_repository(repository)
+        except ValueError:
+            self.log.debug("Path %s already exists and will not be added", repository)
+            return
 
         # Get all local model component repositories
         if self.db_file.exists():
@@ -124,16 +128,22 @@ class RepositoryDb:
 
         try:
             entries.remove(repository)
-            self._validate_repository(repository)
-            self.log.debug("Removed repository: %s", repository)
         except ValueError:
             self.log.debug(
                 "%s repository did not exist and could not be removed.", repository
             )
             return 0
+
+        try:
+            self._validate_repository(repository)
+            self.log.debug("Removed repository: %s", repository)
+        except ValueError:
+            # This repository exists in the database and can be removed.
+            pass
         except FileNotFoundError:
             self.log.debug(
-                "%s repository path does not exist, but was removed anyways.", repository
+                "%s repository path does not exist, but was removed anyways.",
+                repository,
             )
 
         with self.db_file.open("w") as db:
@@ -152,6 +162,7 @@ class RepositoryDb:
             KeyError: if there is a missing key/val pair in the repository.
             FileNotFoundError: If the repository does not exist.
             PermissionError: If the user is unable to access that directory.
+            ValueError: If the repository already exists in the DB.
         """
 
         # Validate repository format.
@@ -175,3 +186,8 @@ class RepositoryDb:
             raise PermissionError(
                 f"Do not have correct permissions to access '{path}'!"
             )
+
+        # Check if the repository already exists
+        paths = [entry["path"] for entry in self.list_repositories()]
+        if repository["path"] in paths:
+            raise ValueError(f"Path {repository['path']} already exists")
