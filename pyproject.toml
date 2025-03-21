@@ -97,7 +97,7 @@ docs = [
     "sphinx-design",
 ]
 dev = [
-    "firewheel[mcs,format,docs]",
+    "firewheel[format,docs]",
     "pre-commit",
     "tox~=4.0",
 ]
