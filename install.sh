@@ -229,7 +229,7 @@ function install_firewheel_generic() {
 #######################################
 function install_firewheel() {
     pushd "${FIREWHEEL_ROOT_DIR}"
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel[mcs]
     if [ ! $? -eq 0 ];
     then
         install_firewheel_generic
@@ -248,22 +248,12 @@ function install_firewheel() {
 #     PYTHON_BIN
 #######################################
 function install_firewheel_development() {
-    pushd "${FIREWHEEL_ROOT_DIR}"
-    install_firewheel_generic
-
-    # Install the development version.
-    if [[ $1 -eq 1 ]]; then
-    then
-        # In this case, we do not use the "dev" optional dependencies as
-        # the user is using the source code version of these model components, rather
-        # than the Python package installed repositories.
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} pre-commit tox
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[format,docs]
-
-    else
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
-    fi
-    popd
+    # Install the development version of FIREWHEEL
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[dev]
+    # Essential MCs (base, linux, vyos, etc.) were cloned; install them in development mode too
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
 }
 
 #######################################
@@ -384,7 +374,7 @@ function main() {
     fi
     if [[ $dev -eq 1 ]]; then
         echo "${fw_str} Installing FIREWHEEL in development mode."
-        install_firewheel_development $clone
+        install_firewheel_development
     else
         echo "${fw_str} Installing FIREWHEEL without development dependencies."
         install_firewheel
