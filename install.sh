@@ -115,6 +115,8 @@ function clone_repos() {
 
     pushd "${MC_DIR}"
 
+    local MC_REPO_GROUP="https://github.com/sandialabs"
+
     local fail_count=1
     local max_attempts=5
     if [[ ! -d "base" ]]; then
@@ -256,9 +258,12 @@ function install_firewheel_development() {
     if [[ $clone -eq 1 ]]; then
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
 	# Essential MCs (base, linux, vyos, etc.) were cloned; install them in development mode too
-	${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
-	${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
-	${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
+	#${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
+	#${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
+	#${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
+	${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_base
+	${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_linux
+	${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_vyos
     else
 	# Prefer the PyPI versions of essential MCs
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev,mcs]
@@ -372,6 +377,7 @@ function main() {
                 exit 1
         esac
     done
+    clone=1
 
     fw_str="FIREWHEEL Installation:"
     echo "${fw_str} Checking dependencies."
