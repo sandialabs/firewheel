@@ -10,52 +10,23 @@
 #
 ###############################
 
-###############################
-# Change pip's cache directory to be inside the project
-# directory since we can only cache local items.
-###############################
-variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  RUNNER_AFTER_SCRIPT_TIMEOUT: 3h
-
 
 ###############################
-# Pip's cache doesn't store the python packages
-# https://pip.pypa.io/en/stable/reference/pip_install/#caching
-#
-# If you want to also cache the installed packages, you have to install
-# them in a virtualenv and cache it as well.
-###############################
-cache:
-  paths:
-    - "$CI_PROJECT_DIR/.cache/pip"
-    - venv/
-    - .cache/pip
-
-
-###############################
-# Setting up before_script anchors to speed up the exectution of
+# Setting up before_script anchors to speed up the execution of
 # pipeline jobs which do not require each component.
 # See: https://docs.gitlab.com/ee/ci/yaml/#yaml-anchors-for-before_script-and-after_script
 #
 # This includes:
-# * create_venv: Creating a Python 3.9 virtual environment
+# * create_venv_docker: Creating a Python 3.10 virtual environment
 # * install_firewheel: Install FIREWHEEL and any dependencies.
 # * configure_firewheel: Configure FIREWHEEL for use by the job.
-# * install_mcs: Clone the base and linux Model Component repositories
-#   so that the functional tests can run.
+# * install_mcs: Clone the base and linux Model Component repositories.
 ###############################
 .create_venv_docker: &create_venv_docker
   - python --version ; pip --version
   - pip install $PIP_ARGS virtualenv
   - virtualenv venv
   - source venv/bin/activate
-
-.create_venv: &create_venv
-  - pushd /opt/firewheel/
-  - python3.9 -m venv venv
-  - source /opt/firewheel/venv/bin/activate
-  - popd
 
 .install_firewheel_docker: &install_firewheel_docker
   - python -m pip install $PIP_ARGS -U build setuptools pip
@@ -93,12 +64,12 @@ cache:
   - mkdir model_components
   - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials
   - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/linux.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/utilities.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/layer2.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/ntp.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/dns.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/model_components/vyos.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_linux.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_utilities.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_layer2.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_ntp.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_dns.git
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_vyos.git
   - firewheel repository install linux
   - firewheel repository install utilities
   - firewheel repository install layer2
@@ -116,17 +87,17 @@ cache:
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
-  - mv /tmp/ntp/ntp/ntp-trusty-server.tar /opt/firewheel/model_components/ntp/src/firewheel_repo_ntp/ntp/vm_resources/
-  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz /opt/firewheel/model_components/dns/src/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz
-  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz /opt/firewheel/model_components/vyos/src/firewheel_repo_vyos/vyos-1.1.8/
-  - mv /tmp/linux/linux/vm_resources/*.tgz /opt/firewheel/model_components/linux/src/firewheel_repo_linux/linux/vm_resources
-  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/bionic/images/
-  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/jammy/images/
-  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/trusty/images/
-  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* /opt/firewheel/model_components/linux/src/firewheel_repo_linux/ubuntu/xenial/images/
+  - mv /tmp/ntp/ntp/ntp-trusty-server.tar /opt/firewheel/model_components/firewheel_repo_ntp/src/firewheel_repo_ntp/ntp/vm_resources/
+  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz /opt/firewheel/model_components/firewheel_repo_dns/src/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz
+  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz /opt/firewheel/model_components/firewheel_repo_vyos/src/firewheel_repo_vyos/vyos-1.1.8/
+  - mv /tmp/linux/linux/vm_resources/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/linux/vm_resources
+  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/
+  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/bionic/images/
+  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/images/
+  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/
+  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/images/
+  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/
+  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/xenial/images/
   - popd
   - popd
 
@@ -137,10 +108,6 @@ cache:
 default:
   tags:
     - vm
-  before_script:
-    - *create_venv
-    - *install_firewheel
-    - *configure_firewheel
 
 stages:
   - lint
