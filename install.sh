@@ -104,25 +104,6 @@ function install_firewheel_generic() {
 
 }
 
-#######################################
-# Installing the FIREWHEEL package with standard dependencies.
-# Arguments:
-#     None
-# Globals:
-#     FIREWHEEL_ROOT
-#     PIP_ARGS
-#     PYTHON_BIN
-#######################################
-function install_firewheel() {
-    pushd "${FIREWHEEL_ROOT_DIR}"
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel[mcs]
-    if [ ! $? -eq 0 ];
-    then
-        install_firewheel_generic
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} --prefer-binary ./dist/firewheel-2.6.0.tar.gz
-    fi
-    popd
-}
 
 #######################################
 # Installing the FIREWHEEL package with development dependencies.
@@ -252,8 +233,8 @@ function main() {
         echo "${fw_str} Installing FIREWHEEL in development mode."
         install_firewheel_development
     else
-        echo "${fw_str} Installing FIREWHEEL without development dependencies."
-        install_firewheel
+        echo "${fw_str} Installing FIREWHEEL with standard (non-development) dependencies."
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel[mcs]
     fi
     echo "${fw_str} Setting configuration options."
     init_firewheel $static
