@@ -9,6 +9,8 @@ on:
       - opened
       - reopened
       - synchronize
+      - labeled
+      - unlabeled
 
 permissions:
   contents: read
@@ -42,7 +44,7 @@ jobs:
       checks: write
     runs-on: ubuntu-latest
     steps:
-      - uses: danielchabr/pr-labels-checker@7145ecb81a69104f99767cb133bf856e749f7e73
+      - uses: docker://agilepathway/pull-request-label-checker:sha-c3d16ad
         with:
-          hasSome: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          any_of: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
