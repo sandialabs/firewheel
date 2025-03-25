@@ -217,13 +217,11 @@ function post_install() {
 #######################################
 function usage() {
     echo -e "Useful script to install FIREWHEEL and ensure proper system configuration.\n"
-    echo "usage: install.sh [-h | --help] [-d | --development] [-nc | --no-clone] [-s | --static]"
+    echo "usage: install.sh [-h | --help] [-d | --development] [-s | --static]"
     echo -e "\n\nOptional Arguments:"
     echo "  -h, --help           Show this help message and exit"
     echo "  -d, --development    Install FIREWHEEL in development mode, an 'editable' installation"
     echo "                       including all development dependencies."
-    echo "  -nc, --no-clone      Prevents the install script from cloning/installing any model component"
-    echo "                       repositories."
     echo "  -s, --static         Does not check if necessary system services are running (e.g., minimega)."
 }
 
@@ -232,14 +230,11 @@ function usage() {
 #######################################
 function main() {
     local dev=0
-    local clone=1
     local static=0
     while [[ "$1" != "" ]]; do
         case $1 in
             -d | --development )    shift
                 dev=1 ;;
-            -nc | --no-clone )       shift
-                clone=0 ;;
             -s | --static )    shift
                 static=1 ;;
             -h | --help )           usage
