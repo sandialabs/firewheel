@@ -25,6 +25,8 @@ def repository_db():
     repository_db = RepositoryDb(
         db_filename="test_repositories.json",
     )
+    for repo in repository_db.list_repositories():
+        repository_db.delete_repository(repo)
     yield repository_db
 
 
