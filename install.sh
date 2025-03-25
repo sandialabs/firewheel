@@ -91,12 +91,13 @@ function check_deps() {
 #     PYTHON_BIN
 #######################################
 function install_firewheel_development() {
+    local mc_dir="${MC_DIR}_packages"
     # Install the development version of FIREWHEEL
     ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[dev]
     # Essential MCs (base, linux, vyos, etc.) were cloned; install them in development mode too
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_base
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_linux
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_vyos
 }
 
 #######################################
