@@ -275,6 +275,22 @@ class ConfigureFirewheel(cmd.Cmd):
         else:
             parser.print_help()
 
+    def do_path(self, args: str = "") -> None:
+        """
+        Enable a user to learn the path to the FIREWHEEL configuration file.
+
+        Args:
+            args (str): A string of arguments which are passed in by the user.
+                For this method, the string should be empty.
+        """
+        if args:
+            self.console.print(
+                "Error: The `path` command does not accept arguments.", style="error"
+            )
+            self.help_path()
+        else:
+            print(Config().config_path)
+
     def emptyline(self) -> None:
         """Print help when a blank line is entered.
 
@@ -370,6 +386,18 @@ class ConfigureFirewheel(cmd.Cmd):
     def help_get(self) -> None:
         """Print help for the :py:meth:`do_get` sub-command."""
         print(self._help_get())
+
+    def _help_path(self) -> str:
+        """Help message for the :py:meth`do_path` sub-command.
+
+        Returns:
+            str: The help message.
+        """
+        return "Prints the path to the current FIREWHEEL configuration."
+
+    def help_path(self) -> None:
+        """Print help for the :py:meth:`do_path` sub-command."""
+        print(self._help_path())
 
     def _help_help(self) -> str:
         """Help message for the help sub-command.
