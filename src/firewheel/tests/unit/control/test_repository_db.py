@@ -1,8 +1,23 @@
 
+import os
+from unittest.mock import patch
+
 import pytest
 from pathlib import Path
 
 from firewheel.control.repository_db import RepositoryDb
+
+
+@pytest.fixture
+def mock_permissioned_filesystem():
+    # Save a reference to the original `os.access` method before mocking
+    os_access = os.access
+
+    def _deny_user_access_to_root_home_directory(path, mode, **kwargs):
+        return False if Path(path) == Path("/root") else os_access(path, mode, **kwargs)
+
+    with patch("os.access", side_effect=_deny_user_access_to_root_home_directory):
+        yield
 
 
 def create_test_repo(repo_path):
@@ -97,7 +112,9 @@ class TestRepositoryDb:
             [{"path": "asdf"}, FileNotFoundError],  # ----- missing directory
         ],
     )
-    def test_add_repository_invalid(self, invalid_entry, exception, repository_db):
+    def test_add_repository_invalid(
+        self, invalid_entry, exception, mock_permissioned_filesystem, repository_db
+    ):
         with pytest.raises(exception):
             repository_db.add_repository(invalid_entry)
 
