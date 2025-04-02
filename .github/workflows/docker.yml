@@ -1,5 +1,11 @@
 name: Publish FIREWHEEL Docker Image
-on: [push]
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+
 jobs:
   push-to-ghcr:
     name: Push Docker image to GitHub Packages

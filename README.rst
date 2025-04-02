@@ -64,6 +64,8 @@ Kasimir Georg Gabert, Adam Vail, Tan Q. Thai, Ian Burns, Michael J. McDonald, St
 
 A non-comprehensive list of research/projects using FIREWHEEL includes:
 
+- Sean Oesch, Amul Chaulagain, Brian Weber, Matthew Dixson, Amir Sadovnik, Benjamin Roberson, Cory Watson, and Phillipe Austria. 2024. "Towards a High Fidelity Training Environment for Autonomous Cyber Defense Agents." In Proceedings of the *17th Cyber Security Experimentation and Test Workshop (CSET '24)*. Association for Computing Machinery, New York, NY, USA, 91–99. https://doi.org/10.1145/3675741.3675752
+
 - Michael Stickland, Justin D. Li, Thomas D. Tarman, and Laura Painton Swiler. 2021. "Uncertainty Quantification in Cyber Experimentation." United States. https://www.osti.gov/biblio/1867999.
 
 - Michael Stickland, Justin D. Li, Laura Painton Swiler, and Thomas Tarman. 2021. "Foundations of Rigorous Cyber Experimentation." United States. https://www.osti.gov/biblio/1854751.

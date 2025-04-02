@@ -37,7 +37,7 @@ jobs:
       with:
         python-version: '3.x'
     - name: Prepare to use tox-based environments
-      uses: sandialabs/firewheel/.github/actions/prepare-tox
+      uses: sandialabs/firewheel/.github/actions/prepare-tox@v2
     - name: Build Documentation
       run: |
         tox -e dependencies,docs

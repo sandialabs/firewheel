@@ -1,0 +1,28 @@
+# Script for updating the repo's major version tags
+# Derived from: actions/checkout@6ccd57f4c5d15bdc2fef309bd9fb6cc9db2ef1c6
+
+name: Update Main Version
+run-name: Move the major tag to point to ${{ github.event.release.tag_name }}
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@6ccd57f4c5d15bdc2fef309bd9fb6cc9db2ef1c6
+      with:
+        fetch-depth: 0
+    - name: Git config
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    - name: Tag new target
+      run: |
+        tag=$(echo ${{ github.event.release.tag_name }} | cut -d'.' -f1)
+        git tag --force "$tag"
+        echo "tag=$tag" >> $GITHUB_ENV
+    - name: Push new tag
+      run: git push --force origin $tag

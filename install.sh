@@ -119,7 +119,7 @@ function clone_repos() {
     local max_attempts=5
     if [[ ! -d "base" ]]; then
         fail_count=1
-        until (( fail_count > max_attempts )) || git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/base.git" --branch "${MC_BRANCH}"; do
+        until (( fail_count > max_attempts )) || git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_base.git" --branch "${MC_BRANCH}"; do
             fail_count=$((fail_count+1))
             rate_mod=$((2**(fail_count)))
             r_sleep=$((RANDOM % rate_mod))
@@ -128,16 +128,16 @@ function clone_repos() {
         done
 
         if (( fail_count > max_attempts )); then
-            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/base.git\". Aborting."
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_base.git\". Aborting."
             exit 1
         fi
     else
-        err "Directory \"${MC_REPO_GROUP}/base\" already exists. Skipping git clone."
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_base\" already exists. Skipping git clone."
     fi
 
     if [[ ! -d "linux" ]]; then
         fail_count=1
-        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/linux.git" --branch "${MC_BRANCH}"; do
+        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_linux.git" --branch "${MC_BRANCH}"; do
             fail_count=$((fail_count+1))
             rate_mod=$((2**(fail_count)))
             r_sleep=$((RANDOM % rate_mod))
@@ -146,16 +146,16 @@ function clone_repos() {
         done
 
         if (( fail_count > max_attempts )); then
-            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/linux.git\". Aborting."
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_linux.git\". Aborting."
             exit 1
         fi
     else
-        err "Directory \"${MC_REPO_GROUP}/linux\" already exists. Skipping git clone."
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_linux\" already exists. Skipping git clone."
     fi
 
     if [[ ! -d "vyos" ]]; then
         fail_count=1
-        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/vyos.git" --branch "${MC_BRANCH}"; do
+        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_vyos.git" --branch "${MC_BRANCH}"; do
             fail_count=$((fail_count+1))
             rate_mod=$((2**(fail_count)))
             r_sleep=$((RANDOM % rate_mod))
@@ -164,11 +164,11 @@ function clone_repos() {
         done
 
         if (( fail_count > max_attempts )); then
-            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/vyos.git\". Aborting."
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_vyos.git\". Aborting."
             exit 1
         fi
     else
-        err "Directory \"${MC_REPO_GROUP}/vyos\" already exists. Skipping git clone."
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_vyos\" already exists. Skipping git clone."
     fi
 
     popd

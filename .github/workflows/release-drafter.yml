@@ -9,12 +9,15 @@ on:
       - opened
       - reopened
       - synchronize
+      - labeled
+      - unlabeled
 
 permissions:
   contents: read
 
 jobs:
   update_release_draft:
+    name: Update the release notes
     permissions:
       contents: write
       pull-requests: write
@@ -35,14 +38,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   pr-checker:
     name: Ensure Proper Pull Request Labels
-    if: ${{ always() }}
+    if: github.event_name == 'pull_request_target'
     needs: update_release_draft
     permissions:
       pull-requests: read
       checks: write
     runs-on: ubuntu-latest
     steps:
-      - uses: danielchabr/pr-labels-checker@7145ecb81a69104f99767cb133bf856e749f7e73
+      - uses: docker://agilepathway/pull-request-label-checker:v1.6.65
         with:
-          hasSome: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          any_of: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
