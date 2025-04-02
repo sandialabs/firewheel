@@ -31,7 +31,7 @@
 .install_firewheel_docker: &install_firewheel_docker
   - python -m pip install $PIP_ARGS -U build setuptools pip
   - python -m build
-  - python -m pip install -e .[dev]
+  - python -m pip install -e .[dev,mcs]
 
 .install_firewheel: &install_firewheel
   - sudo killall minimega  # Make sure minimega is not running
