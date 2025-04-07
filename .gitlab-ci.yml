@@ -61,6 +61,7 @@
   - firewheel restart hard
 
 .install_mcs_docker: &install_mcs_docker
+  - firewheel config get -a
   - mkdir model_components
   - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel_repo_linux firewheel_repo_layer2 firewheel_repo_ntp firewheel_repo_dns firewheel_repo_vyos
   - pushd model_components
