@@ -75,6 +75,7 @@
   - pushd /opt/firewheel/
   - *install_mcs_docker
   - pushd model_components
+  - firewheel repository list
   - ls -R "$(firewheel config get python.venv)"
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NTP_BIN_REPO_PATH} /tmp/ntp
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
