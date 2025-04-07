@@ -62,20 +62,10 @@
 
 .install_mcs_docker: &install_mcs_docker
   - mkdir model_components
-  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials
+  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel_repo_linux firewheel_repo_layer2 firewheel_repo_ntp firewheel_repo_dns firewheel_repo_vyos
   - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_linux.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_utilities.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_layer2.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_ntp.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_dns.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_vyos.git
-  - firewheel repository install linux
-  - firewheel repository install utilities
-  - firewheel repository install layer2
-  - firewheel repository install ntp
-  - firewheel repository install dns
-  - firewheel repository install vyos
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
+  - firewheel repository install firewheel_repo_utilities
   - popd
 
 
@@ -87,17 +77,19 @@
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
-  - mv /tmp/ntp/ntp/ntp-trusty-server.tar /opt/firewheel/model_components/firewheel_repo_ntp/src/firewheel_repo_ntp/ntp/vm_resources/
-  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz /opt/firewheel/model_components/firewheel_repo_dns/src/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz
-  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz /opt/firewheel/model_components/firewheel_repo_vyos/src/firewheel_repo_vyos/vyos-1.1.8/
-  - mv /tmp/linux/linux/vm_resources/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/linux/vm_resources
-  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/bionic/images/
-  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/images/
-  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/images/
-  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/xenial/images/
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
+  - mv /tmp/ntp/ntp/ntp-trusty-server.tar "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_ntp/src/firewheel_repo_ntp/ntp/vm_resources/"
+  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_dns/src/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
+  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_vyos/src/firewheel_repo_vyos/vyos-1.1.8/"
+  - mv /tmp/linux/linux/vm_resources/*.tgz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/linux/vm_resources"
+  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/bionic/images/"
+  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/images/"
+  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/images/"
+  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* "$(firewheel config get python.venv)/lib/python3.10/site-packages/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/xenial/images/"
+  - pushd /tmp/utilities; cp -r --parents * /opt/firewheel/model_compoents/firewheel_repo_utilities/; popd;
   - popd
   - popd
 
