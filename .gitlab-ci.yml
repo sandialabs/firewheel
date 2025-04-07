@@ -64,7 +64,8 @@
   - mkdir model_components
   - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel_repo_linux firewheel_repo_layer2 firewheel_repo_ntp firewheel_repo_dns firewheel_repo_vyos
   - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
+  # Skip LFS files, we'll get them from the bin repo. Once open-source is complete, the env var can be removed
+  - GIT_LFS_SKIP_SMUDGE=1 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
   - firewheel repository install firewheel_repo_utilities
   - popd
 
