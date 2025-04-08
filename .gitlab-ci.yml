@@ -61,11 +61,11 @@
   - firewheel restart hard
 
 .install_mcs_docker: &install_mcs_docker
-  - firewheel config get -a
   - mkdir model_components
   - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel_repo_linux firewheel_repo_layer2 firewheel_repo_ntp firewheel_repo_dns firewheel_repo_vyos
   - pushd model_components
-  # Skip LFS files, we'll get them from the bin repo. Once open-source is complete, the env var can be removed
+  # Skip LFS files, we'll get them from the bin repo. Once open-source is
+  # complete, the env var can be removed and this can be pip installed
   - GIT_LFS_SKIP_SMUDGE=1 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
   - firewheel repository install firewheel_repo_utilities
   - popd
@@ -75,7 +75,6 @@
   - pushd /opt/firewheel/
   - *install_mcs_docker
   - pushd model_components
-  - firewheel repository list
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NTP_BIN_REPO_PATH} /tmp/ntp
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
