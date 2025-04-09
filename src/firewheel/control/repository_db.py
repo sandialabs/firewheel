@@ -78,6 +78,9 @@ class RepositoryDb:
 
         Args:
             repository (dict): A repository dictionary to add. See format for the database.
+
+        Returns:
+            int: Number of entries added, 0 for duplicate repository or 1 for a single repository.
         """
         self._validate_repository(repository)
 
@@ -95,13 +98,14 @@ class RepositoryDb:
 
         if any(entry["path"] == repository["path"] for entry in entries):
             self.log.debug("Ignoring duplicate repository: %s", repository)
-            return
+            return 0
 
         entries.append(repository)
         with self.db_file.open("w") as db:
             json.dump(entries, db)
 
         self.log.debug("Added repository: %s", repository)
+        return 1
 
     def delete_repository(self, repository):
         """
