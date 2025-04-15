@@ -62,20 +62,12 @@
 
 .install_mcs_docker: &install_mcs_docker
   - mkdir model_components
-  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials
+  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel-repo-linux firewheel-repo-layer2 firewheel-repo-ntp firewheel-repo-dns firewheel-repo-vyos
   - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_linux.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_utilities.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_layer2.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_ntp.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_dns.git
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel_repo_vyos.git
-  - firewheel repository install linux
-  - firewheel repository install utilities
-  - firewheel repository install layer2
-  - firewheel repository install ntp
-  - firewheel repository install dns
-  - firewheel repository install vyos
+  # Skip LFS files, we'll get them from the bin repo. Once open-source is
+  # complete, the env var can be removed and this can be pip installed
+  - GIT_LFS_SKIP_SMUDGE=1 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
+  - firewheel repository install firewheel_repo_utilities
   - popd
 
 
@@ -87,17 +79,20 @@
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
   - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
-  - mv /tmp/ntp/ntp/ntp-trusty-server.tar /opt/firewheel/model_components/firewheel_repo_ntp/src/firewheel_repo_ntp/ntp/vm_resources/
-  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz /opt/firewheel/model_components/firewheel_repo_dns/src/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz
-  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz /opt/firewheel/model_components/firewheel_repo_vyos/src/firewheel_repo_vyos/vyos-1.1.8/
-  - mv /tmp/linux/linux/vm_resources/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/linux/vm_resources
-  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/bionic/images/
-  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/images/
-  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/images/
-  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/
-  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* /opt/firewheel/model_components/firewheel_repo_linux/src/firewheel_repo_linux/ubuntu/xenial/images/
+  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
+  - SITE_PACKAGES=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+  - mv /tmp/ntp/ntp/ntp-trusty-server.tar "$SITE_PACKAGES/firewheel_repo_ntp/ntp/vm_resources/"
+  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz "$SITE_PACKAGES/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
+  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz "$SITE_PACKAGES/firewheel_repo_vyos/vyos-1.1.8/"
+  - mv /tmp/linux/linux/vm_resources/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/linux/vm_resources"
+  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/bionic/images/"
+  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/images/"
+  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/images/"
+  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
+  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/xenial/images/"
+  - pushd /tmp/utilities; cp -r --parents * /opt/firewheel/model_components/firewheel_repo_utilities/; popd;
   - popd
   - popd
 
