@@ -7,6 +7,27 @@ function gr() {
     echo -e "\033[32;1m" "$@" "\033[m"
 }
 
+function yl() {
+    echo -e "\033[33;1m" "$@" "\033[m"
+}
+
+# Let the SSH server run without systemd
+mkdir /var/run/sshd
+
+# Start the SSH server
+/usr/sbin/sshd
+ssh-keygen -f ~/.ssh/id_rsa -N "" &>/dev/null
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+if [ -e ~/.ssh/config ];
+then
+    yl "SSH config already existed, not modifying it";
+else
+    cat << EOF > ~/.ssh/config
+Host *
+    StrictHostKeyChecking no
+EOF
+fi
+
 export HOME=/root
 
 HN="$(hostname)"

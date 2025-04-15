@@ -18,7 +18,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
                         ethtool libpcap-dev openvswitch-switch qemu-kvm qemu-utils \
                         dnsmasq ntfs-3g iproute2 qemu-system-x86 software-properties-common \
                         dosfstools openssh-server locales locales-all python3.10 python3.10-venv \
-                        vim psmisc && \
+                        vim psmisc iputils-ping && \
     apt-get clean && rm -rf /var/lib/apt/lists/* || { echo "Package installation failed"; exit 1; }
 
 ### Locale support ###
@@ -82,15 +82,11 @@ RUN bash -c "source /fwpy/bin/activate  && \
 
 RUN firewheel repository install -s -i || { echo "Repository installation failed"; exit 1; }
 
-RUN cp /usr/bin/ssh /usr/bin/ssh-old && \
-    cp /usr/bin/scp /usr/bin/scp-old && \
-    cp /usr/bin/sudo /usr/bin/sudo-old && \
+RUN cp /usr/bin/sudo /usr/bin/sudo-old && \
     cp /usr/bin/chgrp /usr/bin/chgrp-old
 
 COPY docker/fsroot/ /
 RUN chmod +x /usr/local/bin/entry && \
-    chmod +x /usr/bin/ssh && \
-    chmod +x /usr/bin/scp && \
     chmod +x /usr/bin/sudo && \
     chmod +x /usr/bin/chgrp && \
     chmod +x /start-minimega.sh
