@@ -59,6 +59,120 @@ function err() {
     echo "[$(date -u +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
 }
 
+#######################################
+# Set up the default directory for output
+# and ensure it has the correct permissions.
+# Arguments:
+#     None
+# Globals:
+#     DEFAULT_OUTPUT_DIR
+#     FIREWHEEL_GROUP
+#######################################
+function setup_dirs() {
+    if ! mkdir -p "${DEFAULT_OUTPUT_DIR}"; then
+        err "FIREWHEEL failed to create default output directory: \"${DEFAULT_OUTPUT_DIR}\". Aborting."
+        exit 1
+    fi
+
+    if ! chgrp "${FIREWHEEL_GROUP}" "${DEFAULT_OUTPUT_DIR}"; then
+        err "FIREWHEEL failed to alter group ownership of default output directory: \"${DEFAULT_OUTPUT_DIR}\". Aborting."
+        exit 1
+    fi
+
+    if ! chmod -R g=u "${DEFAULT_OUTPUT_DIR}"; then
+        err "FIREWHEEL failed to permissions of default output directory: \"${DEFAULT_OUTPUT_DIR}\". Aborting."
+        exit 1
+    fi
+}
+
+#######################################
+# Clone a few of the most common Model Component Repositories (base, linux, vyos).
+# There is some error handling to ensure group permissions are set and
+# that the repositories are cloned correctly.
+# Arguments:
+#     None
+# Globals:
+#     FIREWHEEL_GROUP
+#     MC_BRANCH
+#     MC_DIR
+#     MC_REPO_GROUP
+#######################################
+function clone_repos() {
+    if ! mkdir -p "${MC_DIR}"; then
+        err "FIREWHEEL failed to create model component directory: \"${MC_DIR}\". Aborting."
+        exit 1
+    fi
+
+    if ! chgrp -R "${FIREWHEEL_GROUP}" "${MC_DIR}"; then
+        err "FIREWHEEL failed to alter group ownership of model component directory: \"${MC_DIR}\". Aborting."
+        exit 1
+    fi
+
+    if ! chmod -R g=u "${MC_DIR}"; then
+        err "FIREWHEEL failed to permissions of model component directory: \"${MC_DIR}\". Aborting."
+        exit 1
+    fi
+
+    pushd "${MC_DIR}"
+
+    local fail_count=1
+    local max_attempts=5
+    if [[ ! -d "base" ]]; then
+        fail_count=1
+        until (( fail_count > max_attempts )) || git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_base.git" --branch "${MC_BRANCH}"; do
+            fail_count=$((fail_count+1))
+            rate_mod=$((2**(fail_count)))
+            r_sleep=$((RANDOM % rate_mod))
+            err "Failed to clone $fail_count out of $max_attempts times. Sleeping for ${r_sleep} to rate limit."
+            sleep ${r_sleep}
+        done
+
+        if (( fail_count > max_attempts )); then
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_base.git\". Aborting."
+            exit 1
+        fi
+    else
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_base\" already exists. Skipping git clone."
+    fi
+
+    if [[ ! -d "linux" ]]; then
+        fail_count=1
+        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_linux.git" --branch "${MC_BRANCH}"; do
+            fail_count=$((fail_count+1))
+            rate_mod=$((2**(fail_count)))
+            r_sleep=$((RANDOM % rate_mod))
+            err "Failed to clone $fail_count out of $max_attempts times. Sleeping for ${r_sleep} to rate limit."
+            sleep ${r_sleep}
+        done
+
+        if (( fail_count > max_attempts )); then
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_linux.git\". Aborting."
+            exit 1
+        fi
+    else
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_linux\" already exists. Skipping git clone."
+    fi
+
+    if [[ ! -d "vyos" ]]; then
+        fail_count=1
+        until (( fail_count > max_attempts )) ||  git clone $GIT_CLONE_OPTS "${MC_REPO_GROUP}/firewheel_repo_vyos.git" --branch "${MC_BRANCH}"; do
+            fail_count=$((fail_count+1))
+            rate_mod=$((2**(fail_count)))
+            r_sleep=$((RANDOM % rate_mod))
+            err "Failed to clone $fail_count out of $max_attempts times. Sleeping for ${r_sleep} to rate limit."
+            sleep ${r_sleep}
+        done
+
+        if (( fail_count > max_attempts )); then
+            err "FIREWHEEL failed to clone required git repository: \"${MC_REPO_GROUP}/firewheel_repo_vyos.git\". Aborting."
+            exit 1
+        fi
+    else
+        err "Directory \"${MC_REPO_GROUP}/firewheel_repo_vyos\" already exists. Skipping git clone."
+    fi
+
+    popd
+}
 
 #######################################
 # Check for the installation of minimega
@@ -80,6 +194,49 @@ function check_deps() {
     fi
 }
 
+#######################################
+# Basic setup for upgrading the virtual envionment tools and
+# building the FIREWHEEL whl file.
+# Arguments:
+#     None
+# Globals:
+#     PIP_ARGS
+#     PYTHON_BIN
+#######################################
+function install_firewheel_generic() {
+    if ! ${PYTHON_BIN} -m pip install ${PIP_ARGS} build; then
+        err "FIREWHEEL setup failed to pip install 'build'."
+        err "Consult the pip error logs, and verify network connectivity. Aborting."
+        exit 1
+    fi
+
+    if ! ${PYTHON_BIN} -m build; then
+        err "FIREWHEEL setup failed to build the source distribution and wheel."
+        err "Consult the error logs, and verify network connectivity. Aborting."
+        exit 1
+    fi
+
+}
+
+#######################################
+# Installing the FIREWHEEL package with standard dependencies.
+# Arguments:
+#     None
+# Globals:
+#     FIREWHEEL_ROOT
+#     PIP_ARGS
+#     PYTHON_BIN
+#######################################
+function install_firewheel() {
+    pushd "${FIREWHEEL_ROOT_DIR}"
+    ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel
+    if [ ! $? -eq 0 ];
+    then
+        install_firewheel_generic
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} --prefer-binary ./dist/firewheel-2.6.0.tar.gz
+    fi
+    popd
+}
 
 #######################################
 # Installing the FIREWHEEL package with development dependencies.
@@ -91,13 +248,22 @@ function check_deps() {
 #     PYTHON_BIN
 #######################################
 function install_firewheel_development() {
-    local mc_dir="${MC_DIR}_packages"
-    # Install the development version of FIREWHEEL
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[dev]
-    # Essential MCs (base, linux, vyos, etc.) were cloned; install them in development mode too
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_base
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_linux
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${mc_dir}/firewheel_repo_vyos
+    pushd "${FIREWHEEL_ROOT_DIR}"
+    install_firewheel_generic
+
+    # Install the development version.
+    if [[ $1 -eq 1 ]]; then
+    then
+        # In this case, we do not use the "dev" optional dependencies as
+        # the user is using the source code version of these model components, rather
+        # than the Python package installed repositories.
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} pre-commit tox
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[format,docs]
+
+    else
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
+    fi
+    popd
 }
 
 #######################################
@@ -175,11 +341,13 @@ function post_install() {
 #######################################
 function usage() {
     echo -e "Useful script to install FIREWHEEL and ensure proper system configuration.\n"
-    echo "usage: install.sh [-h | --help] [-d | --development] [-s | --static]"
+    echo "usage: install.sh [-h | --help] [-d | --development] [-nc | --no-clone] [-s | --static]"
     echo -e "\n\nOptional Arguments:"
     echo "  -h, --help           Show this help message and exit"
     echo "  -d, --development    Install FIREWHEEL in development mode, an 'editable' installation"
     echo "                       including all development dependencies."
+    echo "  -nc, --no-clone      Prevents the install script from cloning/installing any model component"
+    echo "                       repositories."
     echo "  -s, --static         Does not check if necessary system services are running (e.g., minimega)."
 }
 
@@ -188,11 +356,14 @@ function usage() {
 #######################################
 function main() {
     local dev=0
+    local clone=1
     local static=0
     while [[ "$1" != "" ]]; do
         case $1 in
             -d | --development )    shift
                 dev=1 ;;
+            -nc | --no-clone )       shift
+                clone=0 ;;
             -s | --static )    shift
                 static=1 ;;
             -h | --help )           usage
@@ -206,12 +377,17 @@ function main() {
     echo "${fw_str} Checking dependencies."
     check_deps
     echo "${fw_str} Setting up temporary directory."
+    setup_dirs
+    if [[ $clone -eq 1 ]]; then
+        echo "${fw_str} Cloning model component repositories."
+        clone_repos
+    fi
     if [[ $dev -eq 1 ]]; then
         echo "${fw_str} Installing FIREWHEEL in development mode."
-        install_firewheel_development
+        install_firewheel_development $clone
     else
-        echo "${fw_str} Installing FIREWHEEL with standard (non-development) dependencies."
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel[mcs]
+        echo "${fw_str} Installing FIREWHEEL without development dependencies."
+        install_firewheel
     fi
     echo "${fw_str} Setting configuration options."
     init_firewheel $static
