@@ -230,11 +230,6 @@ function install_firewheel_generic() {
 function install_firewheel() {
     pushd "${FIREWHEEL_ROOT_DIR}"
     ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel
-    if [ ! $? -eq 0 ];
-    then
-        install_firewheel_generic
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} --prefer-binary ./dist/firewheel-2.6.0.tar.gz
-    fi
     popd
 }
 
