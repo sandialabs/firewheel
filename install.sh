@@ -223,14 +223,21 @@ function install_firewheel_generic() {
 # Arguments:
 #     None
 # Globals:
-#     FIREWHEEL_ROOT
+#     FIREWHEEL_ROOT_DIR
 #     PIP_ARGS
 #     PYTHON_BIN
 #######################################
 function install_firewheel() {
-    pushd "${FIREWHEEL_ROOT_DIR}"
-    ${PYTHON_BIN} -m pip install ${PIP_ARGS} firewheel
-    popd
+    local clone="$1"
+
+    if [[ $clone -eq 0 ]]; then
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} ${FIREWHEEL_ROOT_DIR}/[mcs]
+    else
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} ${FIREWHEEL_ROOT_DIR}/
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_base
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_linux
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} ${MC_DIR}/firewheel_repo_vyos
+    fi
 }
 
 #######################################
@@ -238,29 +245,27 @@ function install_firewheel() {
 # Arguments:
 #     None
 # Globals:
-#     FIREWHEEL_ROOT
+#     FIREWHEEL_ROOT_DIR
 #     PIP_ARGS
 #     PYTHON_BIN
 #######################################
 function install_firewheel_development() {
     local clone="$1"
-    pushd "${FIREWHEEL_ROOT_DIR}"
     install_firewheel_generic
 
     # Install the development version.
     if [[ $clone -eq 0 ]]; then
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[dev]
     else
         # In this case, we do not use the "dev" optional dependencies as
         # the user is using the source code version of these model components, rather
         # than the Python package installed repositories.
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} pre-commit tox
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[format,docs]
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[format,docs]
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
     fi
-    popd
 }
 
 #######################################
@@ -383,8 +388,8 @@ function main() {
         echo "${fw_str} Installing FIREWHEEL in development mode."
         install_firewheel_development $clone
     else
-        echo "${fw_str} Installing FIREWHEEL without development dependencies."
-        install_firewheel
+        echo "${fw_str} Installing FIREWHEEL with standard (non-development) dependencies."
+        install_firewheel $clone
     fi
     echo "${fw_str} Setting configuration options."
     init_firewheel $static
