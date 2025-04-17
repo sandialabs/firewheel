@@ -253,7 +253,6 @@ function install_firewheel_development() {
 
     # Install the development version.
     if [[ $1 -eq 1 ]]; then
-    then
         # In this case, we do not use the "dev" optional dependencies as
         # the user is using the source code version of these model components, rather
         # than the Python package installed repositories.
