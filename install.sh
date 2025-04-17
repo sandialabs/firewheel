@@ -243,19 +243,22 @@ function install_firewheel() {
 #     PYTHON_BIN
 #######################################
 function install_firewheel_development() {
+    local clone="$1"
     pushd "${FIREWHEEL_ROOT_DIR}"
     install_firewheel_generic
 
     # Install the development version.
-    if [[ $1 -eq 1 ]]; then
+    if [[ $clone -eq 0 ]]; then
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
+    else
         # In this case, we do not use the "dev" optional dependencies as
         # the user is using the source code version of these model components, rather
         # than the Python package installed repositories.
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} pre-commit tox
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[format,docs]
-
-    else
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e .[dev]
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
+        ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_vyos
     fi
     popd
 }
