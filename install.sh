@@ -15,7 +15,7 @@
 # head node. Then your FIREWHEEL cluster will be ready to use!
 #
 # Requirements:
-# * Python >=3.7, with the path to its executable specified by PYTHON_BIN
+# * Python >=3.8, with the path to its executable specified by PYTHON_BIN
 #   (we recommend using virtual environments).
 # * minimega and discovery installed and configured.
 
