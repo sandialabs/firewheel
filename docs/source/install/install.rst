@@ -223,7 +223,8 @@ A selection of these MCs are installed by the ``install.sh`` script.
 The second way to install a Model Component is using FIREWHEEL's helpers.
 This is a good solution for Model Component repositories that are either built or cloned to a local directory.
 We recommend putting all these Model Component repositories in ``/opt/firewheel/model_components``.
-Then you can use the *install* helper to add this location as a known FIREWHEEL Model Component repository::
+Then you can use the :ref:`helper_repository_install` to add this location as a known FIREWHEEL Model Component repository::
+
 
     firewheel repository install /opt/firewheel/model_components
 
