@@ -211,7 +211,6 @@ build:
   before_script:
     - python --version ; pip --version
     - apt-get update && apt-get install -y git git-lfs
-    - git lfs install
     - pip install virtualenv
     - virtualenv venv
     - source venv/bin/activate
