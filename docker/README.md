@@ -89,11 +89,9 @@ To enable FIREWHEEL to work properly (without any modifications) the docker base
 These include:
 - `sudo` - and specifically `sudo systemctl`
 - `chgrp`
-- `scp`
-- `ssh`
 
 Therefore, we have created wrappers around these programs to adjust the behavior.
-However, the original programs have been kept/renamed to `<progname>-old` (e.g., `ssh-old`).
+However, the original programs have been kept/renamed to `<progname>-old` (e.g., `chgrp-old`).
 Therefore, if these programs are needed, they are still available, but will not be used by FIREWHEEL.
 
 ### Minimega Differences
