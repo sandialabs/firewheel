@@ -64,11 +64,16 @@ if tty -s; then
     if [ "$#" -eq 0 ]; then
         tmux
     else
-        /bin/bash "$@"
+        # If a command was passed to the container, execute it
+        "$@"
     fi
 else
-    # Sleep until we need to shut down.
-    sleep infinity
+    # If it's not a TTY, it's likely a CI/CD job, in which case that job will
+    # keep the container open after the end of this script. If there's ever a
+    # use case for keeping the container alive when not in a TTY, this could be
+    # changed
+    yl "Not a TTY, exiting..."
+    exit 0
 fi
 
 grn "Stopping experiment...     "
