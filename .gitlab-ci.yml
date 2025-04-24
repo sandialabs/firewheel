@@ -5,97 +5,10 @@
 # on a variety of operating systems and versions of
 # Python.
 #
-# It makes heavy use of YAML Anchors and extends to save space.
-# see: https://docs.gitlab.com/ce/ci/yaml/README.html#anchors
-#
 ###############################
 
-
-###############################
-# Setting up before_script anchors to speed up the execution of
-# pipeline jobs which do not require each component.
-# See: https://docs.gitlab.com/ee/ci/yaml/#yaml-anchors-for-before_script-and-after_script
-#
-# This includes:
-# * create_venv_docker: Creating a Python 3.10 virtual environment
-# * install_firewheel: Install FIREWHEEL and any dependencies.
-# * configure_firewheel: Configure FIREWHEEL for use by the job.
-# * install_mcs: Clone the base and linux Model Component repositories.
-###############################
-.create_venv_docker: &create_venv_docker
-  - python --version ; pip --version
-  - pip install $PIP_ARGS virtualenv
-  - virtualenv venv
-  - source venv/bin/activate
-
-.install_firewheel_docker: &install_firewheel_docker
-  - python -m pip install $PIP_ARGS -U build setuptools pip
-  - python -m build
-  - python -m pip install -e .[dev]
-
-.install_firewheel: &install_firewheel
-  - sudo killall minimega  # Make sure minimega is not running
-  - sudo systemctl restart minimega
-  - *install_firewheel_docker
-
-.set_config: &set_config
-  - firewheel config set -s system.default_output_dir "$(pwd)/logs"
-  - firewheel config set -s cluster.compute $(hostname)
-  - firewheel config set -s cluster.control $(hostname)
-  - firewheel config set -s discovery.hostname 127.0.0.1
-  - firewheel config set -s grpc.hostname 127.0.0.1
-  - firewheel config set -s minimega.experiment_interface lo
-  - firewheel config set -s minimega.install_dir /opt/minimega
-  - firewheel config set -s python.venv $(pwd)/venv
-  - firewheel config set -s python.bin python3
-
-.configure_firewheel_docker: &configure_firewheel_docker
-  - *set_config
-  - firewheel config set -s system.default_group root
-  - python ./src/firewheel/lib/grpc/firewheel_grpc_server.py &
-
-.configure_firewheel: &configure_firewheel
-  - *set_config
-  - firewheel init
-  - firewheel sync
-  - firewheel restart hard
-
-.install_mcs_docker: &install_mcs_docker
-  - mkdir model_components
-  - pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials firewheel-repo-linux firewheel-repo-layer2 firewheel-repo-ntp firewheel-repo-dns firewheel-repo-vyos
-  - pushd model_components
-  # Skip LFS files, we'll get them from the bin repo. Once open-source is
-  # complete, the env var can be removed and this can be pip installed
-  - GIT_LFS_SKIP_SMUDGE=1 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
-  - firewheel repository install firewheel_repo_utilities
-  - popd
-
-
-.install_mcs: &install_mcs
-  - pushd /opt/firewheel/
-  - *install_mcs_docker
-  - pushd model_components
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NTP_BIN_REPO_PATH} /tmp/ntp
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
-  - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
-  - SITE_PACKAGES=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-  - mv /tmp/ntp/ntp/ntp-trusty-server.tar "$SITE_PACKAGES/firewheel_repo_ntp/ntp/vm_resources/"
-  - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz "$SITE_PACKAGES/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
-  - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz "$SITE_PACKAGES/firewheel_repo_vyos/vyos-1.1.8/"
-  - mv /tmp/linux/linux/vm_resources/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/linux/vm_resources"
-  - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
-  - mv /tmp/linux/ubuntu/bionic/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/bionic/images/"
-  - mv /tmp/linux/ubuntu/jammy/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/images/"
-  - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
-  - mv /tmp/linux/ubuntu/trusty/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/images/"
-  - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
-  - mv /tmp/linux/ubuntu/xenial/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/xenial/images/"
-  - pushd /tmp/utilities; cp -r --parents * /opt/firewheel/model_components/firewheel_repo_utilities/; popd;
-  - popd
-  - popd
-
+include:
+  - local: .gitlab/ci/setup.yml
 
 ###############################
 # Creating a few defaults and setting up the Pipeline stages.
@@ -118,18 +31,18 @@ stages:
 ###############################
 
 performance-ubuntu2204:
-  before_script:
-    - pushd /opt/firewheel/
-    - python3.10 -m venv venv
-    - source /opt/firewheel/venv/bin/activate
-    - popd
-    - *install_firewheel
-    - *configure_firewheel
-    - *install_mcs
   stage: test
-  needs: []
   tags:
     - ubuntu2204
+  needs: []
+  variables:
+    BASE_PYTHON: python3.10
+  before_script:
+    - !reference [.create_venv, before_script]
+    - !reference [.install_firewheel, before_script]
+    - !reference [.configure_firewheel, before_script]
+    - !reference [.install_mcs, before_script]
+    - !reference [.provision_mcs, before_script]
   script:
     - pushd /opt/firewheel
     # Enable FW to cache images
@@ -158,19 +71,18 @@ performance-ubuntu2204:
     paths:
       - profile
 
-
 ###############################
 # Create Documentation
 ###############################
 docs:
   image: $DOCKER_REGISTRY/python:3.11
-  before_script:
-    - *create_venv_docker
-    - *install_firewheel_docker
-    - *configure_firewheel_docker
-    - *install_mcs_docker
   stage: lint
   needs: []
+  before_script:
+    - !reference [.create_venv, before_script]
+    - !reference [.install_firewheel_package, before_script]
+    - !reference [.configure_firewheel_docker, before_script]
+    - !reference [.install_mcs, before_script]
   script:
     - tox -e dependencies,docs
     - mkdir documentation
@@ -185,7 +97,6 @@ docs:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   tags:
     - $CI_DOCKER_RUNNER
-
 
 pages:
   image: $DOCKER_REGISTRY/python:3.11
@@ -209,11 +120,8 @@ build:
   image: $DOCKER_REGISTRY/python:3.11
   stage: deploy
   before_script:
-    - python --version ; pip --version
     - apt-get update && apt-get install -y git git-lfs
-    - pip install virtualenv
-    - virtualenv venv
-    - source venv/bin/activate
+    - !reference [.create_venv, before_script]
     - python -m pip install $PIP_ARGS --upgrade wheel setuptools pip build twine
   script:
     - git lfs pull

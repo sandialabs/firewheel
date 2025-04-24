@@ -1,0 +1,103 @@
+###########################################################
+# Setup for FIREWHEEL Continuous Integration
+#
+# Use reference tags to deduplicate CI functionality
+# and speed up the execution of pipeline jobs which do
+# not require each component.
+#
+# See: https://docs.gitlab.com/ci/yaml/yaml_optimization
+#
+###########################################################
+
+variables:
+  BASE_PYTHON: python
+  MM_INSTALL_DIR: /opt/minimega
+  FIREWHEEL_ROOT_DIR: /opt/firewheel
+  FIREWHEEL_VENV: $FIREWHEEL_ROOT_DIR/venv
+
+# Create a Python virtual environment
+.create_venv:
+  before_script:
+    - $BASE_PYTHON --version
+    - $BASE_PYTHON -m pip --version
+    - $BASE_PYTHON -m venv $FIREWHEEL_VENV
+    - source $FIREWHEEL_VENV/bin/activate
+
+# Install the FIREWHEEL Python package and any Python dependencies
+.install_firewheel_package:
+  before_script:
+    - python -m pip install $PIP_ARGS -U build setuptools pip
+    - python -m build
+    - python -m pip install -e .[dev,mcs]
+
+# Install FIREWHEEL and all dependencies (including minimega)
+.install_firewheel:
+  before_script:
+    - sudo killall minimega  # Make sure minimega is not running
+    - sudo systemctl restart minimega
+    - !reference [.install_firewheel_package, before_script]
+
+# Set the default FIREWHEEL configuration
+.configure_firewheel:
+  before_script:
+    - firewheel config set -s system.default_output_dir "$(pwd)/logs"
+    - firewheel config set -s cluster.compute $(hostname)
+    - firewheel config set -s cluster.control $(hostname)
+    - firewheel config set -s discovery.hostname 127.0.0.1
+    - firewheel config set -s grpc.hostname 127.0.0.1
+    - firewheel config set -s minimega.experiment_interface lo
+    - firewheel config set -s minimega.install_dir $MM_INSTALL_DIR
+    - firewheel config set -s python.venv $FIREWHEEL_VENV
+    - firewheel config set -s python.bin python
+
+# Configure FIREWHEEL for use in Docker containers
+.configure_firewheel_docker:
+  before_script:
+    - !reference [.configure_firewheel, before_script]
+    - firewheel config set -s system.default_group root  # Docker
+    - python ./src/firewheel/lib/grpc/firewheel_grpc_server.py &
+
+# Initialize FIREWHEEL (including configuration)
+.initialize_firewheel:
+  before_script:
+    - !reference [.configure_firewheel, before_script]
+    - firewheel init
+    - firewheel sync
+    - firewheel restart hard
+
+# Clone and/or install basic Model Component repositories
+.install_mcs:
+  before_script:
+    - |
+      pip install $PIP_ARGS firewheel-repo-base firewheel-repo-tutorials \
+                            firewheel-repo-linux firewheel-repo-vyos \
+                            firewheel-repo-layer2 firewheel-repo-ntp firewheel-repo-dns
+    - mkdir $FIREWHEEL_ROOT_DIR/model_components
+    - pushd $FIREWHEEL_ROOT_DIR/model_components
+    # Skip LFS files, we'll get them from the bin repo. Once open-source is
+    # complete, the env var can be removed and this can be pip installed
+    - GIT_LFS_SKIP_SMUDGE=1 git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/firewheel/firewheel_repo_utilities.git
+    - firewheel repository install firewheel_repo_utilities
+    - popd
+
+# Move MC binaries into the appropriate locations
+.provision_mcs:
+  before_script:
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NTP_BIN_REPO_PATH} /tmp/ntp
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${DNS_BIN_REPO_PATH} /tmp/dns
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${VYOS_BIN_REPO_PATH} /tmp/vyos
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
+    - SITE_PACKAGES=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+    - mv /tmp/ntp/ntp/ntp-trusty-server.tar "$SITE_PACKAGES/firewheel_repo_ntp/ntp/vm_resources/"
+    - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz "$SITE_PACKAGES/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
+    - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz "$SITE_PACKAGES/firewheel_repo_vyos/vyos-1.1.8/"
+    - mv /tmp/linux/linux/vm_resources/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/linux/vm_resources"
+    - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
+    - mv /tmp/linux/ubuntu/bionic/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/bionic/images/"
+    - mv /tmp/linux/ubuntu/jammy/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/images/"
+    - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
+    - mv /tmp/linux/ubuntu/trusty/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/images/"
+    - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
+    - mv /tmp/linux/ubuntu/xenial/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/xenial/images/"
+    - pushd /tmp/utilities; cp -r --parents * $FIREWHEEL_ROOT_DIR/model_components/firewheel_repo_utilities/; popd;
