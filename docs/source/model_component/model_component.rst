@@ -4,8 +4,8 @@ Model Components
 ================
 
 Model components (MCs) are the building blocks of a FIREWHEEL experiment.
-Essentially they are folders within repositories, which may contain code, VM images, and other resources.
-Running a FIREWHEEL experiment is done by telling FIREWHEEL which model components define the network topology and any actions to be taken, and the launcher for the virtualization system you want FIREWHEEL to use for instantiating your experiment.
+Essentially they are folders within :ref:`repositories <repositories>`, which may contain code, VM images, and other resources.
+A FIREWHEEL experiment is constructed by informing FIREWHEEL which model components define the network topology and any actions to be taken, and how to instantiate the experiment (typically via minimega).
 A model component's folder must contain metadata that identifies it to FIREWHEEL as a model component, by declaring its name, contents, dependencies, and what it provides that other MCs could then depend on being able to use.
 
 Model components provide a place to colocate all the new files required to accomplish a specific objective.
@@ -14,17 +14,17 @@ A model component's function, or purpose (as defined by it's developer), can be 
     * Functions for constructing an experiment network's topology
     * Definitions of vertex and edge types that can then be included in an experiment
     * Configuration scripts designed for individual VMs or whole classes of VMs
-    * Executable code for performing experiment related actions on the network at a given time
+    * Executable code for performing experiment-related actions on the network at a given time
     * Scheduling instructions for when to execute actions on designated VMs in an experiment
     * A launcher for a FIREWHEEL experiment composed of other model components
     * Any combination of these and many other possibilities
 
-Previously (in FIREWHEEL v1.x) these files were scattered throughout a handful of separate folders, but without a standard way of identifying what each did or which other related collections of components each depended on (other than via python import statements). Now, a model component is a single place where code and data related to the model component's purpose can be found, along with metadata that allows FIREWHEEL to locate its dependencies, match what it provides to other model components' needs, and enforce certain constraints.
+Simply, a model component is a single place where code and data related to the model component's purpose can be found, along with metadata that allows FIREWHEEL to locate its dependencies, match what it provides to other model components' needs, and enforce certain constraints.
 
 What's in a Model Component?
 ----------------------------
 
-A model component is pretty flexible, and it's folder can include several types of files.
+A model component is pretty flexible, and it's folder can include many types of files.
 The different kinds of files that can be present, and that provide the model component's functionality, include *plugins*, *VM resources*, *model component objects*, and *images*.
 Another file, called the ``MANIFEST`` file, contains the metadata that describes a model component to FIREWHEEL, and this is the only file that **must** be present in a model component's folder.
 Each of these file types will be explained in sections that follow.
@@ -32,82 +32,15 @@ In addition to the files, it's highly recommended and encouraged (though optiona
 This file should contain RST (or Markdown) formatted documentation about the model component (i.e. what it is and how to use it).
 Additionally, this file will automatically be generated if the :ref:`helper_mc_generate` CLI Helper is used to create the model component skeleton.
 
-Lastly, Model Components may sometimes require installing additional Python packages or downloading data (e.g. VM Resources) from the Internet.
-To facilitate this, users can add an ``INSTALL`` file, which can be any executable script (as denoted by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line).
+Lastly, Model Components may sometimes require downloading data (e.g. VM Resources) from the Internet.
+To facilitate this, developers should add an ``INSTALL`` file, which enables other users to automatically download or configure any external resources.
 More information about this file can be found in :ref:`mc_install`.
 
-Generating a Model Component
-----------------------------
+.. note::
 
-It should be noted that FIREWHEEL provides a CLI command to generate a skeleton of a model component called :ref:`helper_mc_generate`.
-Therefore, in general most users will start their model component by running this Helper (i.e. ``firewheel mc generate``).
-To see the usage of the command run the following: ::
+    FIREWHEEL provides a CLI command to generate a skeleton of a model component called :ref:`helper_mc_generate`.
+    In general most users will create a new model component by running this Helper (i.e. ``firewheel mc generate``).
 
-    $ firewheel "mc generate --help"
-    Usage: firewheel mc generate [-h] [--name NAME]
-                    [--attribute_depends ATTRIBUTE_DEPENDS [ATTRIBUTE_DEPENDS ...]]
-                    [--attribute_provides ATTRIBUTE_PROVIDES [ATTRIBUTE_PROVIDES ...]]
-                    [--attribute_precedes ATTRIBUTE_PRECEDES [ATTRIBUTE_PRECEDES ...]]
-                    [--model_component_depends MODEL_COMPONENT_DEPENDS [MODEL_COMPONENT_DEPENDS ...]]
-                    [--model_component_precedes MODEL_COMPONENT_PRECEDES [MODEL_COMPONENT_PRECEDES ...]]
-                    [--plugin PLUGIN]
-                    [--model_component_objects MODEL_COMPONENT_OBJECTS]
-                    [--location LOCATION] [--plugin_class PLUGIN_CLASS]
-                    [--author AUTHOR] [--version VERSION]
-                    [--language LANGUAGE]
-                    [--vm_resource VM_RESOURCES [VM_RESOURCES ...]]
-                    [--image IMAGE] [--arch ARCH] [--non-interactive]
-                    [--skip_docs] [--template_dir TEMPLATE_DIR]
-                    [--no_templates]
-
-    Generate a new ModelComponent
-
-    optional arguments:
-        -h, --help            show this help message and exit
-
-    MANIFEST:
-        --name NAME           ModelComponent name
-        --attribute_depends ATTRIBUTE_DEPENDS [ATTRIBUTE_DEPENDS ...]
-                                (space-separated-strings) Graph Attribute(s) depended
-                                on by the new ModelComponent
-        --attribute_provides ATTRIBUTE_PROVIDES [ATTRIBUTE_PROVIDES ...]
-                                (space-separated-strings) Graph Attribute(s) provided
-                                by the new ModelComponent
-        --attribute_precedes ATTRIBUTE_PRECEDES [ATTRIBUTE_PRECEDES ...]
-                                (space-separated-strings) Graph Attribute(s) preceded
-                                by the new ModelComponent
-        --model_component_depends MODEL_COMPONENT_DEPENDS [MODEL_COMPONENT_DEPENDS ...]
-                                (space-separated-strings) ModelComponent(s) required
-                                by name
-        --model_component_precedes MODEL_COMPONENT_PRECEDES [MODEL_COMPONENT_PRECEDES ...]
-                                (space-separated-strings) ModelComponent(s) that will
-                                be preceded by name
-        --plugin PLUGIN       File for a plugin
-        --model_component_objects MODEL_COMPONENT_OBJECTS
-                                File for Model Component Objects
-        --location LOCATION   Location for the new ModelComponent
-        --plugin_class PLUGIN_CLASS
-                                Name for the new plugin class
-        --author AUTHOR       Author for the model component
-        --version VERSION     Initial version number for the model component
-        --language LANGUAGE   Documentation language for the model component
-        --vm_resource VM_RESOURCES [VM_RESOURCES ...]
-                                (space-separated-strings) File(s) to be used as a
-                                vm_resource
-        --image IMAGE         File to be used as a VM disk
-        --arch ARCH           Architecture for specified image
-
-        Configuration:
-        --non-interactive     Require minimum parameters as arguments and do not
-                                prompt for any values
-        --skip_docs           Do not generate any documentation files
-        --template_dir TEMPLATE_DIR
-                                Override the configured templates directory
-        --no_templates        Do not generate files from templates. Only generate a
-                                MANIFEST
-
-This command will be used throughout the various tutorials and will be modified to fit the specific need of the tutorial.
-Each piece of the various model component settings is explained below.
 
 .. _manifest_file:
 
@@ -143,7 +76,9 @@ YAML is a superset of JSON, making any [#]_ JSON MANIFEST files valid. There are
 
 Here are a few YAML examples:
 
-**Creating a list** ::
+**Creating a list**
+
+.. code-block:: yaml
 
     vm_resources: [vmr1.sh, vmr2.py]
     "vm_resources": ["vmr1.sh", vmr2.py]
@@ -151,7 +86,9 @@ Here are a few YAML examples:
         - vmr1.sh
         - "vmr2.py"
 
-**Creating a dictionary** ::
+**Creating a dictionary**
+
+.. code-block:: yaml
 
     attributes: {depends: [], provides: [], precedes: []}
     "attributes": {
@@ -164,7 +101,9 @@ Here are a few YAML examples:
         provides: []
         precedes: []
 
-**Creating a string** ::
+**Creating a string**
+
+.. code-block:: yaml
 
     name: "test.mc"
     name: test.mc
@@ -180,15 +119,19 @@ The ``name`` field's value can be any valid string, but needs to be unique among
 The ``name`` of a model component does *not* need to be the same as the name of it's folder.
 A model component's ``name`` can be used by model component developers to refer to it when they need to explicitly depend on it in their model component's ``MANIFEST`` (see the :ref:`Model Components object <model_components_object>` for more details).
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     name: <model_component_name>
 
-A common naming convention is ``<repository name>.<purpose name>``, e.g.: ::
+A common naming convention is ``<repository>.<purpose name>``, e.g.:
+
+.. code-block:: yaml
 
     name: acme.topology
 
-In this example, the model component is named ``acme.topology`` because it is part of the ``acme`` repository and it does the primary construction of the ``acme`` network ``topology``.
+In this example, the model component is named ``acme.topology`` because it is part of the ``acme`` tutorial and it does the primary construction of the ``acme`` network ``topology``.
 While this naming convention isn't enforced by FIREWHEEL, it's a good idea to use it to avoid name collisions amongst model components across repositories.
 
 .. _attributes_object:
@@ -212,14 +155,18 @@ See the section on :ref:`dependency management <dependency_attributes>` for more
 
 The ``attributes`` object is *required* to be present in a ``MANIFEST``, but its ``depends``, ``provides`` and/or ``precedes`` fields' value arrays can be empty.
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     attributes:
         depends: []
         provides: []
         precedes: []
 
-For example, the first model component in an experiment to begin creating the experiment's network topology will need to ``depend`` on the ``graph`` *attribute* (since it will need to add vertices and edges to it) and possibly it ``provides`` a ``topology`` *attribute* to other model components in the experiment, e.g.: ::
+For example, the first model component in an experiment to begin creating the experiment's network topology will need to ``depend`` on the ``graph`` *attribute* (since it will need to add vertices and edges to it) and possibly it ``provides`` a ``topology`` *attribute* to other model components in the experiment, e.g.:
+
+.. code-block:: yaml
 
     attributes:
         depends:
@@ -229,7 +176,9 @@ For example, the first model component in an experiment to begin creating the ex
         precedes: []
 
 Now, if there is another model component that has the purpose of modifying vertices in a topology in some way (e.g. by assigning ``hostnames`` to each one), then its ``attributes`` object would declare that that it ``depends`` on having a ``topology`` provided to it by another model component, and also that it ``provides`` something (e.g. ``hostnames``) that other model components can depend on having been provided by it.
-Therefore, a model component that sets the ``hostnames`` for each vertex in a ``topology``, thus providing a modified topology where each vertex has a unique hostname assigned to it, would have an ``attributes`` object that resembles the following: ::
+Therefore, a model component that sets the ``hostnames`` for each vertex in a ``topology``, thus providing a modified topology where each vertex has a unique hostname assigned to it, would have an ``attributes`` object that resembles the following:
+
+.. code-block:: yaml
 
     attributes:
         depends:
@@ -238,7 +187,9 @@ Therefore, a model component that sets the ``hostnames`` for each vertex in a ``
             - hostnames
         precedes: []
 
-.. note:: **Attribute labels** in ``provides`` fields' value arrays are *made up* by the developers of the various model components provide *attributes*. Therefore, if you create a model component that provides something, it's up to you to determine the **attribute labels** that get declared in the ``MANIFEST``, as being provided by your model component. We strongly suggest that you choose a name that is clearly connected to whatever the model component achieves.
+.. note::
+
+    **Attribute labels** in ``provides`` fields' value arrays are *made up* by the developers of the various model components provide *attributes*. Therefore, if you create a model component that provides something, it's up to you to determine the **attribute labels** that get declared in the ``MANIFEST``, as being provided by your model component. We strongly suggest that you choose a name that is clearly connected to whatever the model component achieves.
 
 The ``attributes`` object's ``depends`` value array only allows users to specify the *roots* of a model component's attribute-based dependency tree, and then FIREWHEEL adds any further attribute-based dependencies in the tree for you.
 This facilitates sharing repositories with others without burdening them with knowing the exact required dependencies within and across them. See :ref:`dependency_management` for more information on how FIREWHEEL manages dependencies between model components.
@@ -255,7 +206,9 @@ See :ref:`Model Component Dependencies <dependency_mcs>` for more information on
 
 The ``model_components`` object is required to be present in a ``MANIFEST``, but the ``depends`` and ``precedes`` field's value arrays can be empty.
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     model_components:
         depends: []
@@ -265,14 +218,18 @@ For example, the ``acme.topology`` model component adds vertices and edges to th
 The ``Ubuntu1604Server`` class is defined in the ``linux.ubuntu1604`` MC, therefore, ``acme.topology`` will need to attempt to import the ``Ubuntu1604Server`` class into its *plugin* python module e.g. using ``from linux.ubuntu1604 import Ubuntu1604Server``) before it can assign this object to the appropriate vertices.
 
 The ``linux.ubuntu1604`` model component, and any python objects
-within it, will be made explicitly available to the ``acme.topology`` model component if, and only if, the ``acme.topology`` ``MANIFEST`` includes it in the ``model_components`` object, e.g.: ::
+within it, will be made explicitly available to the ``acme.topology`` model component if, and only if, the ``acme.topology`` ``MANIFEST`` includes it in the ``model_components`` object, e.g.:
+
+.. code-block:: yaml
 
     model_components:
         depends:
             - linux.ubuntu1604
         precedes: []
 
-Similarly, since ``acme.topology`` needs to be able to create a ``Helium118`` (VyOS router) then it will need to depend on the model component that defines the ``Helium118`` *model component objects* class, ``vyos.helium118``, e.g.: ::
+Similarly, since ``acme.topology`` needs to be able to create a ``Helium118`` (VyOS router) then it will need to depend on the model component that defines the ``Helium118`` *model component objects* class, ``vyos.helium118``, e.g.:
+
+.. code-block:: yaml
 
     model_components:
         depends:
@@ -280,7 +237,9 @@ Similarly, since ``acme.topology`` needs to be able to create a ``Helium118`` (V
             - vyos.helium118
         precedes: []
 
-Finally, ``acme.topology`` also needs to be able to create a ``Switch`` which is defined in the ``base_graph_objects`` MC, so it is also required, e.g.: ::
+Finally, ``acme.topology`` also needs to be able to create a ``Switch`` which is defined in the ``base_graph_objects`` MC, so it is also required, e.g.:
+
+.. code-block:: yaml
 
     model_components:
         depends:
@@ -298,11 +257,15 @@ The ``plugin`` field specifies the name of the file, located within the model co
 
 The ``plugin`` field is only required to be present in a ``MANIFEST`` if the model component contains a plugin module file.
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     "plugin": "<plugin_file_name>"
 
-For example, in :ref:`attributes_object` section above we considered a model component called ``acme.set_hostname``. In this model component there would be a file that contains a ``SetHostname`` class that walks the ``topology`` graph, provided by its ``topology`` attribute provider, setting the ``hostnames`` for all the vertices. To identify the plugin file containing the ``SetHostname`` class, the ``acme.set_hostname`` model component's ``MANIFEST`` file would need to include the ``plugin`` parameter, e.g.: ::
+For example, in :ref:`attributes_object` section above we considered a model component called ``acme.set_hostname``. In this model component there would be a file that contains a ``SetHostname`` class that walks the ``topology`` graph, provided by its ``topology`` attribute provider, setting the ``hostnames`` for all the vertices. To identify the plugin file containing the ``SetHostname`` class, the ``acme.set_hostname`` model component's ``MANIFEST`` file would need to include the ``plugin`` parameter, e.g.:
+
+.. code-block:: yaml
 
     plugin: plugin.py
 
@@ -324,20 +287,28 @@ The ``vm_resources`` field specifies the names of the files, located within the 
 
 VM resources can be scripts, executables, data files, or blobs, etc., that are added to vertices and scheduled for use on the VM images assigned to vertices in a network topology, once FIREWHEEL has instantiated them while launching an experiment. VM resources can be used to execute any function you want to have operate on a VM. They are used to configure VMs, install and configure applications on them, and to carry out other actions needed to conduct an experiment, such as generating network traffic and collecting data for analysis. The ``vm_resources`` field's values are used by FIREWHEEL at run time to locate a model component's VM resource files at the appropriate time during experiment launch/execution.
 
-.. note: Only the names of VM resource files that a model component contains are included in the ``vm_resources`` field's value array. A model component may depend on using VM resources contained in other model components, e.g. to assign them to vertices and schedule their execution times, but those VM resources imported from other model components are NOT included in the ``vm_resources`` field's value array. However, you would need to depend on the model components that contain those VM resources, e.g. by listing them in the ``attributes`` or ``model_components`` objects' ``depends`` value arrays in the dependent model component's ``MANIFEST``.
+.. note::
+    
+    Only the names of VM resource files that a model component contains are included in the ``vm_resources`` field's value array. A model component may depend on using VM resources contained in other model components, e.g. to assign them to vertices and schedule their execution times, but those VM resources imported from other model components are NOT included in the ``vm_resources`` field's value array. However, you would need to depend on the model components that contain those VM resources, e.g. by listing them in the ``attributes`` or ``model_components`` objects' ``depends`` value arrays in the dependent model component's ``MANIFEST``.
 
 Including the ``vm_resources`` field in a ``MANIFEST`` is only required if the model component contains one or more VM resource files.
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     vm_resources: []
 
-To continue the ``acme.set_hostname`` example, its plugin schedules a VM resource called ``set_hostname.py`` on every vertex in the experiment ``topology`` graph. Since this VM resource is contained within the ``acme.set_hostname`` model component's folder, its ``MANIFEST`` must include the following ``vm_resources`` parameter: ::
+To continue the ``acme.set_hostname`` example, its plugin schedules a VM resource called ``set_hostname.py`` on every vertex in the experiment ``topology`` graph. Since this VM resource is contained within the ``acme.set_hostname`` model component's folder, its ``MANIFEST`` must include the following ``vm_resources`` parameter:
+
+.. code-block:: yaml
 
     vm_resources:
         - set_hostname.py
 
-If the model component provides many ``vm_resources`` we recommend putting them in a folder (called ``vm_resources``). Then you can set the parameter:  ::
+If the model component provides many ``vm_resources`` we recommend putting them in a folder (called ``vm_resources``). Then you can set the parameter:
+
+.. code-block:: yaml
 
     "vm_resources":["vm_resources/**"]
 
@@ -365,11 +336,15 @@ Every vertex in a graph that will instantiate a VM has a model component object 
 
 Including the ``model_component_objects`` field in a ``MANIFEST`` is only necessary if the model component contains a files that defines model component objects.
 
-It takes the following form: ::
+It takes the following form:
+
+.. code-block:: yaml
 
     "model_component_objects": "<model_component_objects_file_name>"
 
-For example, if a model component contains a model component object to specify a ``Win7`` vertex, and the ``Win7`` python class is defined in ``model_component_objects.py`` [#mco]_, then the model component's ``MANIFEST`` would need to include: ::
+For example, if a model component contains a model component object to specify a ``Win7`` vertex, and the ``Win7`` python class is defined in ``model_component_objects.py`` [#mco]_, then the model component's ``MANIFEST`` would need to include:
+
+.. code-block:: yaml
 
     model_component_objects: model_component_objects.py
 
@@ -393,99 +368,38 @@ Specifically, we support the following extensions: ``.xz``, ``.tar``, ``.tar.gz`
 
 The ``images`` field only needs to be included in a ``MANIFEST`` if the model component contains one or more VM image files.
 
-It takes the following form: ::
+It takes the following form:
 
-    "images": [
-        {
-            "paths": [],
-            "architecture": ""
-        }
-    ]
+.. code-block:: yaml
 
-For example, the ``Win7`` graph object specified in :ref:`model_component_objects_field` specifies the ``windows-7-enterprise.qc2.xz`` image file, and since this image file is also contained in the same model component as the graph object, then that model component would also need the following ``images`` field in its ``MANIFEST`` file: ::
-
-    "images": [
-        {
-            "paths": ["windows-7-enterprise.qc2.xz"],
-            "architecture": "x86_64"
-        }
-    ]
-
-    # A YAML version would look like:
     images:
-        - paths:
-            - windows-7-enterprise.qc2.xz
-          architecture: "x86_64"
+      - paths: []
+        architecture: ""
 
-It's worth pointing out here that the file containing a VM image, used for instantiating a graph object, and the file defining the graph object's class don't both necessarily need to reside in the same model component, though they often will. There are cases where, for instance, you might want to develop a new graph object that uses the same VM image as another graph object does, and that VM image already exists in that other graph object's model component.
+For example, the ``Win7`` graph object specified in :ref:`model_component_objects_field` specifies the ``windows-7-enterprise.qc2.xz`` image file, and since this image file is also contained in the same model component as the graph object, then that model component would also need the following ``images`` field in its ``MANIFEST`` file:
 
-In this case, your new graph object's model component would simply need to depend on the model component containing the VM image file i.e. in the :ref:`Model Components object <model_components_object>` in its ``MANIFEST``. Then you'd reference it in your new graph component class and FIREWHEEL would be able to locate the VM image for instantiating your new graph object at run time.
+.. code-block:: yaml
 
-.. note: It is recommended that images are compressed before being added to model components to save space. In this case, ``xz`` was used to compress the image. FIREWHEEL will decompress it when loading it into the image cache the first time it is used.
-
-.. _manifest_examples:
-
-Example MANIFEST Files
-----------------------
-
-The following ``MANIFEST`` file is for the ``ubuntu1604`` model component. ::
-
-    name: linux.ubuntu1604
-    attributes:
-        depends: []
-        provides: []
-        precedes: []
-    model_components:
-        depends:
-            - linux.ubuntu
-        precedes: []
     images:
-        - paths:
-            - "images/ubuntu-16.04.4-server-amd64.qcow2.xz"
-        architecture: x86_64
-        - paths:
-            - "images/ubuntu-16.04.4-desktop-amd64.qcow2.xz"
-        architecture: x86_64
-    model_component_objects: model_component_objects.py
+      - paths:
+          - windows-7-enterprise.qc2.xz
+        architecture: "x86_64"
 
-The following ``MANIFEST`` file is for a model component that creates the ``ACME`` topology. ::
+It's worth pointing out here that the file containing a VM image, used for instantiating a graph object, and the file defining the graph object's class don't both necessarily need to reside in the same model component, though they often will.
+There are cases where, for instance, you might want to develop a new graph object that uses the same VM image as another graph object does, and that VM image already exists in that other graph object's model component.
 
-    name: acme.topology
-    attributes:
-        depends:
-            - graph
-        provides:
-            - topology
-            - acme_topology
-        precedes: []
-    model_components:
-        depends:
-            - base_objects
-            - vyos.helium118
-            - linux.ubuntu1604
-        precedes: []
+In this case, your new graph object's model component would simply need to depend on the model component containing the VM image file i.e. in the :ref:`Model Components object <model_components_object>` in its ``MANIFEST``.
+Then you'd reference it in your new graph component class and FIREWHEEL would be able to locate the VM image for instantiating your new graph object at run time.
 
-    plugin: plugin.py
-
-The following ``MANIFEST`` file is for a model component that provides the ``SetHostname`` plugin. ::
-
-    name: acme.set_hostname
-    attributes:
-        depends:
-            - acme_topology
-        provides:
-            - hostnames
-    model_components:
-        depends:
-            - linux.ubuntu1604
-        precedes: []
-    plugin: plugin.py
-    vm_resources:
-        - set_hostname.py
-
+.. note::
+    
+    It is recommended that images are compressed before being added to model components to save space.
+    In this case, ``xz`` was used to compress the image.
+    FIREWHEEL will decompress it when loading it into the image cache the first time it is used.
 
 .. toctree::
     :hidden:
     :maxdepth: 2
 
     mc_install
+    mc_examples

@@ -340,9 +340,9 @@ class ModelComponentDocumentation:
         # Get the list of model components
         index = """.. _available_model_components:
 
-#############################
-Model Component Documentation
-#############################
+##########################
+Available Model Components
+##########################
 
 """
 
