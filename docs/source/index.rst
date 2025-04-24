@@ -16,12 +16,7 @@ FIREWHEEL Documentation
    tutorials/index
    model_components/index
    cli/index
-   code/index
-   developer/contributing
-   developer/code_of_conduct
-   developer/license
-   developer/security
-   developer/changelog
+   developer/index
    glossary
 
 .. only:: html
