@@ -1,7 +1,7 @@
 .. _model_components:
 
-Model Components
-================
+Model Component Specification
+=============================
 
 Model components (MCs) are the building blocks of a FIREWHEEL experiment.
 Essentially they are folders within :ref:`repositories <repositories>`, which may contain code, VM images, and other resources.
@@ -396,10 +396,3 @@ Then you'd reference it in your new graph component class and FIREWHEEL would be
     It is recommended that images are compressed before being added to model components to save space.
     In this case, ``xz`` was used to compress the image.
     FIREWHEEL will decompress it when loading it into the image cache the first time it is used.
-
-.. toctree::
-    :hidden:
-    :maxdepth: 2
-
-    mc_install
-    mc_examples

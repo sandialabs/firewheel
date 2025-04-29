@@ -1,8 +1,8 @@
 .. _firewheel_security:
 
-########
-Security
-########
+#######################
+Security Considerations
+#######################
 FIREWHEEL is a complex cluster-based software and there are a number of potential security concerns.
 This section explores each known issue/assumption and addresses ways to reduce risk.
 While several of these issues are a function of FIREWHEEL dependencies (e.g. minimega), we included them to provide complete transparency to users.

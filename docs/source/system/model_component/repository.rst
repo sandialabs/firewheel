@@ -1,8 +1,8 @@
 .. _repositories:
 
-######################
-FIREWHEEL Repositories
-######################
+############################
+Model Component Repositories
+############################
 
 In order for FIREWHEEL to identify available model components, model components must be stored in a "repository".
 A repository is simply a directory that holds one or more :ref:`model_components` and is present on the head node of the FIREWHEEL cluster.

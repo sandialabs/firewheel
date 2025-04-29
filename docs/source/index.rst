@@ -7,12 +7,12 @@ FIREWHEEL Documentation
 
 .. toctree::
    :hidden:
+   :maxdepth: 2
 
    emulytics
-   system/index
    quickstart
-   concepts
    install/index
+   system/index
    tutorials/index
    model_components/index
    cli/index

@@ -20,34 +20,63 @@ These FIREWHEEL software components are executed within a Python Virtual Environ
 We'll next discuss each of FIREWHEEL's major software components.
 
 .. note::
+
     For more detailed insight into how FIREWHEEL's components interact with one another, see the full :ref:`class_diagrams` and :ref:`package_diagrams`.
 
-.. _command-line-interface:
+.. toctree::
+   :hidden:
+
+   diagrams
+
+.. _cli:
 
 Command Line Interface
 ----------------------
 
-Users interact with FIREWHEEL's Command Line Interface (CLI) to task FIREWHEEL to execute its functions.
-The CLI has a set of built in commands that users can use to do things like generate the CLI documentation and list available Helpers, as well as Helpers which extend the set of commands available through the CLI.
-CLI commands and Helpers can be executed either directly from the console command line, or from within the CLI's own interactive shell environment. Since the CLI is designed to work with a FIREWHEEL cluster, its commands and Helpers will execute across cluster nodes to accomplish their tasks.
-For more information about the commands and Helpers available via FIREWHEEL's CLI and how to use them, see the CLI documentation which is located in the CLI git repository.
+The FIREWHEEL Command Line Interface (CLI) allows interaction with and management of FIREWHEEL.
+The CLI (:py:mod:`cli/firewheel_cli.py <firewheel.cli.firewheel_cli>`) uses Python's
+:py:mod:`cmd` module.
+However, there is one notable difference: the CLI is designed to work with a FIREWHEEL cluster which means that commands may need to be executed on one or many hosts.
+To accomplish this, the CLI has been extended with :ref:`cli_helper_section`.
+:ref:`cli_helper_section` do not use the standard `Cmd <https://docs.python.org/3/library/cmd.html>`_ format, but they enable us to use Python and Shell scripting to perform various actions across the cluster (see :ref:`cli_executors`).
+The CLI automatically distributes Helpers to enable performing actions over the entire cluster.
+Therefore, the CLI may be accessed from any node in the cluster.
+The distinction between commands and Helpers is not relevant for most users so we will use these terms interchangeably.
+CLI commands may output error message to the screen, but remote commands will indicate an error through a non-zero exit code.
+
+.. toctree::
+   :maxdepth: 1
+
+   cli_design
+   cli_extention
 
 .. _experiment-models:
 
-Experiment Models
------------------
-
-Experiment models contain the details for all the elements to be included in a FIREWHEEL experiment.
-This includes the definition of the experiment network topology, node and edge type definitions, VM assignments and specifications for each node in the topology and properties for every edge connection.
-Experiment models can also contain VM resources, which are used to modify VMs after they've been launched, and the scheduling information that specifies where, when, and how each resource is to be used.
-
 Model Components
-^^^^^^^^^^^^^^^^
+----------------
+A FIREWHEEL experiment is simply a collection of model components which, when combined, define everything about an experiment.
+The model components that make up an experiment define its network topology, which can include:
 
-Model components are the building blocks of FIREWHEEL experiments.
+    * Its vertices, which will become computing, networking, or other device VMs
+    * The edges that represent network connections amongst the vertices
+    * Vertex and edge class types that can be assigned to individual vertices
+    * The VM images associated with the various vertex class types
+    * VM resource files that will alter the state of a VM once booted
+    * Scheduling info for when and where those VM resources will modify the VM
+
+FIREWHEEL's model components depend on one another to provide reusable, modular building blocks for constructing a wide variety of LAN, WAN, or even Internet scale experiments.
+
 Users build experiment models by creating and combining the sets of model components that define the topologies, attributes, configurations, and scheduled actions for their experiments.
-Model components can depend on the outputs or capabilities of other model components, and ultimately the set of model components that make up a given experiment depend on model components provided by FIREWHEEL's Base Model Components repository.
-For more information on Model Components, see :ref:`model_components`.
+Model components can depend on the outputs or capabilities of other model components, and ultimately the set of model components that make up a given experiment depend on model components provided by `firewheel_repo_base <https://github.com/sandialabs/firewheel_repo_base>`_.
+
+.. toctree::
+   :maxdepth: 2
+
+   model_component/model_component
+   model_component/dependencies
+   model_component/mc_install
+   model_component/mc_examples
+   model_component/repository
 
 .. _control-system:
 
@@ -94,6 +123,12 @@ Pre-start-time actions can be used to further configure VMs and networking prior
 The *VM Resource Manager* is the FIREWHEEL component that performs this job.
 It receives the information about all actions that need to be performed (i.e. the vertices to perform them on, when they are to be performed, the commands, scripts or executables that need to be run, and/or any other resources required for accomplishing the action), and manages the execution of each action on each VM as required and at the designated time.
 Once the *VM Resource Manager* has successfully finished monitoring and managing pre-start-time scheduled actions, then the experiment's emulated computer network is ready for conducting the intended experiment, and the *VM Resource Manager* will now do the same for actions that are scheduled to happen post-start-time i.e. actions that are part of the experiment.
+
+.. toctree::
+   :maxdepth: 2
+
+   vm_resource_manager/index
+
 
 Analytics
 ---------
