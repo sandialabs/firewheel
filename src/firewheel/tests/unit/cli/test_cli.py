@@ -1,554 +1,342 @@
 import io
-import os
-import copy
 import uuid
-import tempfile
-import unittest
-import unittest.mock
+import socket
+from unittest.mock import patch
+from pathlib import Path
 from importlib.metadata import version
+
+import pytest
 
 from firewheel.config import Config
 from firewheel.cli.utils import HelperNotFoundError
 from firewheel.cli.firewheel_cli import FirewheelCLI
 
 
-class CliTestCase(unittest.TestCase):
-    def setUp(self):
-        # Create a helper directory
-        # pylint: disable=consider-using-with
-        self.tmp_dir = tempfile.TemporaryDirectory()
+@pytest.fixture
+def config(tmp_path):
+    # Set the configuration (and save a copy of the original)
+    test_config_path = tmp_path / "firewheel.yaml"
+    config = Config(config_path=test_config_path, writable=True)
+    config.config["logging"]["root_dir"] = str(tmp_path)
+    config.config["cluster"]["compute"] = [socket.gethostname()]
+    config.config["cluster"]["control"] = [socket.gethostname()]
+    return config
 
-        # Change the CLI settings
-        self.fw_config = Config(writable=True)
-        self.old_config = copy.deepcopy(self.fw_config.get_config())
 
-    def tearDown(self):
-        # remove the temp directory
-        self.tmp_dir.cleanup()
+@pytest.fixture
+def cli(config):
+    with patch("firewheel.config.Config.get_config", return_value=config.get_config()):
+        yield FirewheelCLI()
 
-        # Fix the config
-        self.fw_config.set_config(self.old_config)
-        self.fw_config.write()
 
-    def test_normal_setup(self):
-        cli = FirewheelCLI()
+def build_custom_config_cli(config):
+    with patch("firewheel.config.Config.get_config", return_value=config.get_config()):
+        return FirewheelCLI()
 
+
+class TestCLI:
+
+    @staticmethod
+    def assert_standard_cli_attributes(cli):
+        assert cli.log is not None
+        assert cli.session["sequence_number"] == 0
+        assert isinstance(cli.session["id"], uuid.UUID)
+
+    @staticmethod
+    def assert_substring_in_file_last_line(substring, path):
+        with path.open("r") as f_hand:
+            assert substring in f_hand.readlines()[-1]
+
+    def test_normal_setup(self, cli):
+        self.assert_standard_cli_attributes(cli)
+        assert cli.history_file.name != "/dev/null"
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_no_history_file(self, mock_stdout, config):
+        config.resolve_set("logging.root_dir", 1234)
+        cli = build_custom_config_cli(config)
         # Check that certain attributes have been created
-        self.assertIsNotNone(cli.log)
-        self.assertEqual(cli.session["sequence_number"], 0)
-        self.assertIsInstance(cli.session["id"], uuid.UUID)
-        self.assertNotEqual(cli.history_file.name, "/dev/null")
+        self.assert_standard_cli_attributes(cli)
+        assert cli.history_file.name == "/dev/null"
+        assert "Continuing" in mock_stdout.getvalue()
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_no_history_file(self, mock_stdout):
-        self.fw_config.resolve_set("logging.root_dir", 1234)
-        self.fw_config.write()
-
-        cli = FirewheelCLI()
-
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_no_exp_history_file(self, mock_stdout, config):
+        config.resolve_set("logging.root_dir", 1234)
+        cli = build_custom_config_cli(config)
         # Check that certain attributes have been created
-        self.assertIsNotNone(cli.log)
-        self.assertEqual(cli.session["sequence_number"], 0)
-        self.assertIsInstance(cli.session["id"], uuid.UUID)
-        self.assertEqual(cli.history_file.name, "/dev/null")
-        self.assertIn("Continuing", mock_stdout.getvalue())
+        self.assert_standard_cli_attributes(cli)
+        assert cli.history_file.name == "/dev/null"
+        assert "experiment history" in mock_stdout.getvalue()
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_no_exp_history_file(self, mock_stdout):
-        self.fw_config.resolve_set("logging.root_dir", 1234)
-        self.fw_config.write()
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_invalid_umask(self, mock_stdout, config):
+        config.resolve_set("system.umask", None)
+        with pytest.raises(SystemExit) as exc_info:
+            cli = build_custom_config_cli(config)
+        # Check that the error matches expectations
+        assert exc_info.value.code == 1
+        assert "Invalid integer" in mock_stdout.getvalue()
 
-        cli = FirewheelCLI()
-
-        # Check that certain attributes have been created
-        self.assertIsNotNone(cli.log)
-        self.assertEqual(cli.session["sequence_number"], 0)
-        self.assertIsInstance(cli.session["id"], uuid.UUID)
-        self.assertEqual(cli.history_file.name, "/dev/null")
-        self.assertIn("experiment history", mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_invalid_umask(self, mock_stdout):
-        self.fw_config.resolve_set("system.umask", None)
-        self.fw_config.write()
-
-        with self.assertRaises(SystemExit) as exp:
-            FirewheelCLI()
-
-        self.assertEqual(exp.exception.code, 1)
-        self.assertIn("Invalid integer", mock_stdout.getvalue())
-
-    def test_postcmd(self):
-        cli = FirewheelCLI()
-
-        # Check that certain attributes have been created
-        self.assertIsNotNone(cli.log)
-        self.assertEqual(cli.session["sequence_number"], 0)
-        self.assertIsInstance(cli.session["id"], uuid.UUID)
-        self.assertNotEqual(cli.history_file.name, "/dev/null")
-
+    def test_postcmd(self, config, cli):
+        self.assert_standard_cli_attributes(cli)
+        assert cli.history_file.name != "/dev/null"
         # Run postcmd
-        line = "this is the line"
-        stop = "asdf"
-        ret = cli.postcmd(stop, line)
+        line, stop = "this is the line", "asdf"
+        assert cli.postcmd(stop, line) == stop
+        assert cli.session["sequence_number"] == 1
+        # Close the object to flush the write buffer
+        cli.history_file.close()
+        history_path = Path(config.config["logging"]["root_dir"], "cli_history.log")
+        self.assert_substring_in_file_last_line(line, history_path)
 
-        self.assertEqual(ret, stop)
-        self.assertEqual(cli.session["sequence_number"], 1)
+    def test_empty_line(self, cli):
+        assert cli.emptyline() is None
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        # CLI Helper counts for each category are hardcode; update as necessary
+        ["args", "helper_count"],
+        [
+            ["", 43],
+            ["example_helpers", 4],
+            ["example", 4],
+            ["example_helpers te", 2],
+            ["example_helpers test", 1],
+        ],
+    )
+    def test_do_list(self, mock_stdout, args, helper_count, config, cli):
+        cli.do_list(args)
+        # Check the helpers
+        helper_list = mock_stdout.getvalue().strip().split("\n")
+        assert len(helper_list[1:]) == helper_count
+        heading_modifier = f" containing '{args}'" if args else ""
+        heading = f"FIREWHEEL Helper commands{heading_modifier}:"
+        assert heading in mock_stdout.getvalue()
+        # Close the object to flush the write buffer
+        cli.history_file.close()
+        history_path = Path(config.config["logging"]["root_dir"], "cli_history.log")
+        self.assert_substring_in_file_last_line("list", history_path)
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_author_no_args(self, mock_stdout, cli):
+        args = ""
+        cli.do_author(args)
+        assert "Print the AUTHOR" in mock_stdout.getvalue()
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_author_normal(self, mock_stdout, config, cli):
+        args = "example_helpers test"
+        cli.do_author(args)
+        assert mock_stdout.getvalue().strip() == "FIREWHEEL Team"
 
         # Close the object to flush the write buffer
         cli.history_file.close()
+        history_path = Path(config.config["logging"]["root_dir"], "cli_history.log")
+        self.assert_substring_in_file_last_line("author", history_path)
 
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-
-        with open(hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
-
-        self.assertIn(line, last_line)
-
-    def test_emptyline(self):
-        cli = FirewheelCLI()
-
-        # Run emptyline
-        self.assertIsNone(cli.emptyline())
-
-    # Mocking based on https://stackoverflow.com/a/46307456
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_list(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = ""
-        cli.do_list(args)
-
-        helper_list = mock_stdout.getvalue().strip().split("\n")
-        # This verifies that the number of CLI Helpers
-        # is exactly 43. This will need to be fixed if
-        # Helpers are added/removed.
-        self.assertEqual(len(helper_list[1:]), 43)
-
-        heading = "FIREWHEEL Helper commands:"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-        # Close the object to flush the write buffer
-        cli.history_file.flush()
-
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        with open(hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
-
-        self.assertIn("list", last_line)
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_list_args(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = "example_helpers"
-        cli.do_list(args)
-
-        helper_list = mock_stdout.getvalue().strip().split("\n")
-        # This verifies that the number of `example_helpers`
-        # CLI Helpers is exactly 4.
-        # This will need to be fixed if Helpers are added/removed.
-        self.assertEqual(len(helper_list[1:]), 4)
-        heading = f"FIREWHEEL Helper commands containing '{args}':"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_list_args_partial(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = "example"
-        cli.do_list(args)
-
-        helper_list = mock_stdout.getvalue().strip().split("\n")
-        # This verifies that the number of `example_helpers`
-        # CLI Helpers is exactly 4.
-        # This will need to be fixed if Helpers are added/removed.
-        self.assertEqual(len(helper_list[1:]), 4)
-        heading = f"FIREWHEEL Helper commands containing '{args}':"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_list_args_partial_sub(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers te"
-        cli.do_list(args)
-
-        helper_list = mock_stdout.getvalue().strip().split("\n")
-        # This verifies that the number of `example_helpers`
-        # CLI Helpers is exactly 2.
-        # This will need to be fixed if Helpers are added/removed.
-        self.assertEqual(len(helper_list[1:]), 2)
-
-        heading = f"FIREWHEEL Helper commands containing '{args}':"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_list_single_helper(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = "example_helpers test"
-        cli.do_list(args)
-
-        helper_list = mock_stdout.getvalue().strip().split("\n")
-        self.assertEqual(len(helper_list[1:]), 1)
-
-        heading = f"FIREWHEEL Helper commands containing '{args}':"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_author_no_args(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = ""
-        cli.do_author(args)
-
-        self.assertIn("Print the AUTHOR", mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_author_invalid(self, mock_stdout):
-        cli = FirewheelCLI()
-
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_author_invalid(self, mock_stdout, cli):
         args = "invalid"
         cli.do_author(args)
+        assert mock_stdout.getvalue().strip() == f"{cli.cmd_not_found} {args}"
 
-        self.assertEqual(mock_stdout.getvalue().strip(), f"{cli.cmd_not_found} {args}")
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_author_normal(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        args = "example_helpers test"
-        cli.do_author(args)
-
-        self.assertEqual(mock_stdout.getvalue().strip(), "FIREWHEEL Team")
-
-        # Close the object to flush the write buffer
-        cli.history_file.flush()
-
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        with open(hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
-
-        self.assertIn("author", last_line)
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_docs_normal(self, mock_stdout):
-        cli = FirewheelCLI()
-
-        cli.do_docs(self.tmp_dir.name)
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_docs_normal(self, mock_stdout, config, cli, tmp_path):
+        cli.do_docs(tmp_path)
 
         # Check to see if the files were created
-        helper_path = os.path.join(self.tmp_dir.name, "helper_docs.rst")
-        cmd_path = os.path.join(self.tmp_dir.name, "commands.rst")
-        self.assertTrue(os.path.exists(helper_path))
-        self.assertTrue(os.path.exists(cmd_path))
-
+        docs_paths = [
+            tmp_path / "helper_docs.rst",
+            tmp_path / "commands.rst",
+        ]
+        assert all(path.exists() for path in docs_paths)
         # Check to see if output was printed
-        helper_str = "FIREWHEEL Helper documentation placed in"
-        cmd_str = "FIREWHEEL Command documentation placed in"
-        self.assertIn(helper_str, mock_stdout.getvalue())
-        self.assertIn(cmd_str, mock_stdout.getvalue())
+        docs_strings = [
+            "FIREWHEEL Helper documentation placed in",
+            "FIREWHEEL Command documentation placed in",
+        ]
+        assert all(string in mock_stdout.getvalue() for string in docs_strings)
 
         # Close the object to flush the write buffer
-        cli.history_file.flush()
+        cli.history_file.close()
+        history_path = Path(config.config["logging"]["root_dir"], "cli_history.log")
+        self.assert_substring_in_file_last_line("docs", history_path)
 
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        with open(hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_eof(self, mock_stdout, cli):
+        assert cli.do_EOF("")
+        assert mock_stdout.getvalue().strip() == ""
 
-        self.assertIn("docs", last_line)
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_version(self, mock_stdout, cli):
+        cli.do_version("")
+        assert mock_stdout.getvalue().strip() == version("firewheel")
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_eof(self, mock_stdout):
-        cli = FirewheelCLI()
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_exit(self, mock_stdout, cli):
+        assert cli.do_exit("")
 
-        args = ""
-        self.assertTrue(cli.do_EOF(args))
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_quit(self, mock_stdout, cli):
+        assert cli.do_quit("")
 
-        self.assertEqual(mock_stdout.getvalue().strip(), "")
+    @pytest.mark.parametrize(
+        ["text", "count"],
+        [
+            ["example", 4],
+            ["example_helpers s", 2],
+        ],
+    )
+    def test_complete_author(self, text, cli, count):
+        assert len(cli.complete_author(text, f"author {text}", None, None)) == count
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_version(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
-        cli.do_version(args)
+    @pytest.mark.parametrize(
+        ["text", "count", "values"],
+        [
+            ["example", 4, None],
+            ["example_helpers s", 2, None],
+            ["auth", 1, ["author"]],
+        ],
+    )
+    def test_complete_help(self, text, count, values, cli):
+        completion = cli.complete_help(text, f"help {text}", None, None)
+        assert len(completion) == count
+        if values:
+            assert completion == values
 
-        self.assertEqual(mock_stdout.getvalue().strip(), version("firewheel"))
-
-    def test_do_exit(self):
-        cli = FirewheelCLI()
-        args = ""
-        self.assertTrue(cli.do_exit(args))
-
-    def test_do_quit(self):
-        cli = FirewheelCLI()
-        args = ""
-        self.assertTrue(cli.do_quit(args))
-
-    def test_complete_author(self):
-        cli = FirewheelCLI()
-        text = "example"
-        line = f"author {text}"
-        ret = cli.complete_author(text, line, None, None)
-        self.assertEqual(len(ret), 4)
-
-        text = "example_helpers s"
-        line = f"author {text}"
-        ret = cli.complete_author(text, line, None, None)
-        self.assertEqual(len(ret), 2)
-
-    def test_complete_run(self):
-        cli = FirewheelCLI()
-        text = "example"
-        line = f"run {text}"
-        ret = cli.complete_run(text, line, None, None)
-        self.assertEqual(len(ret), 4)
-
-        text = "example_helpers s"
-        line = f"run {text}"
-        ret = cli.complete_run(text, line, None, None)
-        self.assertEqual(len(ret), 2)
-
-    def test_complete_help(self):
-        cli = FirewheelCLI()
-        text = "example"
-        line = f"help {text}"
-        ret = cli.complete_help(text, line, None, None)
-        self.assertEqual(len(ret), 4)
-
-        text = "example_helpers s"
-        line = f"help {text}"
-        ret = cli.complete_help(text, line, None, None)
-        self.assertEqual(len(ret), 2)
-
-        text = "auth"
-        line = f"help {text}"
-        ret = cli.complete_help(text, line, None, None)
-        self.assertEqual(len(ret), 1)
-        self.assertEqual(ret[0], "author")
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_base_do_help(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        ["args", "outputs"],
+        [
+            [
+                "",
+                [
+                    "FIREWHEEL Infrastructure Command Line Interpreter",
+                    "Available CLI Helpers",
+                ],
+            ],
+            ["author", ["Print the AUTHOR"]],
+        ],
+    )
+    def test_base_do_help(self, mock_stdout, cli, args, outputs):
         cli.base_do_help(args)
+        assert all(string in mock_stdout.getvalue().strip() for string in outputs)
 
-        self.assertIn(
-            "FIREWHEEL Infrastructure Command Line Interpreter",
-            mock_stdout.getvalue().strip(),
-        )
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_base_do_help_invalid(self, mock_stdout, cli):
+        with pytest.raises(AttributeError):
+            cli.base_do_help("invalid")
 
-        helpers = "Available CLI Helpers"
-        self.assertIn(helpers, mock_stdout.getvalue().strip())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_base_do_help_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "author"
-        cli.base_do_help(args)
-
-        self.assertIn("Print the AUTHOR", mock_stdout.getvalue())
-
-        args = "invalid"
-        with self.assertRaises(AttributeError):
-            cli.base_do_help(args)
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_help(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        ["args", "outputs"],
+        [
+            [
+                "",
+                [
+                    "FIREWHEEL Infrastructure Command Line Interpreter",
+                    "Available CLI Helpers",
+                ],
+            ],
+            ["author", ["Print the AUTHOR"]],
+            [
+                "example_helpers",
+                ["FIREWHEEL Helper commands containing 'example_helpers':"],
+            ],
+            [
+                "example_helpers test",
+                ["Use this file as a template for new Helpers."],
+            ],
+        ],
+    )
+    def test_do_help(self, mock_stdout, cli, args, outputs):
         cli.do_help(args)
+        assert all(string in mock_stdout.getvalue().strip() for string in outputs)
 
-        self.assertIn(
-            "FIREWHEEL Infrastructure Command Line Interpreter",
-            mock_stdout.getvalue().strip(),
-        )
-
-        helpers = "Available CLI Helpers"
-        self.assertIn(helpers, mock_stdout.getvalue().strip())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_help_args_cmd(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "author"
-        cli.do_help(args)
-        self.assertIn("Print the AUTHOR", mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_help_args_invalid(self, mock_stdout):
-        cli = FirewheelCLI()
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_help_invalid(self, mock_stdout, cli):
         args = "invalid"
         cli.do_help(args)
-        self.assertEqual(mock_stdout.getvalue().strip(), f"{cli.cmd_not_found} {args}")
+        assert mock_stdout.getvalue().strip() == f"{cli.cmd_not_found} {args}"
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_help_args_helper_group(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers"
-        cli.do_help(args)
-        heading = f"FIREWHEEL Helper commands containing '{args}':"
-        self.assertIn(heading, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_help_args_helper(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers test"
-        cli.do_help(args)
-        description_str = "Use this file as a template for new Helpers."
-        self.assertIn(description_str, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_history(self, mock_stdout):
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        # Remove the current history file to ensure it is blank
-        os.remove(hist_file)
-
-        cli = FirewheelCLI()
-
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_history(self, mock_stdout, config, cli):
         cli.do_history("")
         output = "<Count>: <ID>:<Sequence Number> -- <command>"
-        self.assertEqual(mock_stdout.getvalue().strip(), output)
+        assert mock_stdout.getvalue().strip() == output
 
         # Close the object to flush the write buffer
-        cli.history_file.flush()
-
-        with open(hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
-
-        self.assertIn("history", last_line)
+        cli.history_file.close()
+        history_path = Path(config.config["logging"]["root_dir"], "cli_history.log")
+        self.assert_substring_in_file_last_line("history", history_path)
 
         cli.do_history("")
         output = "-- history"
-        self.assertIn(output, mock_stdout.getvalue())
+        assert output in mock_stdout.getvalue()
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_history_exp(self, mock_stdout):
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        exp_hist_file = os.path.join(
-            config["logging"]["root_dir"], "experiment.history"
-        )
-
-        # Remove the current history file to ensure it is blank
-        os.remove(hist_file)
-        os.remove(exp_hist_file)
-
-        cli = FirewheelCLI()
-
-        experiment = "experiment tests.vm_gen:1"
-
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_history_experiment(self, mock_stdout, config, cli):
         cli.do_history("experiment")
-        output = "No experiments"
-        self.assertIn(output, mock_stdout.getvalue().strip())
+        assert "No experiments" in mock_stdout.getvalue().strip()
 
         # Now actually write an experiment
         experiment = "experiment tests.vm_gen:1"
         cli.write_history(experiment)
-
         cli.do_history("experiment")
-        output = f"firewheel {experiment}"
-        self.assertIn(output, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_exp_history(self, mock_stdout):
-        config = Config().get_config()
-        hist_file = os.path.join(config["logging"]["root_dir"], "cli_history.log")
-        exp_hist_file = os.path.join(
-            config["logging"]["root_dir"], "experiment.history"
+        assert f"firewheel {experiment}" in mock_stdout.getvalue()
+        experiment_history_path = Path(
+            config.config["logging"]["root_dir"], "experiment.history"
         )
+        self.assert_substring_in_file_last_line(experiment, experiment_history_path)
 
-        # Remove the current history file to ensure it is blank
-        os.remove(hist_file)
-        os.remove(exp_hist_file)
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        ["args", "return_code", "outputs"],
+        [
+            ["", -1, ["Runs the scripts found in the specified Helper file."]],
+            ["example_helpers test", 0, ["Hello, World!"]],
+        ],
+    )
+    def test_handle_run(self, mock_stdout, args, return_code, outputs, cli):
+        assert cli.handle_run(args) == return_code
+        assert all(output in mock_stdout.getvalue() for output in outputs)
 
-        cli = FirewheelCLI()
-        experiment = "experiment tests.vm_gen:1"
-        cli.write_history(experiment)
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_handle_run_invalid(self, mock_stdout, cli):
+        with pytest.raises(HelperNotFoundError):
+            cli.handle_run("invalid")
 
-        # Close the object to flush the write buffer
-        cli.history_exp_file.flush()
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        ["args", "return_code", "outputs"],
+        [
+            ["", -1, ["Runs the scripts found in the specified Helper file."]],
+            ["example_helpers test", 0, ["Hello, World!", "foo", "bar"]],
+        ],
+    )
+    def test_do_run(slef, mock_stdout, args, return_code, outputs, cli):
+        assert cli.do_run(args) == return_code
+        assert all(output in mock_stdout.getvalue() for output in outputs)
 
-        with open(exp_hist_file, "r", encoding="utf8") as f_hand:
-            last_line = f_hand.readlines()[-1]
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_run_invalid(slef, mock_stdout, cli):
+        assert cli.do_run("invalid") == 1
 
-        self.assertIn(f"firewheel {experiment}", last_line)
+    @patch("sys.stdout", new_callable=io.StringIO)
+    @pytest.mark.parametrize(
+        ["args", "return_code", "outputs"],
+        [
+            ["", -1, ["Runs the scripts found in the specified Helper file."]],
+            ["example_helpers test", 0, ["Hello, World!", "foo", "bar"]],
+            # A repository is a Helper Group without an index file
+            ["repository", 0, "Cannot run a Helper group."],
+        ],
+    )
+    def test_default(self, mock_stdout, args, return_code, outputs, cli):
+        assert cli.default(args) == return_code
+        assert all(output in mock_stdout.getvalue() for output in outputs)
 
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_handle_run_no_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
-        self.assertEqual(-1, cli.handle_run(args))
-
-        output = "Runs the scripts found in the specified Helper file."
-        self.assertIn(output, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_handle_run_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers test"
-        cli.handle_run(args)
-
-        self.assertIn("Hello, World!", mock_stdout.getvalue())
-
-        args = "invalid"
-        with self.assertRaises(HelperNotFoundError):
-            cli.handle_run(args)
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_run_no_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
-        self.assertEqual(-1, cli.do_run(args))
-
-        output = "Runs the scripts found in the specified Helper file."
-        self.assertIn(output, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_do_run_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers test"
-        self.assertEqual(0, cli.do_run(args))
-
-        self.assertIn("Hello, World!", mock_stdout.getvalue())
-        self.assertIn("foo", mock_stdout.getvalue())
-        self.assertIn("bar", mock_stdout.getvalue())
-
-        args = "invalid"
-        self.assertEqual(1, cli.do_run(args))
-
-        # Repository is a Helper Group without an index file
-        args = "repository"
-        cli.do_run(args)
-        self.assertIn("Cannot run a Helper group.", mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_default_no_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = ""
-        self.assertEqual(-1, cli.default(args))
-
-        output = "Runs the scripts found in the specified Helper file."
-        self.assertIn(output, mock_stdout.getvalue())
-
-    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-    def test_default_args(self, mock_stdout):
-        cli = FirewheelCLI()
-        args = "example_helpers test"
-        self.assertEqual(0, cli.default(args))
-
-        self.assertIn("Hello, World!", mock_stdout.getvalue())
-        self.assertIn("foo", mock_stdout.getvalue())
-        self.assertIn("bar", mock_stdout.getvalue())
-
-        args = "invalid"
-        self.assertEqual(1, cli.default(args))
-
-        # Repository is a Helper Group without an index file
-        args = "repository"
-        cli.default(args)
-        self.assertIn("Cannot run a Helper group.", mock_stdout.getvalue())
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_default_invalid(self, mock_stdout, cli):
+        assert cli.default("invalid") == 1
