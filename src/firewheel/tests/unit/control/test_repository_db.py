@@ -25,9 +25,10 @@ def repository_db():
     repository_db = RepositoryDb(
         db_filename="test_repositories.json",
     )
+    yield repository_db
+    # Ensure all repositories are removed during teardown
     for repo in repository_db.list_repositories():
         repository_db.delete_repository(repo)
-    yield repository_db
 
 
 @pytest.fixture
