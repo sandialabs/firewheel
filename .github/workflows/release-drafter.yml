@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   update_release_draft:
+    name: Update the release notes
     permissions:
       contents: write
       pull-requests: write
@@ -37,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   pr-checker:
     name: Ensure Proper Pull Request Labels
-    if: ${{ always() }}
+    if: github.event_name == 'pull_request_target'
     needs: update_release_draft
     permissions:
       pull-requests: read

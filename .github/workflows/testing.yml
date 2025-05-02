@@ -41,11 +41,11 @@ jobs:
                                 openvswitch-switch qemu-kvm qemu-utils dnsmasq \
                                 ntfs-3g iproute2 libpcap-dev
     - name: Prepare minimega
-      uses: sandialabs/firewheel/.github/actions/prepare-minimega
+      uses: sandialabs/firewheel/.github/actions/prepare-minimega@v2
     - name: Prepare discovery
-      uses: sandialabs/firewheel/.github/actions/prepare-discovery
+      uses: sandialabs/firewheel/.github/actions/prepare-discovery@v2
     - name: Prepare FIREWHEEL
-      uses: sandialabs/firewheel/.github/actions/prepare-firewheel
+      uses: sandialabs/firewheel/.github/actions/prepare-firewheel@v2
     - name: Run unit tests
       run: |
         firewheel test unit -m 'not long and not mcs' \

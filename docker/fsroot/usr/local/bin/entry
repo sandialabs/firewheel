@@ -7,6 +7,27 @@ function gr() {
     echo -e "\033[32;1m" "$@" "\033[m"
 }
 
+function yl() {
+    echo -e "\033[33;1m" "$@" "\033[m"
+}
+
+# Let the SSH server run without systemd
+mkdir /var/run/sshd
+
+# Start the SSH server
+/usr/sbin/sshd
+ssh-keygen -f ~/.ssh/id_rsa -N "" &>/dev/null
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+if [ -e ~/.ssh/config ];
+then
+    yl "SSH config already existed, not modifying it";
+else
+    cat << EOF > ~/.ssh/config
+Host *
+    StrictHostKeyChecking no
+EOF
+fi
+
 export HOME=/root
 
 HN="$(hostname)"
@@ -43,11 +64,16 @@ if tty -s; then
     if [ "$#" -eq 0 ]; then
         tmux
     else
-        /bin/bash "$@"
+        # If a command was passed to the container, execute it
+        "$@"
     fi
 else
-    # Sleep until we need to shut down.
-    sleep infinity
+    # If it's not a TTY, it's likely a CI/CD job, in which case that job will
+    # keep the container open after the end of this script. If there's ever a
+    # use case for keeping the container alive when not in a TTY, this could be
+    # changed
+    yl "Not a TTY, exiting..."
+    exit 0
 fi
 
 grn "Stopping experiment...     "
