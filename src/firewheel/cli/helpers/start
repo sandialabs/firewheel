@@ -73,7 +73,11 @@ MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
 MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
 
 # Ensure the specified namespace is created and that localhost is added
-$MINIMEGA_BIN -e namespace "$(firewheel config get minimega.namespace)"
+namespace="$(firewheel config get minimega.namespace)"
+if [ $($MINIMEGA_BIN -e .filter namespace="$namespace" .filter active=true .headers false namespace | wc -l) -eq 0 ]; then
+    # We were not in the specified namespace yet
+    $MINIMEGA_BIN -e namespace "$namespace"
+fi
 $MINIMEGA_BIN -e ns add-hosts localhost
 DONE
 
