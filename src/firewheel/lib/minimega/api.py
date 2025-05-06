@@ -51,8 +51,8 @@ class minimegaAPI:  # noqa: N801
 
         try:
             namespace = config["minimega"]["namespace"]
-        except KeyError as exp:
-            self.log.warn("minimega namespace not set, using default")
+        except KeyError:
+            self.log.warning("minimega namespace not set, using default")
             namespace = None
 
         if not os.path.exists(self.mm_socket):
