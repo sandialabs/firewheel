@@ -16,6 +16,23 @@ Configuration Options
 The main configuration options which must change are modified during installation with ``install.sh``.
 Here are all configuration options which are available to be changed.
 
+.. _config_ansible:
+
+``ansible``
+===========
+This setting is a `YAML dictionary <https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html#yaml-basics>`_ which enables users to set a default cache type from where they can download unpackaged model component dependencies (e.g., VM resources, images, etc.).
+In addition to the single pre-existing key (``cache_type``), users are able to provide information expected by Ansible about the cache mode (e.g., a server URL or an AWS secret key).
+See :ref:`mc_install_ansible` for more information.
+
+.. table::
+
+    +--------------+-----------------------+------------------------------------------------------------------------------------------+
+    | Setting      |        Value          |                                    Description                                           |
+    +==============+=======================+==========================================================================================+
+    |``cache_type``|``<online|url|git|s3>``|The location to download extra model component binary information. Defaults to ``online``.|
+    +--------------+-----------------------+------------------------------------------------------------------------------------------+
+
+
 .. _config_attribute_defaults:
 
 ``attribute_defaults``

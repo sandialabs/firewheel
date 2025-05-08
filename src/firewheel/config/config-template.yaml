@@ -1,3 +1,5 @@
+ansible:
+    cache_type: online
 attribute_defaults: {}
 cli:
     cache_dir: fw_cli

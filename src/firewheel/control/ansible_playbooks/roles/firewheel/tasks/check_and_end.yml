@@ -1,0 +1,44 @@
+- name: Initialize a variable to track file status
+  ansible.builtin.set_fact:
+    all_files_valid: true
+
+- name: Ensure all cached file destinations exist
+  ansible.builtin.stat:
+    path: "{{ item.destination }}"
+    checksum_algorithm: "{{ item.checksum_algorithm | default(item.checksum_algo | default('sha1')) }}"
+    get_checksum: true
+  register: cached_file_check
+  loop: "{{ cached_files }}"
+
+- name: Verify any existing checksums for cached files
+  ansible.builtin.set_fact:
+    all_files_valid: false
+  when:
+    - item.stat.exists
+    - item.item.checksum is defined
+    - item.stat.checksum != item.item.checksum
+  loop: "{{ cached_file_check.results }}"
+  loop_control:
+    index_var: index
+
+- name: Check for missing files
+  ansible.builtin.set_fact:
+    all_files_valid: false
+  when:
+    - not cached_file_check.results[index].stat.exists
+  loop: "{{ cached_files }}"
+  loop_control:
+    index_var: index
+
+# Create installation flag if all cached files exist
+- name: Create installation flag if all cached files exist
+  ansible.builtin.file:
+    path: "{{ install_flag }}"
+    state: touch
+    mode: "660"
+  when: all_files_valid
+
+# Exit successfully if there are no issues with cached files
+- name: Exit successfully if there are issues with cached files
+  ansible.builtin.meta: end_play
+  when: all_files_valid

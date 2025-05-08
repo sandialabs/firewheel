@@ -1,0 +1,41 @@
+---
+# This playbook will clone a Git repository and move specified cached files
+# If you are using an access token, you can specify it in the `git_server` URL
+# For example: https://<token>@github.com/user/repo.git
+# The user will need to provide all relevant information including:
+# - ``git_server`` - The URL of the git server
+# - ``git_repo_path`` - The path to the repo from the server
+# - ``git_branch`` - The branch name (optional); default: main
+
+- name: Attempt to pull cache from Git repository if URL fails
+  block:
+    - name: Check if Git information is provided
+      ansible.builtin.assert:
+        that:
+          - (git_server is defined and git_server != "")
+          - (git_repo_path is defined and git_repo_path != "")
+        success_msg: "Found git creds, trying to pull cache"
+        fail_msg: "No git creds, continuing..."
+        quiet: true
+      register: git_cache
+
+    - name: Clone Git repository
+      ansible.builtin.git:
+        repo: "{{ git_server }}/{{ git_repo_path }}"
+        dest: "/tmp/fwcache"
+        clone: true
+        version: "{{ git_branch }} | default('HEAD')"
+        update: true
+      register: git_clone_result
+      ignore_errors: true
+
+    - name: Fail if Git clone fails
+      ansible.builtin.fail:
+        msg: "Failed to clone Git repository. Please check the repository information and try again."
+      when: git_clone_result is failed
+
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No Git Cache information provided"
+      when: git_cache is failed

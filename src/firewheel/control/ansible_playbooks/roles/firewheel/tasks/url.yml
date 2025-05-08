@@ -1,0 +1,41 @@
+---
+# This playbook will collect cached files from a given URL.
+# It uses https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html.
+#
+# If you are using an username or password token, you can specify it in the URL
+# For example: https://user:password@server.com/url/cache/path/file.txt
+# The user should provide the following:
+# - ``url`` - The URL of the server hosting the cached files.
+# - ``url_cache_path`` - The path to the file's base directory from the server. For example: http://example.com/<url_cache_path>/file.txt
+# - ``use_proxy`` - (optional) If false, it will not use a proxy, even if one is defined in an environment variable on the target hosts; default: true
+# - ``validate_certs`` - (optional) If false, SSL certificates will not be validated; default: true
+
+- name: Attempt to pull cache from URL if offline
+  block:
+    - name: Check if URL information is provided
+      ansible.builtin.assert:
+        that: (url is defined and url != "") and (url_cache_path is defined and url_cache_path != "")
+        fail_msg: "No URL information provided. Please provide a valid URL."
+        success_msg: "Found a server"
+        quiet: true
+      register: url_cache
+
+    - name: Download cached files from URL
+      ansible.builtin.get_url:
+        url: "{{ url }}/{{ url_cache_path }}/{{ item.source }}"
+        dest: "{{ item.destination }}"
+        mode: "666"
+      loop: "{{ cached_files }}"
+      register: url_download_result
+      ignore_errors: true
+
+    - name: Fail if URL download fails
+      ansible.builtin.fail:
+        msg: "Failed to download files from URL. Please check the URL and try again."
+      when: url_download_result is failed
+
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No Server Cache information provided"
+      when: url_cache is failed

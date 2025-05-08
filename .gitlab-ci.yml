@@ -6,7 +6,6 @@
 # Python.
 #
 ###############################
-
 include:
   - local: .gitlab/ci/setup.yml
 

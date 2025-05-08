@@ -3,10 +3,12 @@ import stat
 import subprocess
 from pathlib import Path
 
+import ansible_runner
 from rich.prompt import PromptBase
 from rich.syntax import Syntax
 from rich.console import Console
 
+from firewheel.config import config
 from firewheel.lib.log import Log
 
 
@@ -29,12 +31,13 @@ class InstallPrompt(PromptBase[str]):
 
 class ModelComponentInstall:
     """
-    Some Model Components may provide an additional install script called ``INSTALL``
+    Some Model Components may provide an additional installation details
     which can be executed to perform other setup steps (e.g. installing an extra python package
     or downloading an external VM resource).
-    This class helps execute that file and install a Model Component.
-    ``INSTALL`` scripts can be can be any executable file type as defined by a
-    `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
+    This takes the form of either a ``INSTALL`` directory with a ``vars.yml`` and a ``tasks.yml``
+    that are Ansible tasks which can be executed.
+    Alternatively, it can be a single ``INSTALL`` script that can be can be any executable file
+    type as defined by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
 
     .. warning::
 
@@ -86,13 +89,24 @@ class ModelComponentInstall:
             installed), False otherwise
         """
         console = Console()
+        console.print(f"[b green]Starting to install [cyan]{name}[/cyan]!")
+
+        # Check if the install script has a shebang line
+        # if it does not, we should execute it with "ansible-runner"
+        if not self.has_shebang(install_path):
+            return self.run_ansible_playbook(name, install_path)
+
+        console.print(
+            "[b yellow]Warning: Use of non-ansible-based INSTALL scripts is deprecated. "
+            "Please contact the model component developer to transition this file."
+        )
 
         # Make the install file executable
         # We assume that it can be run with a "shebang" line
         install_path.chmod(
             install_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         )
-        console.print(f"[b green]Starting to install [cyan]{name}[/cyan]!")
+
         try:
             # We have already checked with the user to ensure that they want to run
             # this script.
@@ -107,6 +121,107 @@ class ModelComponentInstall:
                 return True
 
             console.print(f"[b red]Failed to install [cyan]{name}[/cyan]!")
+            return False
+
+    def has_shebang(self, install_path):
+        """
+        Check if the given INSTALL file has a
+        `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)`_
+        line and should be treated as an executable file.
+
+        Args:
+            install_path (pathlib.Path): The path of the ``INSTALL`` file.
+
+        Returns:
+            bool: :py:data:`True` if the script starts with ``#!``, :py:data:`False` otherwise.
+        """
+        if install_path.is_dir():
+            return False
+
+        script = ""
+        with install_path.open("r", encoding="utf-8") as file:
+            script = file.read()
+        return script.startswith("#!")
+
+    def run_ansible_playbook(self, name, install_path):
+        """
+        Run the provided Ansible playbook using ansible-runner.
+
+        Args:
+            name (str): The name of the Model Component.
+            install_path (pathlib.Path): The path of the Ansible playbook directory.
+
+        Returns:
+            bool: :py:data:`True` if the playbook executed successfully,
+            :py:data:`False` otherwise.
+
+        Raises:
+            ValueError: If an invalid ``ansible.cache_type`` is provided in the FIREWHEEL config.
+        """
+        console = Console()
+
+        wrong_structure_msg = str(
+            f"[b red][cyan]{install_path}[/cyan] must either be a directory with tasks.yml "
+            "and vars.yml or a file with a shebang line."
+        )
+        if not install_path.is_dir():
+            console.print(wrong_structure_msg)
+            raise ValueError("Invalid INSTALL file.")
+
+        # Check for vars file.
+        vars_path = None
+        if Path(install_path / "vars.yml").exists():
+            vars_path = Path(install_path / "vars.yml")
+        elif Path(install_path / "vars.yaml").exists():
+            vars_path = Path(install_path / "vars.yaml")
+        else:
+            console.print(wrong_structure_msg)
+            raise ValueError(f"Missing vars.yml file in directory {install_path}.")
+
+        # Check for tasks file.
+        tasks_path = None
+        if Path(install_path / "tasks.yml").exists():
+            tasks_path = Path(install_path / "tasks.yml")
+        elif Path(install_path / "tasks.yaml").exists():
+            tasks_path = Path(install_path / "tasks.yaml")
+        else:
+            console.print(wrong_structure_msg)
+            raise ValueError(f"Missing tasks.yml file in directory {install_path}.")
+
+        ansible_config = {
+            "ansible_remote_tmp": config["system"]["default_output_dir"],
+            "vars_path": str(vars_path),
+            "tasks_path": str(tasks_path),
+            "mc_dir": str(install_path.parent),
+            "install_flag": str(install_path.parent / f".{name}.install"),
+            "mc_name": str(name),
+        }
+
+        # Add any remaining configuration options provided in the FIREWHEEL
+        # configuration
+        ansible_config.update(config["ansible"])
+
+        playbook_path = Path(__file__).resolve().parent / Path(
+            "ansible_playbooks/main.yml"
+        )
+
+        # Run the Ansible playbooks
+        ret = ansible_runner.run(
+            private_data_dir=str(install_path.parent),
+            playbook=str(playbook_path),
+            extravars=ansible_config,
+            roles_path=(str(playbook_path.parent / "roles")),
+        )
+
+        if ret.rc == 0:
+            console.print(
+                f"[b green]Successfully executed Ansible playbook [cyan]{install_path}[/cyan]!"
+            )
+            return True
+        else:
+            console.print(
+                f"[b red]Ansible playbook [cyan]{install_path}[/cyan] failed: {ret}."
+            )
             return False
 
     def run_install_script(self, insecure=False):
@@ -164,13 +279,26 @@ class ModelComponentInstall:
                 break
             if value.startswith("v"):
                 contents = ""
-                with open(install_script, "r", encoding="utf-8") as fhand:
-                    contents = fhand.read()
                 style = False
                 if value == "vc":
                     style = True
-                with console.pager(styles=style):
-                    console.print(Syntax(contents, lexer="bash"))
+                if install_script.is_dir():
+                    file_contents = []
+                    for file_path in install_script.iterdir():
+                        if file_path.is_file():
+                            with file_path.open('r') as file:
+                                content = file.read()
+                                file_contents.append((file_path.name, content))
+                    with console.pager(styles=style):
+                        for filename, contents in file_contents:
+                            console.print(f"[bold underline]Contents of {filename}:[/]")
+                            console.print(Syntax(contents, lexer="bash"))
+                            console.print("\n" + "-" * 40 + "\n")
+                else:
+                    with open(install_script, "r", encoding="utf-8") as fhand:
+                        contents = fhand.read()
+                    with console.pager(styles=style):
+                        console.print(Syntax(contents, lexer="bash"))
             elif value.startswith("q"):
                 sys.exit(0)
         return True

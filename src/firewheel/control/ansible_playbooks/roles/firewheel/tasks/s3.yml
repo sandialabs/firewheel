@@ -1,0 +1,46 @@
+---
+# This playbook will loop through all values in the `cached_files` variable
+# and collected those cached files from an S3 instance.
+# The user will be prompted for all relevant S3 information including:
+# - ``s3_endpoint`` - The instance URL
+# - ``s3_bucket`` - The bucket name
+# - ``aws_access_key_id`` - The access key
+# - ``aws_secret_access_key`` - The secret key
+
+- name: Attempt to pull cache from S3 if Git fails
+  block:
+    - name: Check if S3 information is provided
+      ansible.builtin.assert:
+        that:
+          - (s3_endpoint is defined and s3_endpoint != "")
+          - (s3_bucket is defined and s3_bucket != "")
+          - (aws_access_key_id is defined and aws_access_key_id != "")
+          - (aws_secret_access_key is defined and aws_secret_access_key != "")
+        success_msg: "Found s3"
+        fail_msg: "No S3 information provided. Please provide valid S3 credentials."
+        quiet: true
+      register: s3_cache
+
+    - name: Download cached files from S3
+      amazon.aws.s3_object:
+        bucket: "{{ s3_bucket }}"
+        object: "{{ item.source }}"
+        dest: "{{ item.destination }}"
+        mode: get
+        aws_access_key: "{{ aws_access_key_id }}"
+        aws_secret_key: "{{ aws_secret_access_key }}"
+        endpoint_url: "{{ s3_endpoint }}"
+      loop: "{{ cached_files }}"
+      register: s3_download_result
+      ignore_errors: true
+
+    - name: Fail if S3 download fails
+      ansible.builtin.fail:
+        msg: "Failed to download files from S3. Please check the S3 information and try again."
+      when: s3_download_result is failed
+
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No S3 Cache information provided"
+      when: s3_cache is failed
