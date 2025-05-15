@@ -1,0 +1,37 @@
+---
+###################################################################################################
+# This playbook will clone a Git repository and move specified cached files
+# If you are using an access token, you can specify it in the `git_server` URL
+# For example: https://<token>@github.com/user/repo.git
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# git_servers:
+#   - server_url: "https://github.com"
+#     repositories:
+#       - path: "firewheel/mc_repo1"
+#       - path: "firewheel/mc_repo2"
+#         branch: "develop"
+#   - server_url: "ssh://git@gitlab.com"
+#     repositories:
+#       - path: "emulytics/firewheel/mc_repo3"
+#         branch: "feature-branch"
+###################################################################################################
+
+- name: Clone the repository
+  ansible.builtin.git:
+    repo: "{{ firewheel_server_url }}/{{ firewheel_repo_path }}"
+    dest: "/tmp/fwcache/{{ firewheel_repo_path }}"
+    clone: true
+    version: "{{ firewheel_repo_branch }}"
+    update: true
+  register: git_clone_result
+
+- name: Attempt to move each cached file
+  ansible.builtin.copy:
+    src: "/tmp/fwcache/{{ firewheel_repo_path }}/{{ item.source }}"
+    dest: "{{ item.destination }}"
+    mode: "0660"
+  loop: "{{ cached_files }}"
+  register: move_result
+  ignore_errors: true
