@@ -35,6 +35,22 @@ Users can interact with the :ref:`command_config` command (i.e. ``firewheel conf
 series of sub-commands which enable easily getting/setting various configuration options.
 
 
+.. _command_config_edit:
+
+config edit
+^^^^^^^^^^^
+
+usage: firewheel config edit [-e EDITOR]
+
+Edit the FIREWHEEL configuration with a text editor. The user must set either the VISUAL or EDITOR
+environment variable or use the provided flag to override these environment variables.
+
+options:
+  -e EDITOR, --editor EDITOR
+                        Use the specified text editor.
+
+
+
 .. _command_config_get:
 
 config get
@@ -339,3 +355,4 @@ Example:
 
         $ firewheel version
         2.6.0
+
