@@ -93,8 +93,11 @@ def install_repo(repo):
         repo (dict): A dictionary object which can be added as a new FIREWHEEL repository.
     """
     repo_db = RepositoryDb()
-    repo_db.add_repository(repo)
-    Console().print("[green]Repository successfully installed!")
+    ret = repo_db.add_repository(repo)
+    if ret:
+        Console().print("[green]Repository successfully installed!")
+    else:
+        Console().print("[yellow]Duplicate repositories cannot be installed!")
 
 
 def run_install_script(repo, insecure):

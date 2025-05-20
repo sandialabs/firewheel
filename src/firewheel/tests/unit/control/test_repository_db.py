@@ -41,6 +41,9 @@ def repository_db():
         db_filename="test_repositories.json",
     )
     yield repository_db
+    # Ensure all repositories are removed during teardown
+    for repo in repository_db.list_repositories():
+        repository_db.delete_repository(repo)
 
 
 @pytest.fixture
@@ -92,7 +95,7 @@ class TestRepositoryDb:
         assert location.exists() is False
 
     def test_add_repository(self, repository_db, repo_entry):
-        repository_db.add_repository(repo_entry)
+        assert repository_db.add_repository(repo_entry) == 1
         repo_list = list(repository_db.list_repositories())
         assert self._entry_in_repo_list(repo_entry, repo_list)
 
@@ -120,8 +123,8 @@ class TestRepositoryDb:
 
     def test_duplicate_repository(self, repository_db, repo_entry):
         orig_entry_count = len(list(repository_db.list_repositories()))
-        repository_db.add_repository(repo_entry)
-        repository_db.add_repository(repo_entry)
+        assert repository_db.add_repository(repo_entry) == 1
+        assert repository_db.add_repository(repo_entry) == 0
         repo_list = list(repository_db.list_repositories())
         assert self._entry_in_repo_list(repo_entry, repo_list)
         # The entry should only be added once
