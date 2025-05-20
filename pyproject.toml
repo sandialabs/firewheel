@@ -70,7 +70,7 @@ dependencies = [
     "PyYAML<=6.0.2",
     "qemu.qmp==0.0.3",
     "requests==2.32.3",
-    "rich>=13.6.0,<13.10",
+    "rich>=13.6.0,<14.1",
 ]
 
 [project.optional-dependencies]
