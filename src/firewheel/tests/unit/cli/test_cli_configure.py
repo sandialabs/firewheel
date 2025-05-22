@@ -128,6 +128,23 @@ class CliConfigureTestCase(unittest.TestCase):
         self.assertEqual(self.old_config, test_config)
 
     @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_edit_param_invalid(self, mock_stdout):
+        args = "-e asdf"
+        self.cli.do_edit(args)
+
+        msg = "Error: Failed to open FIREWHEEL configuration with"
+        self.assertIn(msg, mock_stdout.getvalue())
+
+    @unittest.mock.patch.dict(os.environ, {'EDITOR': '', 'VISUAL': ''})
+    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_edit_none(self, mock_stdout):
+        args = ""
+        self.cli.do_edit(args)
+
+        msg = "Edit the FIREWHEEL configuration"
+        self.assertIn(msg, mock_stdout.getvalue())
+
+    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_emptyline(self, mock_stdout):
         # Test the configuration from initialization
         cli = ConfigureFirewheel()
@@ -158,6 +175,13 @@ class CliConfigureTestCase(unittest.TestCase):
         self.cli.help_set()
 
         msg = "Set a FIREWHEEL configuration."
+        self.assertIn(msg, mock_stdout.getvalue())
+
+    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_help_edit(self, mock_stdout):
+        self.cli.help_edit()
+
+        msg = "Edit the FIREWHEEL configuration"
         self.assertIn(msg, mock_stdout.getvalue())
 
     @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)

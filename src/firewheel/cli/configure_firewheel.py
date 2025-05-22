@@ -117,7 +117,7 @@ class ConfigureFirewheel(cmd.Cmd):
         # Attempt to open the file with the chosen editor
         try:
             subprocess.run([editor, Config(writable=True).config_path], check=True)
-        except subprocess.CalledProcessError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             console.print(
                 f"Error: Failed to open FIREWHEEL configuration with '{editor}'.\n",
                 style="bold red",
