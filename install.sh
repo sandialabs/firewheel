@@ -260,7 +260,6 @@ function install_firewheel_development() {
         # In this case, we do not use the "mcs" optional dependencies as
         # the user is using the source code version of these model components, rather
         # than the Python package installed repositories.
-        ${PYTHON_BIN} -m pip install ${PIP_ARGS} pre-commit tox
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${FIREWHEEL_ROOT_DIR}/[dev]
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_base
         ${PYTHON_BIN} -m pip install ${PIP_ARGS} -e ${MC_DIR}/firewheel_repo_linux
