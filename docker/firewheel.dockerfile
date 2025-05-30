@@ -82,6 +82,7 @@ RUN bash -c "source /fwpy/bin/activate  && \
     firewheel config set -s minimega.files_dir ${MM_FILEPATH} && \
     firewheel config set -s python.venv /fwpy && \
     firewheel config set -s python.bin python3 && \
+    firewheel config set -s grpc.hostname ${GRPC_HOSTNAME} && \
     firewheel config set -s logging.root_dir ${LOGGING_ROOT_DIR}" \
     || { echo "Firewheel configuration failed"; exit 1; }
 

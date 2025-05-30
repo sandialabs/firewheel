@@ -46,7 +46,6 @@ firewheel config set -s cluster.control "$HN" &>/dev/null
 firewheel config set -s cluster.compute "" &>/dev/null
 firewheel config set -s cluster.compute "$HN" &>/dev/null
 firewheel config set -s discovery.hostname localhost &>/dev/null
-firewheel config set -s grpc.hostname localhost &>/dev/null
 firewheel config set -s minimega.use_gre True
 
 firewheel init &>/dev/null
