@@ -32,7 +32,7 @@ export HOME=/root
 
 HN="$(hostname)"
 
-FILEPATH="/tmp/minimega/files"
+FILEPATH="$(firewheel config get minimega.files_dir)"
 mkdir -p $FILEPATH
 
 grn "Starting minimega...       "
@@ -47,7 +47,6 @@ firewheel config set -s cluster.compute "$HN" &>/dev/null
 firewheel config set -s discovery.hostname localhost &>/dev/null
 firewheel config set -s grpc.hostname localhost &>/dev/null
 firewheel config set -s minimega.use_gre True
-firewheel config set -s minimega.files_dir $FILEPATH
 
 firewheel init &>/dev/null
 firewheel sync &>/dev/null
