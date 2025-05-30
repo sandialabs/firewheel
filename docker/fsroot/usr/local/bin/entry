@@ -15,7 +15,7 @@ function yl() {
 mkdir /var/run/sshd
 
 # Start the SSH server
-/usr/sbin/sshd
+/usr/sbin/sshd -E /var/log/auth.log
 ssh-keygen -f ~/.ssh/id_rsa -N "" &>/dev/null
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 if [ -e ~/.ssh/config ];
@@ -25,6 +25,7 @@ else
     cat << EOF > ~/.ssh/config
 Host *
     StrictHostKeyChecking no
+    Port 2222
 EOF
 fi
 

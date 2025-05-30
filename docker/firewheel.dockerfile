@@ -95,6 +95,9 @@ RUN bash -c "source /fwpy/bin/activate  && \
 
 RUN firewheel repository install -s -i || { echo "Repository installation failed"; exit 1; }
 
+# Switch SSHD to use 2222 to prevent conflicts with host system
+RUN echo "Port 2222" >> /etc/ssh/sshd_config
+
 RUN cp /usr/bin/sudo /usr/bin/sudo-old && \
     cp /usr/bin/chgrp /usr/bin/chgrp-old
 
