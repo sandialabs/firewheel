@@ -49,12 +49,8 @@ class minimegaAPI:  # noqa: N801
         self.mm_base = mm_base
         self.mm_socket = os.path.join(self.mm_base, "minimega")
 
-        try:
-            namespace = config["minimega"]["namespace"]
-        except KeyError:
+        if (namespace := config["minimega"].get("namespace")) is None:
             self.log.warning("minimega namespace not set, using default")
-            namespace = None
-
         if not os.path.exists(self.mm_socket):
             self.log.error("minimega socket does not exist at: %s", self.mm_socket)
             raise RuntimeError(f"minimega socket does not exist at: {self.mm_socket}")
