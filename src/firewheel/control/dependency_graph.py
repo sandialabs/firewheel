@@ -219,7 +219,7 @@ class DependencyGraph:
                     {"id": <id>, "type": <"entity" or "constraint">},
                     ...
                 ],
-                "links": [
+                "edges": [
                     {"source": <id>, "target": <id>},
                     ...
                 ],
@@ -228,13 +228,13 @@ class DependencyGraph:
                 "multigraph": False
             }
         """
-        data = json_graph.node_link_data(self.dg)
+        data = json_graph.node_link_data(self.dg, edges="edges")
 
         nodes = {}
         for node in data["nodes"]:
             nodes[node["id"]] = node
 
-        for edge in data["links"]:
+        for edge in data["edges"]:
             edge["source"] = nodes[edge["source"]]["id"]
             edge["target"] = nodes[edge["target"]]["id"]
 
