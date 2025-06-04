@@ -16,6 +16,13 @@ Configuration Options
 The main configuration options which must change are modified during installation with ``install.sh``.
 Here are all configuration options which are available to be changed.
 
+.. _config_ansible:
+
+``ansible``
+===========
+This setting is a `YAML dictionary <https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html#yaml-basics>`_ which enables users to control cache settings which can be used to download unpackaged model component dependencies (e.g., VM resources, images, etc.).
+Users are able to provide information expected by each Ansible cache method as defined in :ref:`mc_install_ansible`.
+
 .. _config_attribute_defaults:
 
 ``attribute_defaults``
