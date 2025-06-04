@@ -39,7 +39,7 @@ MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_d
 MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
 MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
 $MINIMEGA_BIN -e clear all
-$MINIMEGA_BIN -e namespace firewheel
+$MINIMEGA_BIN -e namespace "$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.namespace)"
 $MINIMEGA_BIN -e ns add-hosts localhost
 $MINIMEGA_BIN -e ns queueing true
 
@@ -65,6 +65,22 @@ if ! /usr/bin/pgrep -f "$FIREWHEEL_PYTHON $FIREWHEEL_GRPC_SERVER" >/dev/null; th
 fi
 
 DONE
+
+
+RUN Shell ON compute
+MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_dir)"
+MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
+MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
+
+# Ensure the specified namespace is created and that localhost is added
+namespace="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.namespace)"
+if [ $($MINIMEGA_BIN -e .filter namespace="$namespace" .filter active=true .headers false namespace | wc -l) -eq 0 ]; then
+    # We were not in the specified namespace yet
+    $MINIMEGA_BIN -e namespace "$namespace"
+fi
+$MINIMEGA_BIN -e ns add-hosts localhost
+DONE
+
 
 RUN Python ON control
 #!/usr/bin/env python
