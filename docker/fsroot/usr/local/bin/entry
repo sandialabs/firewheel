@@ -11,6 +11,9 @@ function yl() {
     echo -e "\033[33;1m" "$@" "\033[m"
 }
 
+
+HN="$(hostname)"
+
 # Let the SSH server run without systemd
 mkdir /var/run/sshd
 
@@ -23,15 +26,13 @@ then
     yl "SSH config already existed, not modifying it";
 else
     cat << EOF > ~/.ssh/config
-Host *
+Host $HN
     StrictHostKeyChecking no
     Port 2222
 EOF
 fi
 
 export HOME=/root
-
-HN="$(hostname)"
 
 FILEPATH="$(firewheel config get minimega.files_dir)"
 mkdir -p $FILEPATH
