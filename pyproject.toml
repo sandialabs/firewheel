@@ -56,7 +56,7 @@ dependencies = [
     "minimega==2.9",
     "ClusterShell<=1.9.3",
     "colorama<=0.4.6",
-    "coverage<=7.7.1",
+    "coverage<=7.8.0",
     "grpcio>=1.63.0,<=1.68.1",
     "grpcio-tools>=1.63.0,<=1.68.1",
     "importlib_metadata>=7.0.0,<=8.6.1",
