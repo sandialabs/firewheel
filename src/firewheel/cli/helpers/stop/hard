@@ -161,7 +161,7 @@ sudo systemctl restart minimega
 MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_dir)"
 MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
 MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
-$MINIMEGA_BIN -e clear namespace firewheel
+$MINIMEGA_BIN -e clear namespace "$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.namespace)"
 DONE
 
 RUN Helpers ON control

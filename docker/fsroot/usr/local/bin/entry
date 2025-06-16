@@ -11,11 +11,14 @@ function yl() {
     echo -e "\033[33;1m" "$@" "\033[m"
 }
 
+
+HN="$(hostname)"
+
 # Let the SSH server run without systemd
 mkdir /var/run/sshd
 
 # Start the SSH server
-/usr/sbin/sshd
+/usr/sbin/sshd -E /var/log/auth.log
 ssh-keygen -f ~/.ssh/id_rsa -N "" &>/dev/null
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 if [ -e ~/.ssh/config ];
@@ -23,16 +26,15 @@ then
     yl "SSH config already existed, not modifying it";
 else
     cat << EOF > ~/.ssh/config
-Host *
+Host $HN
     StrictHostKeyChecking no
+    Port 2222
 EOF
 fi
 
 export HOME=/root
 
-HN="$(hostname)"
-
-FILEPATH="/tmp/minimega/files"
+FILEPATH="$(firewheel config get minimega.files_dir)"
 mkdir -p $FILEPATH
 
 grn "Starting minimega...       "
@@ -45,9 +47,7 @@ firewheel config set -s cluster.control "$HN" &>/dev/null
 firewheel config set -s cluster.compute "" &>/dev/null
 firewheel config set -s cluster.compute "$HN" &>/dev/null
 firewheel config set -s discovery.hostname localhost &>/dev/null
-firewheel config set -s grpc.hostname localhost &>/dev/null
 firewheel config set -s minimega.use_gre True
-firewheel config set -s minimega.files_dir $FILEPATH
 
 firewheel init &>/dev/null
 firewheel sync &>/dev/null
