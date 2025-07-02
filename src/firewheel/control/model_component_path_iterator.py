@@ -1,3 +1,4 @@
+from typing import Set, Iterator
 from pathlib import Path
 
 from firewheel.lib.log import Log
@@ -10,7 +11,7 @@ class ModelComponentPathIterator:
     fully qualified paths.
     """
 
-    def __init__(self, repositories):
+    def __init__(self, repositories) -> None:
         """
         Create an iterator to find model components among a set of MC repos.
 
@@ -18,12 +19,12 @@ class ModelComponentPathIterator:
             repositories (list_iterator): The list of repositories.
         """
         self.log = Log(name="ModelComponentPathIterator").log
-        self._mc_paths = set()
+        self._mc_paths: Set[Path] = set()
         for repo in repositories:
             repo_mc_paths = self.walk_repository_for_model_component_paths(repo["path"])
             self._mc_paths.update(repo_mc_paths)
 
-    def walk_repository_for_model_component_paths(self, path):
+    def walk_repository_for_model_component_paths(self, path: str) -> Iterator[Path]:
         """
         Search each repository for model component paths.
 
@@ -31,7 +32,7 @@ class ModelComponentPathIterator:
             path (str): Path of the repository.
 
         Returns:
-            iterator: An iterator providing paths to all model
+            Iterator[Path]: An iterator providing paths to all model
                 components contained within the repository.
         """
         repo_path = Path(path)
@@ -42,7 +43,7 @@ class ModelComponentPathIterator:
             return iter(())
         return self._recurse_repository(repo_path)
 
-    def _recurse_repository(self, path):
+    def _recurse_repository(self, path: Path) -> Iterator[Path]:
         """
         Recursively search directories for model components.
 
@@ -54,7 +55,7 @@ class ModelComponentPathIterator:
             path (pathlib.Path): Path of the repository.
 
         Yields:
-            pathlib.Path: An absolute path to the next model component
+            Path: An absolute path to the next model component
                 found by the iterator.
         """
         if self._is_path_model_component(path):
@@ -63,7 +64,7 @@ class ModelComponentPathIterator:
             for subdirectory in filter(lambda path: path.is_dir(), path.iterdir()):
                 yield from self._recurse_repository(subdirectory)
 
-    def _is_path_model_component(self, path):
+    def _is_path_model_component(self, path: Path) -> bool:
         """
         Check to see if the passed-in directory is a model component. The condition for being
         a model component in this context is if a ``MANIFEST`` file exists.
@@ -80,7 +81,7 @@ class ModelComponentPathIterator:
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> str:
         try:
             return str(self._mc_paths.pop())
         except KeyError:

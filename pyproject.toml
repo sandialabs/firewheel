@@ -144,25 +144,38 @@ module = [
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = "firewheel.lib.grpc.*"
+module = [
+  "firewheel.lib.grpc.*",
+  "firewheel.lib.discovery.*",
+  "firewheel.lib.minimega.api",
+  "firewheel.lib.minimega.file_store",
+  "firewheel.lib.utilities",
+]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "firewheel.lib.discovery.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "firewheel.lib.minimega.api"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "firewheel.control.*"
+module = [
+  "firewheel.control",
+  "firewheel.control.utils.*",
+  "firewheel.control.dependency_graph",
+  "firewheel.control.experiment_graph",
+  "firewheel.control.image_store",
+  "firewheel.control.model_component",
+  "firewheel.control.model_component_dependency_graph",
+  "firewheel.control.model_component_exceptions",
+  "firewheel.control.model_component_install",
+  "firewheel.control.model_component_iterator",
+  "firewheel.control.model_component_path_iterator",
+  "firewheel.control.model_component_manager",
+  "firewheel.control.repository_db",
+]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
     "firewheel.tests.functional.*",
     "firewheel.tests.unit.*",
+    "firewheel.tests.conftest",
 ]
 ignore_errors = true
 
