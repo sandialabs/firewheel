@@ -15,6 +15,7 @@ ARG MM_DEGREE=1
 ARG MM_CONTEXT=firewheel
 ARG MM_FORCE=true
 ARG MM_LOGLEVEL=debug
+ARG MM_LOGFILE=/var/log/minimega.log
 
 ## FIREWHEEL Arguments
 ARG GRPC_HOSTNAME=localhost
@@ -73,12 +74,15 @@ RUN bash -c "python3.10 -m venv /fwpy \
 
 # Configure Firewheel
 RUN bash -c "source /fwpy/bin/activate  && \
-    mkdir -p /var/log/minimega && \
+    mkdir -p ${LOGGING_ROOT_DIR} && \
+    mkdir -p ${MM_FILEPATH} && \
+    mkdir -p ${OUTPUT_DIR}/vm_resource_logs && \
+    mkdir -p ${OUTPUT_DIR}/transfers && \
     mkdir -p ${OUTPUT_DIR} && \
     firewheel config set -s system.default_group ${USER} && \
     firewheel config set -s minimega.experiment_interface ${EXPERIMENT_INTERFACE} && \
     firewheel config set -s system.default_output_dir ${OUTPUT_DIR} && \
-    firewheel config set -s minimega.base_dir /tmp/minimega && \
+    firewheel config set -s minimega.base_dir ${MM_BASE} && \
     firewheel config set -s minimega.files_dir ${MM_FILEPATH} && \
     firewheel config set -s python.venv /fwpy && \
     firewheel config set -s python.bin python3 && \
