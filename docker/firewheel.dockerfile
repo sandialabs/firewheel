@@ -49,7 +49,7 @@ RUN localedef -i en_US -f UTF-8 en_US.UTF-8 && \
 WORKDIR /
 
 # Install discovery
-RUN wget https://github.com/mitchnegus/minimega-discovery/releases/download/firewheel-debian_faed761/discovery.deb && \
+RUN wget https://github.com/sandia-minimega/discovery/releases/download/v0.1.0/discovery.deb && \
     dpkg -i discovery.deb && \
     rm discovery.deb && \
     cd /usr/local/bin && for x in /opt/discovery/bin/*; do echo $x ; ln -s $x .; done \
