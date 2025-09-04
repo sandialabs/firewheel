@@ -68,18 +68,18 @@ class Shell(AbstractExecutor):
             }
 
             # Concatenate minimega environment variables
-            cache_file = " ".join(
+            command = " ".join(
                 f"{env}={os.environ[env]}" for env in minimega_vars if env in os.environ
             )
 
-            cache_file += (
+            command += (
                 f" FIREWHEEL={fw_path} "
                 f"FIREWHEEL_PYTHON={sys.executable} "
                 f"FIREWHEEL_GRPC_SERVER={grpc_path} "
                 f"{cache_file}"
             )
-            cache_file = cache_file.strip()
-            return hosts.run_command(cache_file, session, arguments)
+            command = command.strip()
+            return hosts.run_command(command, session, arguments)
         except IOError as exp:
             print(f"Error: Local I/O error: {exp}")
             self.log.exception("Local I/O error.")
