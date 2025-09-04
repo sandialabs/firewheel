@@ -1,3 +1,4 @@
+import os
 import sys
 from typing import Dict, List, Optional
 from decimal import Decimal
@@ -48,12 +49,36 @@ class Shell(AbstractExecutor):
             hosts = HostAccessor(self.host_list_path)
             fw_path = firewheel.cli.firewheel_cli.__file__
             grpc_path = firewheel.lib.grpc.firewheel_grpc_server.__file__
-            cache_file = (
-                f"FIREWHEEL={fw_path} "
+
+            # We should also pass any environment variables needed for minimega
+            minimega_vars = {
+                "MM_BASE",
+                "MM_FILEPATH",
+                "MM_BROADCAST",
+                "MM_VLANRANGE",
+                "MM_PORT",
+                "MM_DEGREE",
+                "MM_CONTEXT",
+                "MM_LOGLEVEL",
+                "MM_LOGFILE",
+                "MM_FORCE",
+                "MM_RECOVER",
+                "MM_CGROUP",
+                "MM_APPEND"
+            }
+
+            # Concatenate minimega environment variables
+            cache_file = " ".join(
+                f"{env}={os.environ[env]}" for env in minimega_vars if env in os.environ
+            )
+
+            cache_file += (
+                f" FIREWHEEL={fw_path} "
                 f"FIREWHEEL_PYTHON={sys.executable} "
                 f"FIREWHEEL_GRPC_SERVER={grpc_path} "
                 f"{cache_file}"
             )
+            cache_file = cache_file.strip()
             return hosts.run_command(cache_file, session, arguments)
         except IOError as exp:
             print(f"Error: Local I/O error: {exp}")
