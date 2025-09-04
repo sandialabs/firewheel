@@ -89,15 +89,15 @@ variables:
     - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${LINUX_BIN_REPO_PATH} /tmp/linux
     - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
     - SITE_PACKAGES=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-    - mv /tmp/ntp/ntp/ntp-trusty-server.tar "$SITE_PACKAGES/firewheel_repo_ntp/ntp/vm_resources/"
-    - mv /tmp/dns/dns_objects/vm_resources/bind9_xenial_debs.tgz "$SITE_PACKAGES/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
-    - mv /tmp/vyos/vyos-1.1.8/vyos-1.1.8.qc2.xz "$SITE_PACKAGES/firewheel_repo_vyos/vyos-1.1.8/"
-    - mv /tmp/linux/linux/vm_resources/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/linux/vm_resources"
-    - mv /tmp/linux/ubuntu/ubuntu/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
-    - mv /tmp/linux/ubuntu/bionic/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/bionic/images/"
-    - mv /tmp/linux/ubuntu/jammy/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/images/"
-    - mv /tmp/linux/ubuntu/jammy/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
-    - mv /tmp/linux/ubuntu/trusty/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/images/"
-    - mv /tmp/linux/ubuntu/trusty/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
-    - mv /tmp/linux/ubuntu/xenial/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/xenial/images/"
+    - mv /tmp/ntp/ntp.time_server/vm_resources/ntp-trusty-server.tar "$SITE_PACKAGES/firewheel_repo_ntp/ntp/vm_resources/"
+    - mv /tmp/dns/dns.dns_objects/vm_resources/bind9_xenial_debs.tgz "$SITE_PACKAGES/firewheel_repo_dns/dns_objects/vm_resources/bind9_xenial_debs.tgz"
+    - mv /tmp/vyos/vyos.helium118/vyos-1.1.8.qc2.xz "$SITE_PACKAGES/firewheel_repo_vyos/vyos-1.1.8/"
+    - mv /tmp/linux/linux.base_objects/vm_resources/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/linux/vm_resources"
+    - mv /tmp/linux/linux.ubuntu/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/ubuntu/vm_resources/debs/"
+    - mv /tmp/linux/linux.ubuntu1804/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/bionic/images/"
+    - mv /tmp/linux/linux.ubuntu2204/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/images/"
+    - mv /tmp/linux/linux.ubuntu2204/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/jammy/vm_resources/debs/"
+    - mv /tmp/linux/linux.ubuntu1404/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/images/"
+    - mv /tmp/linux/linux.ubuntu1404/vm_resources/debs/*.tgz "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/trusty/vm_resources/debs/"
+    - mv /tmp/linux/linux.ubuntu1604/images/ubuntu* "$SITE_PACKAGES/firewheel_repo_linux/ubuntu/xenial/images/"
     - pushd /tmp/utilities; cp -r --parents * $FIREWHEEL_ROOT_DIR/model_components/firewheel_repo_utilities/; popd;
