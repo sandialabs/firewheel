@@ -1,0 +1,50 @@
+###################################################################################################
+# This set of ansible tasks will verify that all required files have been collected and
+# have a proper checksum (if needed). Additionally, it will create an install flag for the
+# model component and exit if all required files have been verified.
+# This set of tasks will run numerous times during the playbook in an attempt to "fail fast"
+# by ending the playbook if all requirements have been met during an intermediate step,
+# for example, retrieved files from a cache.
+###################################################################################################
+- name: Initialize a variable to track file status
+  ansible.builtin.set_fact:
+    all_files_valid: true
+
+- name: Inspecting `required_files`
+  ansible.builtin.stat:
+    path: "{{ item.destination }}"
+    checksum_algorithm: "{{ item.checksum_algorithm | default(item.checksum_algo | default('sha1')) }}"
+    get_checksum: true
+  register: required_files_check
+  loop: "{{ required_files }}"
+
+- name: Verifying checksums for required files (if needed)
+  ansible.builtin.set_fact:
+    all_files_valid: false
+  when:
+    - item.stat.exists
+    - item.item.checksum is defined
+    - item.stat.checksum != item.item.checksum
+  loop: "{{ required_files_check.results }}"
+  loop_control:
+    index_var: index
+
+- name: Identify missing required files
+  ansible.builtin.set_fact:
+    all_files_valid: false
+  when:
+    - not required_files_check.results[index].stat.exists
+  loop: "{{ required_files }}"
+  loop_control:
+    index_var: index
+
+- name: Create installation flag if all required files exist
+  ansible.builtin.file:
+    path: "{{ install_flag }}"
+    state: touch
+    mode: "660"
+  when: all_files_valid
+
+- name: Exit successfully if there are no issues with required files
+  ansible.builtin.meta: end_play
+  when: all_files_valid

@@ -1,0 +1,93 @@
+---
+###################################################################################################
+# Playbook: Install Model Component
+# Description:
+#   This Ansible playbook is designed to install extra dependencies for a model component
+#   such as file retrieval or data processing. It does this by first checking if the necessary
+#   files are available via a cache mechanism, including Git, S3, and a standard file server
+#   (via a URL). If a cache is not available, than it provides a naive check for online access
+#   and, if needed executes the tasks that are provided in the model component
+#   ``INSTALL/tasks.yml`` file.
+#
+#   The playbook performs the following steps:
+#   1. Imports variables from the specified model component.
+#   2. Attempts to retrieve required files from cache using the 'firewheel' role.
+#   3. Checks the online status of the system by pinging 8.8.8.8.
+#   4. If all cache retrieval methods fail and the system is offline, it raises a failure message.
+#   5. If the system is online, it runs the model component-provided tasks.
+#   6. Performs a final check for required files.
+###################################################################################################
+- name: "Install Model Component: {{ mc_name }}"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Import variables from model component
+      ansible.builtin.include_vars:
+        file: "{{ vars_path }}"
+
+    - name: Checking for required files
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: check_and_end.yml
+
+    - name: Create all destination directories
+      ansible.builtin.file:
+        path: "{{ item.destination | dirname }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ required_files }}"
+
+    - name: Checking git cache
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: git.yml
+
+    - name: Checking s3 cache
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: s3.yml
+      when:
+        - (git_clone_result is not defined) or (git_clone_result is failed)
+
+    - name: Checking URL cache
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: url.yml
+      when:
+        - (git_clone_result is not defined) or (git_clone_result is failed)
+        - (s3_download_result is not defined) or (s3_download_result is failed)
+
+    - name: Checking for required files
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: check_and_end.yml
+      when: |
+        (git_clone_result is defined and git_clone_result is succeeded) or
+        (s3_download_result is defined and s3_download_result is succeeded) or
+        (url_download_result is defined and url_download_result is succeeded)
+
+    - name: Check if user is online
+      ansible.builtin.command: ping -c 1 8.8.8.8
+      register: ping_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: Final failure message if all attempts fail
+      ansible.builtin.fail:
+        msg: "All cache file methods have failed and system does not appear to be online. Please provide valid cache information."
+      when: (ping_result.rc | default(0)) != 0
+
+    # If we don't have any cached files and are online
+    # then we need to run the MC Install tasks
+    - name: "Include tasks (if needed) for: {{ mc_name }}"
+      ansible.builtin.include_tasks: "{{ tasks_path }}"
+      when: (ping_result.rc | default(1)) == 0
+
+    - name: Checking for required files
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: check_and_end.yml
+
+    - name: Fail if any cached file destination still does not exist
+      ansible.builtin.fail:
+        msg: "Failed to correctly install this model component!"

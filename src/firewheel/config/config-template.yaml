@@ -1,3 +1,4 @@
+ansible: {}
 attribute_defaults: {}
 cli:
     cache_dir: fw_cli

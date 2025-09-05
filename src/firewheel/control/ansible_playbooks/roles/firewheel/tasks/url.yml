@@ -1,0 +1,51 @@
+---
+###################################################################################################
+# This playbook will collect cached files from a given URL.
+# It uses https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html.
+#
+# If you are using an username or password token, you can specify it in the URL
+# For example: https://user:password@server.com/url/cache/path/file.txt
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# file_servers:
+#   - url: "http://example.com"
+#     use_proxy: False
+#     validate_certs: False
+#     cache_paths:
+#       - "some/intermediate/path"
+#       - "another/path"
+#   - url: "https://user:password@server.com"
+#     use_proxy: True
+#     validate_certs: False
+#     cache_paths:
+#       - "secondpath/intermediate/path"
+###################################################################################################
+- name: Attempt to pull from URL cache
+  block:
+    - name: Check if URL information is provided
+      ansible.builtin.assert:
+        that: (file_servers is defined and file_servers | length > 0)
+        fail_msg: "No file server information provided, continuing..."
+        success_msg: "Found file server configuration"
+        quiet: true
+      register: url_cache
+
+    - name: Iterate over each URL/path
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: url_pull_loop.yml
+      loop: "{{ file_servers }}"
+      loop_control:
+        loop_var: server
+      vars:
+        firewheel_url: "{{ server.url }}"
+        firewheel_cache_path: "{{ server.use_proxy }}"
+        firewheel_validate_certs: "{{ server.validate_certs | default(true) }}"
+        firewheel_use_proxy: "{{ server.use_proxy | default(true) }}"
+
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No file server information provided"
+      when: url_cache is failed

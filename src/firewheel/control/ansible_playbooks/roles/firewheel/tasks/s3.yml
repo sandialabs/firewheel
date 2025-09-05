@@ -1,0 +1,50 @@
+---
+###################################################################################################
+# This playbook will loop through all values in the `required_files` variable
+# and collected those files from an S3 instance.
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# s3_endpoints:
+#   - s3_endpoint: "https://s3.us-east-1.amazonaws.com"
+#     aws_access_key_id: "SOME KEY ID"
+#     aws_secret_access_key: "SOME SECRET KEY"
+#     buckets:
+#       - "firewheel_bucket1"
+#       - "firewheel_bucket2"
+#   - s3_endpoint: "https://custom-s3-endpoint:8000"
+#     aws_access_key_id: "SOME KEY ID"
+#     aws_secret_access_key: "SOME SECRET KEY"
+#     buckets:
+#       - "firewheel_bucket3"
+###################################################################################################
+
+
+- name: Attempt to use S3 cache
+  block:
+    - name: Check if S3 information is provided
+      ansible.builtin.assert:
+        that:
+          - (s3_endpoints is defined and s3_endpoints | length > 0)
+        success_msg: "Found S3 endpoint"
+        quiet: true
+      register: s3_cache
+
+    - name: Iterate over each S3 endpoint
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: s3_pull_loop.yml
+      loop: "{{ s3_endpoints }}"
+      loop_control:
+        loop_var: s3
+      vars:
+        firewheel_s3_endpoint: "{{ s3.s3_endpoint }}"
+        firewheel_aws_access_key_id: "{{ s3.aws_access_key_id }}"
+        firewheel_aws_secret_access_key: "{{ s3.aws_secret_access_key }}"
+        firewheel_s3_bucket: "{{ s3.bucket }}"
+
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No S3 Cache information provided"
+      when: s3_cache is failed

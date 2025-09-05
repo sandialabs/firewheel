@@ -1,0 +1,50 @@
+---
+###################################################################################################
+# This playbook will clone a Git repository and move specified cached files
+# If you are using an access token, you can specify it in the `server_url`.
+# For example: https://<token>@github.com/user/repo.git
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# git_servers:
+#   - server_url: "https://github.com"
+#     repositories:
+#       - path: "firewheel/mc_repo1"
+#       - path: "firewheel/mc_repo2"
+#         branch: "develop"
+#   - server_url: "ssh://git@gitlab.com"
+#     repositories:
+#       - path: "emulytics/firewheel/mc_repo3"
+#         branch: "feature-branch"
+#   - server_url: "https://user:ACCESS-TOKEN@github.com/"
+#     repositories:
+#       - path: "firewheel/mc_repo4"
+###################################################################################################
+
+- name: Attempt to use Git cache
+  block:
+    - name: Check if Git servers information is provided
+      ansible.builtin.assert:
+        that:
+          - (git_servers is defined and git_servers | length > 0)
+        success_msg: "Found git servers information, trying to pull caches"
+        fail_msg: "No git servers information provided, continuing..."
+        quiet: true
+      register: git_cache
+
+    - name: Clone each repository from each server
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: git_clone_loop.yml
+      loop: "{{ git_servers }}"
+      loop_control:
+        loop_var: git
+      vars:
+        firewheel_server_url: "{{ git.server_url }}"
+        firewheel_repo_path: "{{ git.path }}"
+        firewheel_repo_branch: "{{ git.branch | default('HEAD') }}"
+  rescue:
+    - name: Rescue the block
+      ansible.builtin.debug:
+        msg: "No Git Cache information provided"
+      when: git_cache is failed

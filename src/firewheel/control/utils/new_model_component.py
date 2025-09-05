@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import contextlib
+from pathlib import Path
 
 import yaml
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -179,7 +180,7 @@ class PythonModule:
 
         Args:
             other_vars (dict): Dictionary of additional template variables.
-        """  # noqa: T10
+        """
         if not other_vars:
             other_vars = {}
 
@@ -193,7 +194,7 @@ class PythonModule:
             # Use a comment.
             with open(self.module_path, "w", encoding="utf8") as module_file:
                 # pylint: disable=fixme
-                module_file.write("# TODO: Write code here.")  # noqa: T101
+                module_file.write("# TODO: Write code here.")
         else:
             # Use a template.
             template = self.jinja_env.get_template(self.module_template)
@@ -258,14 +259,15 @@ class ModelComponentGenerator:
         self.readme_template = "README.rst.template"
         self.readme_filename = "README.rst"
 
-        self.install_template = "INSTALL.template"
+        self.tasks_template = "tasks.yml.j2"
+        self.vars_template = "vars.yml.j2"
         self.install_filename = "INSTALL"
 
         self.plugin_module = None
         self.model_component_module = None
 
     @property
-    def name(self):  # noqa: DOC503
+    def name(self):
         """
         Name of the ModelComponent, appears in the MANIFEST.
 
@@ -818,16 +820,32 @@ class ModelComponentGenerator:
 
     def create_install(self):
         """
-        Create a INSTALL file. This is based on a template.
+        Create an INSTALL directory based on a template.
+        Also creates ``tasks.yml`` and ``vars.yml`` in the INSTALL directory.
+        Now this directory can be used to create Ansible-based scripts to install
+        unpackaged portions of the model component.
         """
-        template = self.jinja_env.get_template(self.install_template)
+        # Create the INSTALL directory if it doesn't exist
+        install_path = Path(self.install_path)
+        install_path.mkdir(parents=True, exist_ok=True)
+
+        tasks_template = self.jinja_env.get_template(self.tasks_template)
+        vars_template = self.jinja_env.get_template(self.vars_template)
         template_vars = {
             "mc_name": self.name,
         }
 
-        with open(self.install_path, "w", encoding="utf8") as readme_file:
-            template_stream = template.stream(template_vars)
-            template_stream.dump(readme_file)
+        # Create tasks.yml and vars.yml files
+        tasks_file_path = install_path / "tasks.yml"
+        vars_file_path = install_path / "vars.yml"
+
+        with tasks_file_path.open("w", encoding="utf8") as tasks_file:
+            template_stream = tasks_template.stream(template_vars)
+            template_stream.dump(tasks_file)
+
+        with vars_file_path.open("w", encoding="utf8") as vars_file:
+            template_stream = vars_template.stream(template_vars)
+            template_stream.dump(vars_file)
 
     def create_component(self, manifest_only=False):
         """
