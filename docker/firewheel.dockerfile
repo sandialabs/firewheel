@@ -76,9 +76,9 @@ RUN bash -c "python3.10 -m venv /fwpy \
 RUN bash -c "source /fwpy/bin/activate  && \
     mkdir -p ${LOGGING_ROOT_DIR} && \
     mkdir -p ${MM_FILEPATH} && \
+    mkdir -p ${OUTPUT_DIR} && \
     mkdir -p ${OUTPUT_DIR}/vm_resource_logs && \
     mkdir -p ${OUTPUT_DIR}/transfers && \
-    mkdir -p ${OUTPUT_DIR} && \
     firewheel config set -s system.default_group ${USER} && \
     firewheel config set -s minimega.experiment_interface ${EXPERIMENT_INTERFACE} && \
     firewheel config set -s system.default_output_dir ${OUTPUT_DIR} && \
