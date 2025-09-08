@@ -37,6 +37,16 @@ export HOME=/root
 FILEPATH="$(firewheel config get minimega.files_dir)"
 mkdir -p $FILEPATH
 
+# Verifying extra minimega environment variables
+if [[ -n "${MM_FILEPATH}" ]]; then
+    mkdir -p "${MM_FILEPATH}"
+    firewheel config set -s minimega.files_dir "${MM_FILEPATH}"
+fi
+
+if [[ -n "${MM_BASE}" ]]; then
+    firewheel config set -s minimega.base_dir "${MM_BASE}"
+fi
+
 grn "Starting minimega...       "
 /start-minimega.sh &>/dev/null
 gr "done"
