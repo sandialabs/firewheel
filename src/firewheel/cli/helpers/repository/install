@@ -116,18 +116,22 @@ def run_install_script(repo, insecure):
         bool: True if all MCs were installed successfully, False otherwise
     """
     console = Console()
-
+    failed = []
     for mc in ModelComponentIterator(iter([repo])):
         mci = ModelComponentInstall(mc)
 
         if insecure:
             success = mci.run_install_script(insecure=True)
             if not success:
-                return False
+                failed.append(mc.name)
         else:
             success = mci.run_install_script()
             if not success:
-                return False
+                failed.append(mc.name)
+
+    if failed:
+        console.print(f"[red]The following MC's failed to fully install in {repo['path']}: {failed}")
+        return False
 
     console.print(f"[green]All model components for {repo['path']} were installed or skipped!")
     return True
