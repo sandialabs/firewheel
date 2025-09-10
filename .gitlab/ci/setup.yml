@@ -84,7 +84,7 @@ variables:
 .provision_mcs:
   before_script:
     - |
-      sed -i "0,/ansible: {}/s|ansible: {}|ansible:\n    git_servers:\n      - repositories:\n          - path: \"${LINUX_BIN_REPO_PATH}\"\n          - path: \"${DNS_BIN_REPO_PATH}\"\n          - path: \"${VYOS_BIN_REPO_PATH}\"\n          - path: \"${NTP_BIN_REPO_PATH}\"\n          - path: \"${LAYER2_BIN_REPO_PATH}\"\n        server_url: \"https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}\"|" ./src/firewheel/firewheel.yaml
+      sed -i "0,/ansible: {}/s|ansible: {}|ansible:\n    git_servers:\n      - repositories:\n          - path: \"${LINUX_BIN_REPO_PATH}\"\n          - path: \"${DNS_BIN_REPO_PATH}\"\n          - path: \"${VYOS_BIN_REPO_PATH}\"\n          - path: \"${NTP_BIN_REPO_PATH}\"\n          - path: \"${LAYER2_BIN_REPO_PATH}\"\n        server_url: \"https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}\"|" $FIREWHEEL_ROOT_DIR/src/firewheel/firewheel.yaml
     - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${UTILITIES_BIN_REPO_PATH} /tmp/utilities
     - pushd /tmp/utilities; cp -r --parents * $FIREWHEEL_ROOT_DIR/model_components/firewheel_repo_utilities/; popd;
     - firewheel repository install -i -s
