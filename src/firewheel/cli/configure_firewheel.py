@@ -1,5 +1,6 @@
 import os
 import cmd
+import json
 import pprint
 import argparse
 import operator
@@ -142,6 +143,24 @@ class ConfigureFirewheel(cmd.Cmd):
         fw_config = Config(config_path=cmd_args.config_path)
         fw_config.generate_config_from_defaults()
 
+    def _argparse_check_json_type(self, json_string):
+        """
+        Parse a JSON string into a Python dictionary.
+
+        Args:
+            json_string (str): A string representation of a JSON object.
+
+        Returns:
+            dict: The parsed JSON object as a Python dictionary.
+
+        Raises:
+            argparse.ArgumentTypeError: If the input string is not a valid JSON.
+        """
+        try:
+            return json.loads(json_string.replace("'", ""))
+        except json.decoder.JSONDecodeError as exc:
+            raise argparse.ArgumentTypeError(f"Invalid JSON string: {json_string}\n\n") from exc
+
     def define_set_parser(self) -> argparse.ArgumentParser:
         """Create an :py:class:`argparse.ArgumentParser` for :ref:`command_config_set`.
 
@@ -163,6 +182,19 @@ class ConfigureFirewheel(cmd.Cmd):
             help="Add config from a file.",
         )
         group.add_argument(
+            "-j",
+            "--json",
+            type=self._argparse_check_json_type,
+            help=(
+                "Pass in a JSON string that can set/replace a subset of the configuration.\n"
+                "This should include the top-level config key as well as any sub-keys.\n"
+                "Any keys or sub-keys not present will not be impacted.\n"
+                "For example, to change the value for the config key ``logging.level``, you\n"
+                "can use the command:\n"
+                '``firewheel config set -j \'{"logging":{"level":"INFO"}}\'``.'
+            ),
+        )
+        group.add_argument(
             "-s",
             "--single",
             nargs="+",
@@ -176,6 +208,29 @@ class ConfigureFirewheel(cmd.Cmd):
             ),
         )
         return parser
+
+    def _update_nested_dict(self, original: dict, updates: dict) -> dict:
+        """
+        This function recursively updates the original dictionary with values
+        from the updates dictionary. If a key in the updates dictionary is a
+        nested dictionary, it will update the corresponding key in the original
+        dictionary without removing any existing keys that are not specified in updates.
+
+        Args:
+            original (dict): The original dictionary to be updated.
+            updates (dict): A dictionary containing the updates to apply.
+
+        Returns:
+            dict: The updated original dictionary.
+        """
+        for key, value in updates.items():
+            if isinstance(value, dict) and key in original:
+                # If the key exists and the value is a dictionary, recurse
+                self._update_nested_dict(original[key], value)
+            else:
+                # Update or add the key in the original dictionary
+                original[key] = value
+        return original
 
     def do_set(self, args: str) -> None:  # noqa: DOC502
         """Enable a user to set a particular FIREWHEEL configuration option.
@@ -208,6 +263,15 @@ class ConfigureFirewheel(cmd.Cmd):
             )
             fw_config = Config(writable=True)
             fw_config.resolve_set(key, value)
+            fw_config.write()
+
+        if cmd_args.json is not None:
+            value = cmd_args.json
+            self.log.debug("Setting the FIREWHEEL config value for `%s`", value)
+            fw_config = Config(writable=True)
+            curr_config = fw_config.get_config()
+            future_config = self._update_nested_dict(curr_config, value)
+            fw_config.set_config(future_config)
             fw_config.write()
 
     def define_get_parser(self) -> argparse.ArgumentParser:
@@ -310,6 +374,8 @@ class ConfigureFirewheel(cmd.Cmd):
                 for num, line in enumerate(help_list):
                     if line.startswith("  -") and help_list[num + 1].startswith("  -"):
                         clean_text += line + "\n"
+                    elif line.startswith("  -"):
+                        clean_text += "\n" + line
                     else:
                         clean_text += line
                     clean_text += "\n"

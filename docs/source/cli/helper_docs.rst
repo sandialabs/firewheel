@@ -725,16 +725,18 @@ The repository should be an existing directory on the filesystem.
 The path may be specified absolute or relative.
 If the path does not exist, an error message is printed.
 
-Some Model Components may provide an additional install script called ``INSTALL`` which can be executed to perform other setup steps (e.g. installing an extra python package or downloading an external VM resource).
-INSTALL scripts can be can be any executable file type as defined by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
+Some Model Components may provide an additional installation details which can be executed to perform other setup steps (e.g. installing an extra python package or downloading an external VM resource).
+This takes the form of either a ``INSTALL`` directory with a ``vars.yml`` and a ``tasks.yml`` that are Ansible tasks which can be executed.
+Alternatively, it can be a single ``INSTALL`` script that can be can be any executable file type as defined by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
 
 .. warning::
 
-    The execution of Model Component ``INSTALL`` scripts can be a **DANGEROUS** operation. Please ensure that you **fully trust** the repository developer prior to executing these scripts.
+    The execution of Model Component ``INSTALL`` scripts can be a **DANGEROUS** operation.
+    Please ensure that you **fully trust** the repository developer prior to executing these scripts.
 
 .. seealso::
 
-    See :ref:`mc_install` for more information on INSTALL scripts.
+    See :ref:`mc_install` for more information on ``INSTALL`` scripts.
 
 When installing a Model Component, users will have a variety of choices to select:
 
@@ -1508,4 +1510,5 @@ Example
 ``firewheel vm resume host.root.net bgp.root.net``
 
 ``firewheel vm resume --all``
+
 
