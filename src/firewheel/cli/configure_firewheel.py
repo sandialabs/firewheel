@@ -12,6 +12,7 @@ from rich.console import Console
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
+from firewheel.cli.utils import cli_output_theme
 
 
 class ConfigureFirewheel(cmd.Cmd):
@@ -22,6 +23,8 @@ class ConfigureFirewheel(cmd.Cmd):
     """
 
     doc_header = "Get or set the FIREWHEEL configuration using sub-commands:"
+    # Create a class-level console for consistent colored output
+    console = Console(theme=cli_output_theme)
 
     def __init__(self) -> None:
         """Initialize the :py:class:`cmd.Cmd` and the class logger.
@@ -100,9 +103,6 @@ class ConfigureFirewheel(cmd.Cmd):
         Args:
             args (str): A string of arguments passed in by the user.
         """
-        # Create a Console object for colored output
-        console = Console()
-
         # Get the parser for the reset command
         parser = self.define_edit_parser()
         cmd_args = self._handle_parsing(parser, args)
@@ -118,9 +118,9 @@ class ConfigureFirewheel(cmd.Cmd):
         try:
             subprocess.run([editor, Config(writable=True).config_path], check=True)
         except (FileNotFoundError, subprocess.CalledProcessError):
-            console.print(
+            self.console.print(
                 f"Error: Failed to open FIREWHEEL configuration with '{editor}'.\n",
-                style="bold red",
+                style="error",
             )
             self.help_edit()
             return
