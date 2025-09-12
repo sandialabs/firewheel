@@ -12,6 +12,7 @@ from rich.console import Console
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
+from firewheel.cli.utils import cli_output_theme
 
 
 class ConfigureFirewheel(cmd.Cmd):
@@ -22,6 +23,8 @@ class ConfigureFirewheel(cmd.Cmd):
     """
 
     doc_header = "Get or set the FIREWHEEL configuration using sub-commands:"
+    # Create a class-level console for consistent colored output
+    console = Console(theme=cli_output_theme)
 
     def __init__(self) -> None:
         """Initialize the :py:class:`cmd.Cmd` and the class logger.
@@ -100,9 +103,6 @@ class ConfigureFirewheel(cmd.Cmd):
         Args:
             args (str): A string of arguments passed in by the user.
         """
-        # Create a Console object for colored output
-        console = Console()
-
         # Get the parser for the reset command
         parser = self.define_edit_parser()
         cmd_args = self._handle_parsing(parser, args)
@@ -118,9 +118,9 @@ class ConfigureFirewheel(cmd.Cmd):
         try:
             subprocess.run([editor, Config(writable=True).config_path], check=True)
         except (FileNotFoundError, subprocess.CalledProcessError):
-            console.print(
+            self.console.print(
                 f"Error: Failed to open FIREWHEEL configuration with '{editor}'.\n",
-                style="bold red",
+                style="error",
             )
             self.help_edit()
             return
@@ -275,6 +275,22 @@ class ConfigureFirewheel(cmd.Cmd):
         else:
             parser.print_help()
 
+    def do_path(self, args: str = "") -> None:
+        """
+        Enable a user to learn the path to the FIREWHEEL configuration file.
+
+        Args:
+            args (str): A string of arguments which are passed in by the user.
+                For this method, the string should be empty.
+        """
+        if args:
+            self.console.print(
+                "Error: The `path` command does not accept arguments.", style="error"
+            )
+            self.help_path()
+        else:
+            print(Config().config_path)
+
     def emptyline(self) -> None:
         """Print help when a blank line is entered.
 
@@ -370,6 +386,18 @@ class ConfigureFirewheel(cmd.Cmd):
     def help_get(self) -> None:
         """Print help for the :py:meth:`do_get` sub-command."""
         print(self._help_get())
+
+    def _help_path(self) -> str:
+        """Help message for the :py:meth`do_path` sub-command.
+
+        Returns:
+            str: The help message.
+        """
+        return "Prints the path to the current FIREWHEEL configuration."
+
+    def help_path(self) -> None:
+        """Print help for the :py:meth:`do_path` sub-command."""
+        print(self._help_path())
 
     def _help_help(self) -> str:
         """Help message for the help sub-command.
