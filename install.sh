@@ -195,30 +195,6 @@ function check_deps() {
 }
 
 #######################################
-# Basic setup for upgrading the virtual envionment tools and
-# building the FIREWHEEL whl file.
-# Arguments:
-#     None
-# Globals:
-#     PIP_ARGS
-#     PYTHON_BIN
-#######################################
-function install_firewheel_generic() {
-    if ! ${PYTHON_BIN} -m pip install ${PIP_ARGS} build; then
-        err "FIREWHEEL setup failed to pip install 'build'."
-        err "Consult the pip error logs, and verify network connectivity. Aborting."
-        exit 1
-    fi
-
-    if ! ${PYTHON_BIN} -m build; then
-        err "FIREWHEEL setup failed to build the source distribution and wheel."
-        err "Consult the error logs, and verify network connectivity. Aborting."
-        exit 1
-    fi
-
-}
-
-#######################################
 # Installing the FIREWHEEL package with standard dependencies.
 # Arguments:
 #     None
@@ -251,7 +227,6 @@ function install_firewheel() {
 #######################################
 function install_firewheel_development() {
     local clone="$1"
-    install_firewheel_generic
 
     # Install the development version.
     if [[ $clone -eq 0 ]]; then
