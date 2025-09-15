@@ -11,6 +11,8 @@ on:
       - synchronize
       - labeled
       - unlabeled
+  # Allow reuse across the FIREWHEEL ecosystem
+  workflow_call:
 
 permissions:
   contents: read
