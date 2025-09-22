@@ -72,13 +72,26 @@ Rather than describing them here, we refer to the following places:
 * minimega settings are provided in both [start-minimega.sh](./start-minimega.sh) and [minimega](./fsroot/etc/default/minimega).
 * miniweb settings are provided in both [start-minimega.sh](./start-minimega.sh).
 
+Currently, the pre-built FIREWHEEL container contains several hard-coded options to work for *most* users.
 The minimega configuration values can be overwritten either by passing environment variables to Docker when starting the container or by binding a file to `/etc/default/minimega` in the container that contains updated values.
 
-> [!NOTE]
-> Currently, the FIREWHEEL configuration options are hard-coded to work with this configuration.
-> Flexibility in setting these values may be provided in a future release.
->  overwritten via Docker environment variables.
+Users can also add an additional layer to the docker container to help adjust these values as needed (see: [docker build variables](https://docs.docker.com/build/building/variables)).
+An example of how to do this is shown below:
 
+```docker
+# This new container enables users to build the container
+# with an alternative minimega files path
+FROM ghcr.io/sandialabs/firewheel:main AS firewheel
+
+# Take in an optional build argument
+ARG MM_FILEPATH=/tmp/minimega/files
+
+RUN echo -e "\nMM_FILEPATH=${MM_FILEPATH}" >> /etc/default/minimega
+
+RUN bash -c "source /fwpy/bin/activate  && \
+    mkdir -p ${MM_FILEPATH} \
+    firewheel config set -s minimega.files_dir ${MM_FILEPATH}"
+```
 
 ## Technical Details
 As with most docker containers, the default user is `root`.
@@ -89,11 +102,9 @@ To enable FIREWHEEL to work properly (without any modifications) the docker base
 These include:
 - `sudo` - and specifically `sudo systemctl`
 - `chgrp`
-- `scp`
-- `ssh`
 
 Therefore, we have created wrappers around these programs to adjust the behavior.
-However, the original programs have been kept/renamed to `<progname>-old` (e.g., `ssh-old`).
+However, the original programs have been kept/renamed to `<progname>-old` (e.g., `chgrp-old`).
 Therefore, if these programs are needed, they are still available, but will not be used by FIREWHEEL.
 
 ### Minimega Differences

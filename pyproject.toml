@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=75.0,<=77.0", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -22,7 +22,7 @@ keywords = [
     "experimentation",
     "minimega",
 ]
-license = {text = "Apache License (2.0)"}
+license = {text = "Apache-2.0"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -30,7 +30,6 @@ classifiers = [
     "Intended Audience :: Information Technology",
     "Intended Audience :: Telecommunications Industry",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3 :: Only",
@@ -54,24 +53,26 @@ classifiers = [
     "Topic :: System :: Operating System",
 ]
 dependencies = [
+    "ansible>=6.0.0,<=12.0.0",
+    "ansible-runner>=2.0.0,<=2.4.1",
     "minimega==2.9",
     "ClusterShell<=1.9.3",
     "colorama<=0.4.6",
-    "coverage<=7.7.1",
+    "coverage<=7.8.2",
     "grpcio>=1.63.0,<=1.68.1",
     "grpcio-tools>=1.63.0,<=1.68.1",
-    "importlib_metadata>=3.6,<=8.6.1",
+    "importlib_metadata>=7.0.0,<=8.6.1",
     "Jinja2>=3.1.2,<=3.1.6",
     "netaddr<=1.3.0,>=0.7.0",
     "networkx>=2.3,<=3.4.2",
     "protobuf>=5.0.0,<=5.29.3",
     "pytest<=8.3.5",
     "pytest-cov<=6.0.0",
-    "python-dotenv<=1.0.1",
+    "python-dotenv<=1.1.0",
     "PyYAML<=6.0.2",
     "qemu.qmp==0.0.3",
-    "requests>=2.22.0,<=2.32.3",
-    "rich>=13.6.0,<13.10",
+    "requests==2.32.4",
+    "rich>=13.6.0,<14.1",
 ]
 
 [project.optional-dependencies]
@@ -81,23 +82,21 @@ mcs = [
     "firewheel-repo-vyos",
 ]
 format = [
-    "ruff==0.11.2",      # Linting/formatting
-    "beautysh~=6.2.1",  # Format/lint shell scripts
+    "ruff==0.11.2",
 ]
 docs = [
-    "Sphinx",
-    "myst-nb",
-    "sphinx-rtd-theme>=1.2.0",
-    "sphinxcontrib-spelling",
-    "sphinx-copybutton",
-    "pyenchant",
-    "minimega",
-    "doc8",
-    "pip-licenses",
-    "sphinx-design",
+    "Sphinx>=7.0.0,<=8.2.3",
+    "myst-nb<=1.2.0",
+    "sphinx-rtd-theme==3.0.2",
+    "sphinxcontrib-spelling>=7.0.0,<=8.0.1",
+    "sphinx-copybutton==0.5.2",
+    "pyenchant==3.2.2",
+    "doc8==1.1.2",
+    "pip-licenses==5.0.0",
+    "sphinx-design==0.6.1",
 ]
 dev = [
-    "firewheel[mcs,format,docs]",
+    "firewheel[format,docs]",
     "pre-commit",
     "tox~=4.0",
 ]
@@ -114,6 +113,9 @@ firewheel = "firewheel.cli.firewheel_cli:main"
 mcg = "firewheel.control.utils.new_model_component:main"
 prep_fw_tab_completion = "firewheel.cli.completion.prepare_completion_script:main"
 get_fw_tab_completion_script = "firewheel.cli.completion.prepare_completion_script:print_completion_script_path"
+
+[tools.setuptools]
+license-files = ["LICENSE", "DISCLAIMER.md", "COPYRIGHT.md", "NOTICE"]
 
 [tool.setuptools.package-data]
 # Required for tox documentation building
@@ -132,7 +134,6 @@ disallow_any_unimported = true
 show_traceback = true
 pretty = true
 python_version = "3.8"
-new_type_inference = true
 enable_error_code = ["ignore-without-code", "redundant-expr"]
 show_error_code_links = true
 disallow_untyped_calls = false
@@ -145,25 +146,38 @@ module = [
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = "firewheel.lib.grpc.*"
+module = [
+  "firewheel.lib.grpc.*",
+  "firewheel.lib.discovery.*",
+  "firewheel.lib.minimega.api",
+  "firewheel.lib.minimega.file_store",
+  "firewheel.lib.utilities",
+]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "firewheel.lib.discovery.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "firewheel.lib.minimega.api"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "firewheel.control.*"
+module = [
+  "firewheel.control",
+  "firewheel.control.utils.*",
+  "firewheel.control.dependency_graph",
+  "firewheel.control.experiment_graph",
+  "firewheel.control.image_store",
+  "firewheel.control.model_component",
+  "firewheel.control.model_component_dependency_graph",
+  "firewheel.control.model_component_exceptions",
+  "firewheel.control.model_component_install",
+  "firewheel.control.model_component_iterator",
+  "firewheel.control.model_component_path_iterator",
+  "firewheel.control.model_component_manager",
+  "firewheel.control.repository_db",
+]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
     "firewheel.tests.functional.*",
     "firewheel.tests.unit.*",
+    "firewheel.tests.conftest",
 ]
 ignore_errors = true
 

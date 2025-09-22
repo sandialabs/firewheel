@@ -7,16 +7,18 @@ The repository should be an existing directory on the filesystem.
 The path may be specified absolute or relative.
 If the path does not exist, an error message is printed.
 
-Some Model Components may provide an additional install script called ``INSTALL`` which can be executed to perform other setup steps (e.g. installing an extra python package or downloading an external VM resource).
-INSTALL scripts can be can be any executable file type as defined by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
+Some Model Components may provide an additional installation details which can be executed to perform other setup steps (e.g. installing an extra python package or downloading an external VM resource).
+This takes the form of either a ``INSTALL`` directory with a ``vars.yml`` and a ``tasks.yml`` that are Ansible tasks which can be executed.
+Alternatively, it can be a single ``INSTALL`` script that can be can be any executable file type as defined by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line.
 
 .. warning::
 
-    The execution of Model Component ``INSTALL`` scripts can be a **DANGEROUS** operation. Please ensure that you **fully trust** the repository developer prior to executing these scripts.
+    The execution of Model Component ``INSTALL`` scripts can be a **DANGEROUS** operation.
+    Please ensure that you **fully trust** the repository developer prior to executing these scripts.
 
 .. seealso::
 
-    See :ref:`mc_install` for more information on INSTALL scripts.
+    See :ref:`mc_install` for more information on ``INSTALL`` scripts.
 
 When installing a Model Component, users will have a variety of choices to select:
 
@@ -93,8 +95,11 @@ def install_repo(repo):
         repo (dict): A dictionary object which can be added as a new FIREWHEEL repository.
     """
     repo_db = RepositoryDb()
-    repo_db.add_repository(repo)
-    Console().print("[green]Repository successfully installed!")
+    ret = repo_db.add_repository(repo)
+    if ret:
+        Console().print("[green]Repository successfully installed!")
+    else:
+        Console().print("[yellow]Duplicate repositories cannot be installed!")
 
 
 def run_install_script(repo, insecure):
@@ -111,18 +116,22 @@ def run_install_script(repo, insecure):
         bool: True if all MCs were installed successfully, False otherwise
     """
     console = Console()
-
+    failed = []
     for mc in ModelComponentIterator(iter([repo])):
         mci = ModelComponentInstall(mc)
 
         if insecure:
             success = mci.run_install_script(insecure=True)
             if not success:
-                return False
+                failed.append(mc.name)
         else:
             success = mci.run_install_script()
             if not success:
-                return False
+                failed.append(mc.name)
+
+    if failed:
+        console.print(f"[red]The following MC's failed to fully install in {repo['path']}: {failed}")
+        return False
 
     console.print(f"[green]All model components for {repo['path']} were installed or skipped!")
     return True

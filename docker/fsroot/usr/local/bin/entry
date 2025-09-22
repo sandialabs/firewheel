@@ -7,12 +7,45 @@ function gr() {
     echo -e "\033[32;1m" "$@" "\033[m"
 }
 
-export HOME=/root
+function yl() {
+    echo -e "\033[33;1m" "$@" "\033[m"
+}
+
 
 HN="$(hostname)"
 
-FILEPATH="/tmp/minimega/files"
+# Let the SSH server run without systemd
+mkdir /var/run/sshd
+
+# Start the SSH server
+/usr/sbin/sshd -E /var/log/auth.log
+ssh-keygen -f ~/.ssh/id_rsa -N "" &>/dev/null
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+if [ -e ~/.ssh/config ];
+then
+    yl "SSH config already existed, not modifying it";
+else
+    cat << EOF > ~/.ssh/config
+Host $HN
+    StrictHostKeyChecking no
+    Port 2222
+EOF
+fi
+
+export HOME=/root
+
+FILEPATH="$(firewheel config get minimega.files_dir)"
 mkdir -p $FILEPATH
+
+# Verifying extra minimega environment variables
+if [[ -n "${MM_FILEPATH}" ]]; then
+    mkdir -p "${MM_FILEPATH}"
+    firewheel config set -s minimega.files_dir "${MM_FILEPATH}"
+fi
+
+if [[ -n "${MM_BASE}" ]]; then
+    firewheel config set -s minimega.base_dir "${MM_BASE}"
+fi
 
 grn "Starting minimega...       "
 /start-minimega.sh &>/dev/null
@@ -24,9 +57,7 @@ firewheel config set -s cluster.control "$HN" &>/dev/null
 firewheel config set -s cluster.compute "" &>/dev/null
 firewheel config set -s cluster.compute "$HN" &>/dev/null
 firewheel config set -s discovery.hostname localhost &>/dev/null
-firewheel config set -s grpc.hostname localhost &>/dev/null
 firewheel config set -s minimega.use_gre True
-firewheel config set -s minimega.files_dir $FILEPATH
 
 firewheel init &>/dev/null
 firewheel sync &>/dev/null
@@ -43,11 +74,16 @@ if tty -s; then
     if [ "$#" -eq 0 ]; then
         tmux
     else
-        /bin/bash "$@"
+        # If a command was passed to the container, execute it
+        "$@"
     fi
 else
-    # Sleep until we need to shut down.
-    sleep infinity
+    # If it's not a TTY, it's likely a CI/CD job, in which case that job will
+    # keep the container open after the end of this script. If there's ever a
+    # use case for keeping the container alive when not in a TTY, this could be
+    # changed
+    yl "Not a TTY, exiting..."
+    exit 0
 fi
 
 grn "Stopping experiment...     "

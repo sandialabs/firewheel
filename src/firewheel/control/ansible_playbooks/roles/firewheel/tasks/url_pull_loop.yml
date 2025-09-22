@@ -1,0 +1,43 @@
+---
+###################################################################################################
+# This playbook will collect cached files from a given URL.
+# It uses https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html.
+#
+# If you are using an username or password token, you can specify it in the URL
+# For example: https://user:password@server.com/url/cache/path/file.txt
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# file_servers:
+#   - url: "http://example.com"
+#     use_proxy: False
+#     validate_certs: False
+#     cache_paths:
+#       - "path/to/file"
+#       - "path/from/file"
+#   - url: "https://user:password@server.com"
+#     use_proxy: True
+#     validate_certs: False
+#     cache_paths:
+#       - "secondpath/to/file"
+#       - "secondpath/from/file"
+###################################################################################################
+
+- name: Trying URL cache
+  block:
+    - name: "Attempting to download cached files from: {{ firewheel_url }}"
+      ansible.builtin.get_url:
+        url: "{{ firewheel_url }}/{{ firewheel_cache_path }}/{{ item.source if item.source is defined else mc_name + '/' + item.destination | basename }}"
+        dest: "{{ item.destination }}"
+        mode: "0660"
+        use_proxy: "{{ firewheel_use_proxy }}"
+        validate_certs: "{{ firewheel_validate_certs }}"
+      loop: "{{ required_files }}"
+      register: url_download_result
+      ignore_errors: true
+
+  rescue:
+    - name: Handle download failures
+      ansible.builtin.debug:
+        msg: "Pulling file from {{ firewheel_url }}/{{ firewheel_url_cache_path }} failed. Continuing..."
+      when: url_download_result is failed

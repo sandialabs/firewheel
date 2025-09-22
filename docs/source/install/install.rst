@@ -192,7 +192,7 @@ Once the configuration options have been set, run ``install.sh``:
     chmod +x install.sh
     ./install.sh
 
-This script will create necessary directories, installs and configures FIREWHEEL, and clone our default model component repositories.
+This script will create necessary directories, install and configure FIREWHEEL, and install our default model component repositories.
 The script will optionally install additional FIREWHEEL development dependencies by using either the ``-d`` or ``--development`` flag::
 
     ./install.sh -d
@@ -207,10 +207,24 @@ Once the entire cluster has been provisioned, we recommend running the :ref:`com
 
 Installing Model Component Repositories
 ---------------------------------------
-Before running any experiments, you will likely need to clone several Model Component repositories and install them.
-For example, you will likely want to install our ``base`` and ``linux`` repository.
-We recommend putting all Model Component repositories in ``/opt/firewheel/model_components``.
-Then you can *install* this location so that FIREWHEEL can leverage those model components::
+Before running any experiments, you will likely need to install several Model Component repositories.
+Model Component repositories provide extra features and customizations that give FIREWHEEL experiments their flexibility and modularity.
+
+There are two ways to install Model Components.
+The first and easiest way is to use a premade Model Component repository which has been converted into a (pip-installable) Python package.
+Several of the most commonly used FIREWHEEL Model Components exist in this format, for example the ``base`` and ``linux`` Model Components.
+
+.. code-block:: bash
+
+   pip install firewheel_repo_base
+
+A selection of these MCs are installed by the ``install.sh`` script.
+
+The second way to install a Model Component is using FIREWHEEL's helpers.
+This is a good solution for Model Component repositories that are either built or cloned to a local directory.
+We recommend putting all these Model Component repositories in ``/opt/firewheel/model_components``.
+Then you can use the :ref:`helper_repository_install` to add this location as a known FIREWHEEL Model Component repository::
+
 
     firewheel repository install /opt/firewheel/model_components
 

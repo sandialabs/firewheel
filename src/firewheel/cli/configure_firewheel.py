@@ -1,11 +1,14 @@
+import os
 import cmd
 import pprint
 import argparse
 import operator
+import subprocess
 from inspect import cleandoc
 from pathlib import Path
 
 import yaml
+from rich.console import Console
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
@@ -63,6 +66,64 @@ class ConfigureFirewheel(cmd.Cmd):
             help="Path of the configuration file to be reset.",
         )
         return parser
+
+    def define_edit_parser(self) -> argparse.ArgumentParser:
+        """Create an :py:class:`argparse.ArgumentParser` for :ref:`command_config_edit`.
+
+        Returns:
+            argparse.ArgumentParser: The parser needed for :ref:`command_config_edit`.
+        """
+        parser = argparse.ArgumentParser(
+            description=str(
+                "Edit the FIREWHEEL configuration with a text editor. "
+                "The user must set either the VISUAL or EDITOR environment variable "
+                "or use the provided flag to override these environment variables."
+            ),
+            prog="firewheel config edit",
+            add_help=False,
+        )
+        parser.add_argument(
+            "-e",
+            "--editor",
+            required=False,
+            default="",
+            help="Use the specified text editor.",
+        )
+        return parser
+
+    def do_edit(self, args: str = "") -> None:
+        """
+        Edit the FIREWHEEL config with the default text editor as determined by
+        the ``VISUAL`` or ``EDITOR`` environment variables.
+        If no editor is found an error message is output.
+
+        Args:
+            args (str): A string of arguments passed in by the user.
+        """
+        # Create a Console object for colored output
+        console = Console()
+
+        # Get the parser for the reset command
+        parser = self.define_edit_parser()
+        cmd_args = self._handle_parsing(parser, args)
+
+        # Check for VISUAL, then EDITOR
+        editor = cmd_args.editor or os.environ.get("VISUAL") or os.environ.get("EDITOR")
+
+        if not editor:
+            self.help_edit()
+            return
+
+        # Attempt to open the file with the chosen editor
+        try:
+            subprocess.run([editor, Config(writable=True).config_path], check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            console.print(
+                f"Error: Failed to open FIREWHEEL configuration with '{editor}'.\n",
+                style="bold red",
+            )
+            self.help_edit()
+            return
 
     def do_reset(self, args: str = "") -> None:
         """
@@ -261,6 +322,18 @@ class ConfigureFirewheel(cmd.Cmd):
                 command_string += clean_text
                 command_string += "\n\n"
         return command_string
+
+    def _help_edit(self) -> str:
+        """Help message for the :py:meth:`do_edit` sub-command.
+
+        Returns:
+            str: The help message.
+        """
+        return self.define_edit_parser().format_help()
+
+    def help_edit(self) -> None:
+        """Print help for the :py:meth:`do_edit` sub-command."""
+        print(self._help_edit())
 
     def _help_reset(self) -> str:
         """Help message for the :py:meth:`do_reset` sub-command.
