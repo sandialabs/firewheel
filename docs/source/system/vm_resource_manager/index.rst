@@ -1,8 +1,8 @@
 .. _vm_resource_system:
 
-###################
+*******************
 VM Resource Manager
-###################
+*******************
 
 The system for automated configuration of virtual machines (VM) in FIREWHEEL is called the *VM Resource Manager*.
 This system is responsible for monitoring and managing the execution of any scheduled actions that need to be performed on the experiment network.

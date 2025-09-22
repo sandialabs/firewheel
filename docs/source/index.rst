@@ -14,7 +14,6 @@ FIREWHEEL Documentation
    install/index
    system/index
    tutorials/index
-   model_components/index
    cli/index
 
 .. toctree::
@@ -22,7 +21,9 @@ FIREWHEEL Documentation
    :caption: Devlopers
    :maxdepth: 2
    
+   model_components/index
    developer/index
+   developer/code/index
    glossary
 
 .. only:: html

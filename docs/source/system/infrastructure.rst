@@ -1,8 +1,8 @@
-.. _FIREWHEEL-infrastructure:
+.. _FIREWHEEL-cluster:
 
-#######################
+***********************
 Hardware Infrastructure
-#######################
+***********************
 
 FIREWHEEL runs on standard commodity hardware, and uses standard commodity network devices when needed. No specialty hardware is required.
 
@@ -11,24 +11,13 @@ The control node is where a user interacts with the system and where various nec
 The compute nodes are where the virtual machines that make up the experiment run.
 A cluster can vary in size from a single laptop where one machine plays both control and compute roles to hundreds of high-performance servers.
 
-
-.. _FIREWHEEL-cluster:
-
-*****************
-FIREWHEEL Cluster
-*****************
-
-A FIREWHEEL cluster is a set of one or more computers (or nodes), where two or more nodes are networked via a switch.
-FIREWHEEL is capable of deploying large-scale virtual network topologies across many nodes very quickly (which is one property of FIREWHEEL that makes it ideal for conducting cyber-related research).
-
 .. _cluster-nodes:
 
-*************
 Cluster Nodes
-*************
+=============
 
-Cluster nodes can be any compute hardware capable of running VMs, with Ubuntu 16.04, Ubuntu 18.04, or CentOS 7 installed.
-Most of FIREWHEEL's components are run within a python virtual environment, so it likely that FIREWHEEL can be used with other operating systems, but this has not been fully tested and, therefore, is not officially supported yet.
+Cluster nodes can be any compute hardware (and corresponding OS) capable of running VMs.
+FIREWHEEL's components are run within a Python virtual environment, so it likely that any operating system that supports minimega and other necessary dependencies will also support FIREWHEEL.
 The primary limiting factor for experiment size is compute resources including CPU cores, RAM, hard disk space, and network capacity.
 We recommend at least 24 logical CPUs, 128GB RAM, and a 500GB (ideally NVMe) solid state disk.
 These specifications should be able to launch an experiment with 50-100 small VMs).
@@ -39,7 +28,7 @@ See the :ref:`install-documentation` for more details about installation require
 .. _cluster-control-node:
 
 Control Node
-============
+------------
 
 Each cluster contains a single control node.
 This control node, also called a head node, is the cluster node from where FIREWHEEL manages deployment of the virtual machines and network configurations that make up a FIREWHEEL experiment network.
@@ -50,7 +39,7 @@ See the :ref:`install-documentation` for FIREWHEEL head node configuration and s
 .. _cluster-compute-nodes:
 
 Compute Nodes
-=============
+-------------
 
 FIREWHEEL clusters also contain compute nodes.
 These nodes extend the size of the virtual networks that FIREWHEEL can deploy, with the maximum size being dependent on the total amount of compute resources available across the cluster (e.g. RAM and CPUs), and the amount of resources required by the VMs being deployed for a given network topology.
@@ -58,9 +47,8 @@ As stated above, a FIREWHEEL cluster can grow in size as needs increase by addin
 
 .. _cluster-switch:
 
-**************
 Cluster Switch
-**************
+==============
 
 The switch is used to network two or more nodes together in a FIREWHEEL cluster.
 The switch supports the transport of packets amongst nodes to enable both distributed experiment management (e.g. multi-node topology deployment, tear down) and in-experiment virtual network communications.

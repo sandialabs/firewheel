@@ -1,8 +1,7 @@
 .. _vm-resource-schedule:
 
-********************
 VM Resource Schedule
-********************
+====================
 
 As discussed above, by default, FIREWHEEL launches base versions of images.
 In general, the only change that has been made to an image is the loading of an executable on the system so that the FIREWHEEL infrastructure can communicate with the running VM.
@@ -21,7 +20,7 @@ To enable for the expression of VM resource dependencies between various configu
 .. _start-time:
 
 Start Time
-==========
+----------
 
 The ``start_time`` for the schedule entry is an integer value that dictates the ordering of all configuration actions within the vertex's :py:class:`VM resource schedule <base_objects.VmResourceSchedule>`.
 The ``start_time`` it can be either :ref:`negative <schedule-negative-time>` or :ref:`positive <schedule-positive-time>`, where all negative time VM resources are executed before the positive time ones.
@@ -32,7 +31,7 @@ Once all VMs have reached time ``0``, the entirety of the experiment moves into 
 .. _schedule-negative-time:
 
 Negative Time
--------------
+^^^^^^^^^^^^^
 
 Negative time is generally used for VM configuration and is not synchronized across different VMs within the experiment.
 Each negative start time is a local barrier within a VM.
@@ -44,7 +43,7 @@ Negative time, in combination with the global barrier at time ``0``, provides us
 .. _schedule-positive-time:
 
 Positive Time
--------------
+^^^^^^^^^^^^^
 
 Once all VMs have reached time ``0``, an experiment start time is determined.
 This is generally about 60 seconds after the final VM finishing its negative time ``vm_resources`` [#f1]_.
@@ -62,7 +61,7 @@ It does not wait for execution to finish before moving on to other positive time
    Heavy loading on the compute server hosting the VM can impact the accuracy of when the VMR is started, but shouldn't be more than about a second.
 
 Pause and Break
-===============
+---------------
 VMs have the ability to "*pause*" or "*break*" their VMR schedule.
 The primary difference between these two functions is that a *break* is an indefinitely long pause, whereas a *pause* has a pre-determined duration.
 For the remainder of this section, we will refer to only *pause*, but the content will apply to both functions unless otherwise specified.
@@ -96,7 +95,7 @@ That is, if there are multiple events scheduled at ``time=10`` and a pause/break
    The *pause*/*break* functions do **NOT** pause the actual VM nor do they pause or stop running processes within those VMs. They strictly impact the VM resource schedule.
 
 Resuming a Break
-----------------
+^^^^^^^^^^^^^^^^
 Because a *break* is an indefinite *pause*, eventually it will need to be resumed.
 Therefore, a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event was created.
 Only a *break* is impacted by a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event.
@@ -108,7 +107,7 @@ Advanced users can easily create :py:attr:`RESUME <firewheel.vm_resource_manager
 The code within the :ref:`helper_vm_resume` Helper can serve as boilerplate if more advanced/automated resuming is desired.
 
 Pause Algorithm Implementation
-------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Because most VM resources are scheduled prior to the experiment starting, FIREWHEEL knows when the pause should take place and for how long it will impact the schedule.
 Therefore, each scheduled event following the pause will automatically have its start time increased by the duration of the pause.
 It is important to note that this may cause confusion for a user who expects scheduled VM events to occur at specific experiment times.
@@ -117,7 +116,7 @@ To that end, the location in the VM of the VMR will appear different than what m
 This is a side-effect of impacting the VM clock as minimally as possible and, rather than pausing that clock, continuing the clock and pushing post-pause events further into the future.
 
 Break Algorithm Implementation
-------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Given that a break is an indefinite pause, its implementation is largely similar.
 However, FIREWHEEL has to calculate the duration of the break by calculating: ``experiment_time - break_start_time``; then this can be added to the start time of following events.
 

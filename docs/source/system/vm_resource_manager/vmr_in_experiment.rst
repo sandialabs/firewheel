@@ -1,11 +1,10 @@
 .. _using-vm-resources:
 
-***************************
 Using VMRs in an Experiment
-***************************
+===========================
 
 Making VMRs Available to an Experiment
-======================================
+--------------------------------------
 
 When there is a VMR file which must be loaded onto the VM, rather than a standard program already available to the VM, it must first be "available".
 That is, it must be included as part of a model component.
@@ -19,7 +18,7 @@ More information about specifying VMRs within the ``MANIFEST`` can be found in t
 .. _adding-vmr-schedule:
 
 Adding VMRs to the Schedule
-===========================
+---------------------------
 
 VMRs are added to vertices at topology creation time.
 Resources can be defined in any MC and in some cases it is actually advantageous to separate VMRs into their own model components.
@@ -35,7 +34,7 @@ While the full details are outlined in :py:mod:`base_objects`, we will outline s
 Each of these functions are available via the :py:class:`base_objects.VMEndpoint`, which is the base class which defines a VM, and therefore are available to every VM within the topology.
 
 :py:meth:`drop_content <base_objects.VMEndpoint.drop_content>`
---------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :py:meth:`drop_content <base_objects.VMEndpoint.drop_content>` method is intended to take any string and write it to a specified location on a VM.
 The method takes a :ref:`start-time` to know when to perform the content write.
@@ -45,7 +44,7 @@ Finally, it needs to know if the new file should be made executable.
 This is useful if you are creating a simple script and therefore need it to be executable so that it can be subsequently called.
 
 Examples
-^^^^^^^^
+""""""""
 
 .. code-block:: python
 
@@ -62,7 +61,7 @@ Examples
 
 
 :py:meth:`drop_file <base_objects.VMEndpoint.drop_file>`
---------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :py:meth:`drop_file <base_objects.VMEndpoint.drop_file>` method is intended to take a file and load it on to a VM at a specified location.
 The method needs a takes a :ref:`start-time` to know when to execute the dropping of the file.
@@ -77,7 +76,7 @@ Preloading is set to ``True`` by default.
    By default, all VMR files are loaded onto the VMs before starting negative time. However, if the :py:meth:`drop_file <base_objects.VMEndpoint.drop_file>` method is used, the file will be moved into the correct destination at the designated :ref:`start-time`.
 
 Examples
-^^^^^^^^
+""""""""
 
 .. code-block:: python
 
@@ -91,7 +90,7 @@ Examples
 
 
 :py:meth:`run_executable <base_objects.VMEndpoint.run_executable>`
-------------------------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :py:meth:`run_executable <base_objects.VMEndpoint.run_executable>` method allows a user to run commands both with or without providing a script as the command.
 The method needs a takes a :ref:`start-time` to know when to execute the specified program.
@@ -105,7 +104,7 @@ In this case, like :py:meth:`drop_file <base_objects.VMEndpoint.drop_file>`, the
 The user does not need to specify where the file will be dropped on the VM since it will be placed in the appropriate ``/var/launch`` or ``C:\launch`` location (see :ref:`vmr-location`).
 
 Examples
-^^^^^^^^
+""""""""
 
 .. code-block:: python
 
@@ -120,7 +119,7 @@ Examples
 .. _vmr-rebooting:
 
 Rebooting a VM
-==============
+--------------
 
 Sometimes, VM Resources (VMRs) require a VM to be rebooted in order to complete an operation.
 For example, many Windows operations require a reboot [#]_.
@@ -189,7 +188,7 @@ Finally, the :ref:`tests.reboot_mc` has various examples of Python VMRs requesti
 .. _vmr-env:
 
 VMRs In-Experiment Environment
-==============================
+------------------------------
 Because of how the VM Resources are executed within the VMs by the :ref:`QEMU Guest Agent <qga-driver>`, users should not make any assumptions about the `environment variables <https://en.wikipedia.org/wiki/Environment_variable>`_ which are available.
 That is, users should **NOT** assume that standard Environment variables (e.g. ``$HOME``, ``$USER``, ``$SHELL``, etc.) are available.
 Some software may make assumptions that these common environment variables exist, which may result in odd failures when attempting to run the software.
@@ -216,7 +215,7 @@ Example output from :py:meth:`run_executable <base_objects.VMEndpoint.run_execut
 .. _vmr-location:
 
 Location of VMRs within the VM
-==============================
+------------------------------
 Prior to the start of :ref:`schedule-negative-time`, VMRs are uploaded onto the VM.
 FIREWHEEL uses the ``/var/launch`` directory on Linux based VMs and the ``C:\launch`` directory on Windows based VMs.
 Inside these directories is a series of directories with :ref:`start times <start-time>` that are used by the scheduled VMRs.
@@ -270,7 +269,7 @@ Becoming familiar with the locations of VMRs with the VMs is useful for developi
 .. _vmr-output:
 
 Extracting VMR data
-===================
+-------------------
 Many times VMRs will need to output useful information for later analysis.
 For example, your VMR might monitor a process and output a particular statistic for which the user may want to analyze after the experiment.
 To do this, VMRs can simply print the data to ``stdout`` and it will be captured by FIREWHEEL and logged to the :ref:`logging.vmr_log_dir <config-vmr_log_dir>` on the :ref:`compute node <cluster-compute-nodes>` which has launched the VM.

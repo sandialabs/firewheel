@@ -6,8 +6,10 @@ Developers
    :hidden:
 
    contributing
+   cli_extension
+   git-lfs
    code_of_conduct
-   license
    security
+   license
    changelog
-   code/index
+

@@ -1,8 +1,7 @@
 .. _qemu-guest-agent:
 
-****************
 QEMU Guest Agent
-****************
+================
 
 The `QEMU Guest Agent (QGA) <https://wiki.qemu.org/Features/GuestAgent>`_ is a binary file located within a VM which receives QEMU Machine Protocol (QMP) messages and can be used to perform actions within the virtual machine.
 The QGA is the primary way in which the :ref:`vm-resource-handler` communicates with VMs and enables the completion of VM resources.
@@ -17,7 +16,7 @@ When a VM is launched, a virtual serial port that is added which enables the QGA
 .. _qga-driver:
 
 QGA Modifications
-=================
+-----------------
 
 While it is possible to use the existing QGA code to work with FIREWHEEL, we have provided some small changes which enhance the behavior for Emulytics environments.
 Namely, Python, by default, aggressively buffers ``stdout``, so printed output doesn't show up immediately on guest agent outputs unless explicitly flushed.
@@ -29,7 +28,7 @@ Therefore, we provide a small patch which changes the behavior of the QEMU Guest
    qga_patch
 
 Patching QEMU
--------------
+^^^^^^^^^^^^^
 Before compiling the QGA for any one VM, it needs to be patched.
 To do this, you can clone the QEMU code, checkout the correct version (i.e. the version for which the patch was created), and apply the patch.
 The code below will show you how to do this.
@@ -49,7 +48,7 @@ We saved the :ref:`qemu-patch-file` as ``0001-Allow-exceed-processes-to-ret-data
 
 
 Building the QGA for Linux
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""""
 #. Install the following prerequisite packages when building the QEMU Guest Agent on an Ubuntu system.
    Other packages might be required.
    We refer users to the official QEMU documentation for more details: https://wiki.qemu.org/Hosts/Linux#Building_QEMU_for_Linux.
@@ -82,7 +81,7 @@ Building the QGA for Linux
 
 
 Building the QGA for Windows
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""""""
 
 The Windows installer for the QEMU Guest Agent can be built using `Cygwin <https://www.cygwin.com/>`__.
 
@@ -225,12 +224,12 @@ The Windows installer for the QEMU Guest Agent can be built using `Cygwin <https
     Users that would like to install an unmodified QGA on Windows can find a link to download the latest ``qemu-ga.msi`` via the `virtio-win-pkg-scipts GitHub page <https://github.com/virtio-win/virtio-win-pkg-scripts>`_.
 
 Running QGA as a Service
-========================
+------------------------
 In this section, we have provided several methods for running the QGA as a service.
 We assume that the QGA binary was renamed to ``qemu-ga-patched-static``.
 
 ``systemd``
------------
+^^^^^^^^^^^
 You can save the following file as ``qemu-guest-agent.service``.
 
 .. code-block:: text
@@ -249,7 +248,7 @@ You can save the following file as ``qemu-guest-agent.service``.
     WantedBy=multi-user.target
 
 ``sysvinit``
-------------
+^^^^^^^^^^^^
 You can save the following file as ``qemu-guest-agent``.
 
 .. code-block:: bash
@@ -284,7 +283,7 @@ You can save the following file as ``qemu-guest-agent``.
     exit 0
 
 ``upstart``
------------
+^^^^^^^^^^^
 You can save the following file as ``qemu-guest-agent``.
 
 .. code-block:: text
