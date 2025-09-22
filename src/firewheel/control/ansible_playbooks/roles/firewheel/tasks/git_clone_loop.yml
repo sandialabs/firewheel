@@ -1,0 +1,63 @@
+---
+###################################################################################################
+# This playbook will clone a Git repository and move specified cached files
+# If you are using an access token, you can specify it in the `server_url`.
+# For example: https://<token>@github.com/user/repo.git
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# git_servers:
+#   - server_url: "https://github.com"
+#     repositories:
+#       - path: "firewheel/mc_repo1"
+#       - path: "firewheel/mc_repo2"
+#         branch: "develop"
+#   - server_url: "ssh://git@gitlab.com"
+#     repositories:
+#       - path: "emulytics/firewheel/mc_repo3"
+#         branch: "feature-branch"
+#   - server_url: "https://user:ACCESS-TOKEN@github.com/"
+#     repositories:
+#       - path: "firewheel/mc_repo4"
+###################################################################################################
+
+- name: Clone the repository
+  ansible.builtin.git:
+    repo: "{{ firewheel_server_url }}/{{ firewheel_repo_path }}"
+    dest: "{{ ansible_remote_tmp }}/git"
+    clone: true
+    version: "{{ firewheel_repo_branch }}"
+    update: true
+  environment:
+    # Prevent Git LFS from downloading files for faster cloning
+    GIT_LFS_SKIP_SMUDGE: "1"
+  register: git_clone_result
+
+- name: "Identfying files in {{ firewheel_repo_path }}"
+  ansible.builtin.stat:
+    path: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/'+ item.destination | basename }}"
+  loop: "{{ required_files }}"
+  register: file_check_results
+
+- name: LFS pull required files
+  ansible.builtin.shell:
+    cmd: "git lfs pull --include={{ item.source if item.source is defined else mc_name + '/'+ item.destination | basename }}"
+    chdir: "{{ ansible_remote_tmp }}/git"
+  loop: "{{ required_files }}"
+  when: "item in file_check_results.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list"
+  register: pull_results
+
+- name: Move each pulled file into place
+  ansible.builtin.copy:
+    src: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/' + item.destination | basename }}"
+    dest: "{{ item.destination }}"
+    mode: "0660"
+  loop: "{{ required_files }}"
+  when: "item in file_check_results.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list"
+  ignore_errors: true
+  register: move_results
+
+- name: Clean up git cache
+  ansible.builtin.file:
+    path: "{{ ansible_remote_tmp }}/git"
+    state: absent

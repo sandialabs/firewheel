@@ -144,10 +144,15 @@ utils/paths.py
 New Model Component Templates
 -----------------------------
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/INSTALL.template
-    :language: bash
-    :caption: The template for a new model component INSTALL file.
-    :name: install_template
+.. literalinclude:: ../../../src/firewheel/control/utils/templates/tasks.yml.j2
+    :language: yaml
+    :caption: A template for installing extra model component dependencies with Ansible.
+    :name: install_ansible_tasks_template
+
+.. literalinclude:: ../../../src/firewheel/control/utils/templates/vars.yml.j2
+    :language: yaml
+    :caption: A template for installing extra model component dependencies with Ansible.
+    :name: install_ansible_vars_template
 
 .. literalinclude:: ../../../src/firewheel/control/utils/templates/model_component_objects.py.template
     :language: python

@@ -53,6 +53,8 @@ classifiers = [
     "Topic :: System :: Operating System",
 ]
 dependencies = [
+    "ansible>=6.0.0,<=12.0.0",
+    "ansible-runner>=2.0.0,<=2.4.1",
     "minimega==2.9",
     "ClusterShell<=1.9.3",
     "colorama<=0.4.6",
