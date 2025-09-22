@@ -1,5 +1,6 @@
 import os
 import sys
+import shlex
 from typing import Dict, List, Optional
 from decimal import Decimal
 
@@ -68,17 +69,13 @@ class Shell(AbstractExecutor):
             }
 
             # Concatenate minimega environment variables
-            command = " ".join(
-                f"{env}={os.environ[env]}" for env in minimega_vars if env in os.environ
-            )
-
-            command += (
-                f" FIREWHEEL={fw_path} "
-                f"FIREWHEEL_PYTHON={sys.executable} "
-                f"FIREWHEEL_GRPC_SERVER={grpc_path} "
-                f"{cache_file}"
-            )
-            command = command.strip()
+            env_vars = [
+                *(f"{env}={os.environ[env]}" for env in minimega_vars if env in os.environ),
+                f"FIREWHEEL={fw_path}",
+                f"FIREWHEEL_PYTHON={sys.executable}",
+                f"FIREWHEEL_GRPC_SERVER={grpc_path}",
+            ]
+            command = shlex.join([*env_vars, f"{cache_file}"])
             return hosts.run_command(command, session, arguments)
         except IOError as exp:
             print(f"Error: Local I/O error: {exp}")
