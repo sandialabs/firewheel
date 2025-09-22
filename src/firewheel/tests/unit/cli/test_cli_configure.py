@@ -127,6 +127,17 @@ class CliConfigureTestCase(unittest.TestCase):
 
         self.assertEqual(self.old_config, test_config)
 
+    @unittest.mock.patch("firewheel.cli.configure_firewheel.Config")
+    @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
+    def test_do_path(self, mock_stdout, mock_config_cls):
+        mock_config_path = "/path/to/config"
+        mock_config_cls().config_path = mock_config_path
+
+        args = ""
+        self.cli.do_path(args)
+
+        self.assertIn(mock_config_path, mock_stdout.getvalue())
+
     @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_do_edit_param_invalid(self, mock_stdout):
         args = "-e asdf"

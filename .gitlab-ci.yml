@@ -50,22 +50,9 @@ performance-ubuntu2204:
     # Create a network with a lot of vertices and edges
     - firewheel experiment --no-install --profile tests.vm_gen:10000 tests.connect_all:10 minimega.schedules_ready
     - python -m pip install $PIP_ARGS snakeviz
-    - python -m pip install $PIP_ARGS "pywebcopy==7.0.2" lxml_html_clean
-    # There are a few flaws with pywebcopy and we need to patch it first
-    - |
-        sed -i '575i\
-                if not url:\
-                    self.logger.debug("Invalid URL, re-encoded the resource as [%s]" % (match.group(0)))\
-                    return match.group(0)\
-                if ans.response is not None and not ans.response.ok:\
-                    self.logger.debug("Invalid Response, re-encoded the resource as [%s]" % (match.group(0)))\
-                    return match.group(0)' /opt/firewheel/venv/lib/python3.10/site-packages/pywebcopy/elements.py
-    - |
-        tr -d '\r' < /opt/firewheel/venv/lib/python3.10/site-packages/pywebcopy/elements.py > /tmp/elements.py && mv /tmp/elements.py /opt/firewheel/venv/lib/python3.10/site-packages/pywebcopy/elements.py
-    - snakeviz -p 8888 -s firewheel_profile.prof &
-    - sleep 5
-    - python -m pywebcopy -p --url=http://127.0.0.1:8888/snakeviz/%2Fopt%2Ffirewheel%2Ffirewheel_profile.prof --location=$HOME/$CI_PROJECT_DIR/profile
-    - pkill snakeviz
+    - wget https://gist.githubusercontent.com/MSSandroid/6402e2e99e31633386a312b283839e0d/raw/4890a4ac54c3dae72a634da92f84c2adc7480056/snakeviz_static_html.py -O snakeviz_static_html.py
+    - python snakeviz_static_html.py firewheel_profile.prof
+    - mv firewheel_profile.html $HOME/$CI_PROJECT_DIR/profile
     - popd
   artifacts:
     paths:

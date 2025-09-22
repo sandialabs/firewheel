@@ -1,0 +1,40 @@
+---
+###################################################################################################
+# This playbook will loop through all values in the `required_files` variable
+# and collected those files from an S3 instance.
+# The user will need to provide all relevant information.
+# An example configuration is shown below:
+#
+# s3_endpoints:
+#   - s3_endpoint: "https://s3.us-east-1.amazonaws.com"
+#     aws_access_key_id: "SOME KEY ID"
+#     aws_secret_access_key: "SOME SECRET KEY"
+#     buckets:
+#       - "firewheel_bucket1"
+#       - "firewheel_bucket2"
+#   - s3_endpoint: "https://custom-s3-endpoint:8000"
+#     aws_access_key_id: "SOME KEY ID"
+#     aws_secret_access_key: "SOME SECRET KEY"
+#     buckets:
+#       - "firewheel_bucket3"
+###################################################################################################
+
+- name: Trying S3 cache
+  block:
+    - name: "Attempt to download cached files from {{ firewheel_s3_bucket }}"
+      amazon.aws.s3_object:
+        bucket: "{{ firewheel_s3_bucket }}"
+        object: "{{ item.source if item.source is defined else mc_name + '/' + item.destination | basename }}"
+        dest: "{{ item.destination }}"
+        mode: get
+        aws_access_key: "{{ firewheel_aws_access_key_id }}"
+        aws_secret_key: "{{ firewheel_aws_secret_access_key }}"
+        endpoint_url: "{{ firewheel_s3_endpoint }}"
+      loop: "{{ required_files }}"
+      register: s3_download_result
+      ignore_errors: true
+  rescue:
+    - name: Handle S3 download failures
+      ansible.builtin.debug:
+        msg: "Pulling file from host {{ firewheel_s3_endpoint }} bucket {{ firewheel_s3_bucket }} failed. Continuing..."
+      when: s3_download_result is failed

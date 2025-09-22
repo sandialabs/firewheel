@@ -1,0 +1,24 @@
+###################################################################################################
+# This is the ansible tasks file for installing {{ mc_name }}.
+# The tasks file should be a YAML list with any tasks needed to ensure that the
+# model component can execute correctly as intended.
+# Any variables needed for these tasks should be defined in ``var.yml``.
+# The tasks should be one-time actions which help prepare the model component for use.
+# Common uses include downloading VM Resources from the Internet.
+#
+# FIREWHEEL will automatically provide the following variables to Ansible playbooks:
+# - ``mc_name`` -- The name of the Model Component.
+# - ``mc_dir`` -- The full path to the model component directory.
+#
+###################################################################################################
+# Example tasks
+#- name: Create directory for downloading HTOP
+#  ansible.builtin.file:
+#    path: "{{ '{{' }} mc_dir {{ '}}' }}/vm_resources"
+#    state: directory
+#
+#- name: Download htop Package
+#  ansible.builtin.get_url:
+#    url: "http://archive.ubuntu.com/ubuntu/pool/universe/h/htop/htop_1.0.2-3_amd64.deb"
+#    dest: "{{ '{{' }} mc_dir {{ '}}' }}/vm_resources/htop_1.0.2-3_amd64.deb"
+#    checksum: "sha256:0311d8a26689935ca53e8e9252cb2d95a1fdc2f8278f4edb5733f555dad984a9"
