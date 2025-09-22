@@ -7,6 +7,7 @@ FIREWHEEL Documentation
 
 .. toctree::
    :hidden:
+   :caption: FIREWHEEL
    :maxdepth: 2
 
    emulytics
@@ -18,13 +19,20 @@ FIREWHEEL Documentation
 
 .. toctree::
    :hidden:
-   :caption: Devlopers
+   :caption: Developers
    :maxdepth: 2
    
    model_components/index
    developer/index
    developer/code/index
    glossary
+
+.. toctree::
+   :hidden:
+   :caption: Resources
+   :maxdepth: 1
+
+   cheat_sheet
 
 .. only:: html
 
