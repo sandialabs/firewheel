@@ -5,9 +5,11 @@
 System Design
 #############
 
+
 .. toctree::
    :maxdepth: 1
 
+   objectives
    infrastructure
    architecture
    model_component/index

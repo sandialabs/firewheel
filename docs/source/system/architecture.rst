@@ -29,7 +29,7 @@ We'll next discuss each of FIREWHEEL's major software components.
 
    diagrams
 
-.. _cli:
+.. _fw_cli:
 
 Command Line Interface
 ======================

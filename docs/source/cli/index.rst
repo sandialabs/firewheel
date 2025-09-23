@@ -62,7 +62,6 @@ Additionally, the history of CLI commands is located in ``cli_history.log`` (or 
 The location of the CLI-specific log files can be set using FIREWHEEL's configuration.
 
 .. toctree::
-    :hidden:
 
     commands.rst
     helper_docs.rst
