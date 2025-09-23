@@ -59,8 +59,8 @@ The model components that make up an experiment define its network topology, whi
 
     * Its vertices, which will become computing, networking, or other device VMs
     * The edges that represent network connections amongst the vertices
-    * Vertex and edge class types that can be assigned to individual vertices
-    * The VM images associated with the various vertex class types
+    * :py:class:`Vertex <firewheel.control.experiment_graph.Vertex>` and :py:class:`Edges <firewheel.control.experiment_graph.Edge>` class types that can be assigned to individual vertices
+    * The VM images associated with the various :py:class:`Vertex <firewheel.control.experiment_graph.Vertex>` class types
     * VM resource files that will alter the state of a VM once booted
     * Scheduling info for when and where those VM resources will modify the VM
 

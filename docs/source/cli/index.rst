@@ -57,7 +57,7 @@ For example:
 
 As with other FIREWHEEL components, the CLI logs to ``firewheel.log``.
 However, because the CLI is verbose, it has an additional log file (``cli.log``) which contains more in-depth logging information, including the output.
-Additionally, the history of CLI commands is located in ``cli_history.log`` (or it can be accessed via the :ref:`command_history` command.
+Additionally, the history of CLI commands is located in ``cli_history.log`` (or it can be accessed via the :ref:`command_history` command).
 
 The location of the CLI-specific log files can be set using FIREWHEEL's configuration.
 
