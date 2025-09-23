@@ -122,6 +122,8 @@ license-files = ["LICENSE", "DISCLAIMER.md", "COPYRIGHT.md", "NOTICE"]
 firewheel = ["firewheel.yaml"]
 
 [tool.setuptools_scm]
+version_scheme = "python-simplified-semver"
+local_scheme = "no-local-version"
 
 [tool.doc8]
 # Ignore line length errors. Our preferred format is to have single sentences
