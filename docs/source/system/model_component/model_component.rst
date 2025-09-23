@@ -288,7 +288,7 @@ The ``vm_resources`` field specifies the names of the files, located within the 
 VM resources can be scripts, executables, data files, or blobs, etc., that are added to vertices and scheduled for use on the VM images assigned to vertices in a network topology, once FIREWHEEL has instantiated them while launching an experiment. VM resources can be used to execute any function you want to have operate on a VM. They are used to configure VMs, install and configure applications on them, and to carry out other actions needed to conduct an experiment, such as generating network traffic and collecting data for analysis. The ``vm_resources`` field's values are used by FIREWHEEL at run time to locate a model component's VM resource files at the appropriate time during experiment launch/execution.
 
 .. note::
-    
+
     Only the names of VM resource files that a model component contains are included in the ``vm_resources`` field's value array. A model component may depend on using VM resources contained in other model components, e.g. to assign them to vertices and schedule their execution times, but those VM resources imported from other model components are NOT included in the ``vm_resources`` field's value array. However, you would need to depend on the model components that contain those VM resources, e.g. by listing them in the ``attributes`` or ``model_components`` objects' ``depends`` value arrays in the dependent model component's ``MANIFEST``.
 
 Including the ``vm_resources`` field in a ``MANIFEST`` is only required if the model component contains one or more VM resource files.
@@ -392,7 +392,7 @@ In this case, your new graph object's model component would simply need to depen
 Then you'd reference it in your new graph component class and FIREWHEEL would be able to locate the VM image for instantiating your new graph object at run time.
 
 .. note::
-    
+
     It is recommended that images are compressed before being added to model components to save space.
     In this case, ``xz`` was used to compress the image.
     FIREWHEEL will decompress it when loading it into the image cache the first time it is used.

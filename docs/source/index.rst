@@ -21,7 +21,7 @@ FIREWHEEL Documentation
    :hidden:
    :caption: Developers
    :maxdepth: 2
-   
+
    model_components/index
    developer/index
    developer/code/index

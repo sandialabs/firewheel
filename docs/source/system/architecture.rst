@@ -46,7 +46,7 @@ The distinction between commands and Helpers is not relevant for most users so w
 CLI commands may output error message to the screen, but remote commands will indicate an error through a non-zero exit code.
 
 
-.. note:: 
+.. note::
 
    For more information on the design of the FIREWHEEL CLI, please see :ref:`cli_design`.
 
@@ -69,7 +69,7 @@ FIREWHEEL's model components depend on one another to provide reusable, modular 
 Users build experiment models by creating and combining the sets of model components that define the topologies, attributes, configurations, and scheduled actions for their experiments.
 Model components can depend on the outputs or capabilities of other model components, and ultimately the set of model components that make up a given experiment depend on model components provided by `firewheel_repo_base <https://github.com/sandialabs/firewheel_repo_base>`_.
 
-.. note:: 
+.. note::
 
    For more information on the design of the Model Components, please see :ref:`mc_design`.
 
@@ -119,7 +119,7 @@ The *VM Resource Manager* is the FIREWHEEL component that performs this job.
 It receives the information about all actions that need to be performed (i.e. the vertices to perform them on, when they are to be performed, the commands, scripts or executables that need to be run, and/or any other resources required for accomplishing the action), and manages the execution of each action on each VM as required and at the designated time.
 Once the *VM Resource Manager* has successfully finished monitoring and managing pre-start-time scheduled actions, then the experiment's emulated computer network is ready for conducting the intended experiment, and the *VM Resource Manager* will now do the same for actions that are scheduled to happen post-start-time i.e. actions that are part of the experiment.
 
-.. note:: 
+.. note::
 
    For more information on the design of the *VM Resource Manager*, please see :ref:`vm_resource_system`.
 
