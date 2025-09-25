@@ -57,6 +57,8 @@ performance-ubuntu2204:
   artifacts:
     paths:
       - profile
+  rules:
+    - if: $TEST_FIREWHEEL_PERFORMANCE == "true"
 
 ###############################
 # Create Documentation
