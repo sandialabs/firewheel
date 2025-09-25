@@ -33,7 +33,7 @@ stages:
 performance-ubuntu2204:
   stage: test
   tags:
-    - ubuntu2204
+    - $CI_PERFORMANCE_RUNNER
   needs: []
   variables:
     BASE_PYTHON: python3.10
