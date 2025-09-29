@@ -1,0 +1,543 @@
+/* Global Styles */
+
+:root {
+    --sandia-blue-900: #004553;
+    --sandia-blue-800: #005f72;
+    --sandia-blue-700: #007992;
+    --sandia-blue-600: #0093b1;
+    --sandia-blue-500: #00add0;
+    --sandia-blue-400: #33bdd9;
+    --sandia-blue-300: #66cee3;
+    --sandia-blue-200: #99deec;
+    --sandia-blue-100: #cceff6;
+    --sandia-blue-75: #d9f3f8;
+    --sandia-blue-50: #e6f7fa;
+    --sandia-blue-25: #f2fbfd;
+    --sandia-medium-blue-600: #006490;
+    --sandia-medium-blue-25: #f2f8fb;
+    --sandia-red-500: #cc0000;
+    --sandia-orange-600: #d97400;
+    --sandia-green-600: #5c980f;
+    --sandia-blue-gray-900: #323940;
+    --sandia-blue-gray-800: #454e58;
+    --sandia-blue-gray-700: #586370;
+    --sandia-blue-gray-600: #6a7988;
+    --sandia-blue-gray-500: #7d8ea0;
+    --sandia-blue-gray-400: #97a5b3;
+    --sandia-blue-gray-300: #b1bbc6;
+    --sandia-blue-gray-200: #cbd2d9;
+    --sandia-blue-gray-100: #e5e8ec;
+    --sandia-blue-gray-75: #eceef1;
+    --sandia-blue-gray-50: #f2f4f6;
+    --sandia-blue-gray-25: #f9f9fa;
+    --sandia-gray-900: #1b1b1b;
+    --sandia-gray-800: #363636;
+    --sandia-gray-700: #525252;
+    --sandia-gray-600: #6d6d6d;
+    --sandia-gray-500: #888888;
+    --sandia-gray-400: #a0a0a0;
+    --sandia-gray-300: #b8b8b8;
+    --sandia-gray-200: #cfcfcf;
+    --sandia-gray-100: #e7e7e7;
+    --sandia-gray-75: #ededed;
+    --sandia-gray-50: #f3f3f3;
+    --sandia-gray-25: #f9f9f9;
+}
+
+[data-bs-theme="light"] {
+    --bs-body-bg: var(--sandia-gray-25);
+    --bs-body-color: var(--sandia-blue-gray-900);
+    --bs-border-color: var(--sandia-blue-gray-200);
+    --bs-nav-link-color: var(--sandia-blue-700);
+    --bs-primary: var(--sandia-medium-blue-600);
+    --bs-primary-color: var(--sandia-blue-gray-75);
+    --bs-secondary: var(--sandia-gray-600);
+    --bs-secondary-color: var(--sandia-gray-700);
+    --bs-success: var(--sandia-green-600);
+    --bs-info: var(--sandia-blue-600);
+    --bs-warning: var(--sandia-orange-600);
+    --bs-danger: var(--sandia-red-500);
+    --dot-pulse-color: var(--sandia-medium-blue-600);
+    --list-hover-bg: var(--sandia-blue-gray-100);
+    --chat-btn-color: var(--sandia-blue-gray-900);
+    --custom-close-color: var(--sandia-medium-blue-600);
+    --custom-tooltip-color: var(--sandia-gray-200);
+    --custom-tooltip-bg: var(--sandia-gray-900);
+    --custom-tooltip-border: var(--sandia-blue-gray-400);
+    --custom-tooltip-link: var(--sandia-blue-200);
+}
+
+:root {
+    /* Light Theme Colors */
+    --md-sys-color-primary: var(--sandia-blue-600); /* Primary color */
+    --md-sys-color-on-primary: var(--sandia-gray-200); /* Text color on primary */
+    --md-sys-color-primary-container: var(
+        --sandia-gray-25
+    ); /* Background color for primary container */
+    --md-sys-color-on-primary-container: var(
+        --sandia-blue-900
+    ); /* Text color on primary container */
+
+    --md-sys-color-secondary: var(--sandia-green-600); /* Secondary color */
+    --md-sys-color-on-secondary: var(--sandia-gray-200); /* Text color on secondary */
+
+    --md-sys-color-background: var(--sandia-gray-25); /* Background color */
+    --md-sys-color-on-background: var(
+        --sandia-blue-gray-900
+    ); /* Text color on background */
+
+    --md-sys-color-surface: var(--sandia-gray-50); /* Surface color */
+    --md-sys-color-on-surface: var(--sandia-blue-gray-900); /* Text color on surface */
+
+    --md-sys-color-error: var(--sandia-red-500); /* Error color */
+    --md-sys-color-on-error: var(--sandia-gray-200); /* Text color on error */
+
+    --md-sys-color-success: var(--sandia-green-600); /* Success color */
+    --md-sys-color-on-success: var(--sandia-gray-200); /* Text color on success */
+
+    --md-sys-color-info: var(--sandia-blue-600); /* Info color */
+    --md-sys-color-on-info: var(--sandia-gray-200); /* Text color on info */
+
+    --md-sys-color-warning: var(--sandia-orange-600); /* Warning color */
+    --md-sys-color-on-warning: var(--sandia-gray-200); /* Text color on warning */
+
+    --md-sys-color-divider: rgba(0, 0, 0, 0.12); /* Divider color */
+}
+
+body {
+    font-family:
+        Open Sans,
+        Segoe UI,
+        Tahoma,
+        sans-serif;
+    color: var(--md-sys-color-on-primary-container);
+    background-color: var(--md-sys-color-primary-container);
+}
+
+/* Header Styles */
+
+h1,
+h2,
+h3,
+h4 {
+    /* Set the color of headings to a dark gray */
+    color: var(--md-sys-color-on-primary-container);
+}
+
+/* Modal Styles */
+
+.modal {
+    /* Hide the modal by default */
+    display: none;
+
+    /* Position the modal fixed and on top of other elements */
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+
+    /* Set the width and height to 100% to cover the entire screen */
+    width: 100%;
+    height: 100%;
+
+    /* Add a semi-transparent background to the modal */
+    background-color: rgba(0, 0, 0, 0.5);
+
+    /* Enable scrolling if the modal content is larger than the screen */
+    overflow: auto;
+}
+
+.modal-content {
+    /* Set the background color of the modal content to white */
+    background-color: var(--md-sys-color-background);
+
+    /* Center the modal content horizontally and vertically */
+    margin: 15% auto;
+
+    /* Add padding to the modal content */
+    padding: 20px;
+
+    /* Add a border to the modal content */
+    border: 1px solid #888;
+
+    /* Set the width of the modal content to 80% of the screen */
+    width: 80%;
+    border-radius: 8px; /* Rounded corners */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Shadow effect */
+}
+
+.modal-header-content {
+    display: flex; /* Use flexbox for layout */
+    justify-content: space-between; /* Space between elements */
+    align-items: center; /* Center items vertically */
+    width: 100%; /* Ensure it takes the full width */
+}
+
+.vm-name {
+    font-size: 20px;
+    color: var(--md-sys-color-primary);
+    font-weight: normal;
+    flex: 1; /* Allow the VM name to take available space */
+}
+
+.time {
+    font-size: 24px;
+    color: var(--sandia-blue-gray-600);
+    text-align: right; /* Right-align the text */
+}
+
+.files-list {
+    margin-top: 15px;
+}
+
+.file-detail {
+    margin-top: 10px;
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: var(--md-sys-color-background);
+}
+
+.d-flex > div {
+    margin: 0 10px; /* Adjust the margin as needed */
+}
+
+.dropzone .dz-preview .dz-details {
+    opacity: 1;
+}
+
+.dropzone .dz-preview.dz-image-preview {
+    background: var(--sandia-medium-blue-25);
+}
+
+/* Optional: Customize Dropzone styles */
+.dropzone {
+    border: 2px dashed var(--md-sys-color-primary);
+    border-radius: 5px;
+    padding: 20px;
+    text-align: center;
+    background-color: var(--sandia-medium-blue-25);
+}
+
+.dz-preview {
+    position: relative; /* Position relative for absolute positioning of text */
+    display: flex; /* Use flexbox for layout */
+    align-items: center; /* Center items vertically */
+    margin-top: 10px; /* Space between previews */
+    padding: 10px; /* Padding for better appearance */
+    border-radius: 5px; /* Rounded corners */
+    background-color: var(--sandia-medium-blue-25);
+}
+
+.dz-file-preview {
+    position: relative;
+}
+
+/* Style for the dz-details */
+.dz-details {
+    position: absolute; /* Position absolute to overlay on the image */
+    top: 10px; /* Position from the top */
+    left: 10px; /* Position from the left */
+}
+
+/* Change color for dz-filename */
+.dz-filename {
+    font-weight: bold; /* Make the filename bold */
+}
+
+img[data-dz-thumbnail] {
+    width: 120px;
+    height: 120px;
+    opacity: 0.7; /* Set opacity for the image */
+}
+
+.snackbar {
+    visibility: hidden; /* Hidden by default */
+    min-width: 250px; /* Minimum width */
+    margin-left: -125px; /* Center the snackbar */
+    background-color: var(--md-sys-color-error); /* Background color */
+    color: var(--md-sys-color-on-error); /* Text color */
+    text-align: center; /* Center the text */
+    border-radius: 2px; /* Rounded corners */
+    padding: 16px; /* Padding */
+    position: fixed; /* Fixed position */
+    z-index: 1; /* Sit on top */
+    left: 50%; /* Center horizontally */
+    top: 20px; /* Position from the top */
+    font-size: 17px; /* Font size */
+    transition:
+        visibility 0s,
+        opacity 0.5s linear; /* Transition for visibility and opacity */
+    opacity: 0; /* Start as invisible */
+}
+
+.snackbar.show {
+    visibility: visible; /* Show the snackbar */
+    opacity: 1; /* Make it visible */
+}
+
+/* Header styles */
+.modal-header {
+    border-bottom: 1px solid var(--sandia-gray-200);
+    padding-bottom: 10px;
+    padding-top: 0px;
+    display: flex; /* Use flexbox for layout */
+    flex-direction: column; /* Stack items vertically */
+}
+
+/* Entry detail styles */
+.entry-detail {
+    margin-top: 15px;
+    padding: 10px;
+    border: 1px solid var(--sandia-gray-200);
+    border-radius: 5px;
+    background-color: var(--md-sys-color-background);
+}
+
+.command {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: var(--md-sys-color-background);
+    border-radius: 5px;
+    border: 1px solid var(--sandia-gray-200);
+}
+
+.command-executable {
+    color: var(--md-sys-color-info); /* Blue color for executable */
+    font-family:
+        "Courier New", Courier, monospace; /* Monospace font for terminal look */
+    white-space: pre; /* Preserve whitespace for command formatting */
+}
+
+.command-arguments {
+    color: var(--md-sys-color-success); /* Green color for arguments */
+    font-family:
+        "Courier New", Courier, monospace; /* Monospace font for terminal look */
+    white-space: pre; /* Preserve whitespace for command formatting */
+}
+
+.location {
+    font-family:
+        "Courier New", Courier, monospace; /* Monospace font for terminal look */
+    white-space: pre; /* Preserve whitespace for command formatting */
+}
+
+
+/* Close button styles */
+.close-button {
+    /* Set the color of the close button to a light gray */
+    color: #aaa;
+
+    /* Position the close button to the right */
+    float: right;
+
+    /* Increase the font size of the close button */
+    font-size: 28px;
+    width: 20px;
+
+    /* Make the close button bold */
+    font-weight: bold;
+}
+
+.close-button:hover,
+.close-button:focus {
+    /* Change the color of the close button on hover and focus to black */
+    color: var(--md-sys-color-error);
+
+    /* Remove the text decoration on hover and focus */
+    text-decoration: none;
+
+    /* Change the cursor to a pointer on hover and focus */
+    cursor: pointer;
+}
+
+.tooltip {
+    display: none; /* Initially hidden */
+    position: absolute; /* Positioning */
+    background-color: var(--sandia-gray-900);
+    color: var(--sandia-gray-200);
+    padding: 5px;
+    border-radius: 4px;
+    opacity: 100;
+}
+
+.detailsButton {
+    /* Position the button relatively */
+    position: relative;
+}
+
+.clipped-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 100px;
+    display: inline-block;
+}
+
+input[type="number"] {
+    max-width: 130px; /* Limit width for better alignment */
+}
+
+#vmFilter {
+    max-width: 400px; /* Adjust this value as needed */
+}
+
+.filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px; /* Space between chips */
+}
+
+.filter-chip {
+    background-color: var(--md-sys-color-on-primary);
+    color: var(--md-sys-color-on-surface);
+    border-radius: 16px; /* Rounded corners */
+    padding: 8px 12px; /* Padding for the chip */
+    display: flex;
+    align-items: center;
+}
+
+.filter-chip strong {
+    font-weight: bold; /* Bold for the label */
+    margin-right: 4px; /* Space between label and value */
+}
+
+.chip-value {
+    font-weight: normal; /* Regular weight for the value */
+}
+
+md-filled-tonal-button {
+    background-color: var(--sandia-blue-300); /* Set the background color */
+    fill: var(--md-sys-color-on-primary-container);
+    border: none; /* Remove any default border */
+    padding: 10px 20px; /* Adjust padding for height and width */
+    border-radius: 50px; /* High border-radius for oval shape */
+    cursor: pointer; /* Change cursor to pointer */
+    display: inline-flex; /* Use flexbox for alignment */
+    align-items: center; /* Center items vertically */
+    margin-top: 16px; /* Add vertical space above the button */
+}
+
+md-filled-tonal-button:hover {
+    background-color: var(--md-sys-color-primary); /* Change color on hover */
+    fill: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-primary-container);
+}
+
+#downloadIcon,
+#resetIcon {
+    fill: var(--sandia-blue-300); /* Original fill color */
+    transition: fill 0.3s; /* Smooth transition for hover effect */
+    position: absolute; /* Positioning */
+    cursor: pointer; /* Pointer cursor on hover */
+}
+
+#downloadIcon:hover,
+#resetIcon:hover {
+    fill: var(--md-sys-color-primary); /* Hover fill color */
+}
+
+.remove-chip {
+    margin-left: 8px; /* Space between text and remove icon */
+    cursor: pointer; /* Pointer cursor for the remove icon */
+    color: var(--md-sys-color-error); /* Red color for the remove icon */
+}
+
+.code-block {
+    background-color: #2b2b2b; /* Black background */
+    border-radius: 5px; /* Rounded corners */
+    overflow: hidden; /* Hide overflow */
+    margin: 20px 0; /* Margin for spacing */
+}
+
+.code-header {
+    background-color: var(--sandia-gray-700); /* Dark grey header */
+    color: var(--md-sys-color-surface); /* Light grey text */
+    padding: 10px; /* Padding for header */
+    display: flex; /* Flexbox for layout */
+    justify-content: space-between; /* Space between title and button */
+    align-items: center; /* Center items vertically */
+    height: 40px; /* Fixed height for the header */
+}
+
+.code-title {
+    font-weight: bold; /* Bold title */
+}
+
+pre {
+    margin: 0; /* Remove default margin */
+    padding: 10px; /* Padding for code */
+    overflow: auto; /* Enable scrolling if needed */
+}
+
+code {
+    display: block; /* Block display for code */
+    white-space: pre; /* Preserve whitespace */
+}
+
+.icon {
+    height: 20px; /* Icon height */
+    width: 20px; /* Icon width */
+}
+
+/* Make the table header fixed */
+table {
+    width: 100%; /* Ensure the table takes full width */
+    border-collapse: collapse; /* Collapse borders */
+}
+
+thead th {
+    position: sticky; /* Make the header sticky */
+    top: 0; /* Stick to the top */
+    background-color: var(
+        --md-sys-color-on-primary-container
+    ); /* Background color for header */
+    z-index: 10; /* Ensure it stays above other content */
+}
+
+/* Alternate row coloring */
+tbody.scheduleTable tr:nth-child(odd) {
+    background-color: var(--sandia-blue-gray-200); /* Light gray for odd rows */
+}
+
+tbody.scheduleTable tr:nth-child(even) {
+    background-color: #ffffff; /* White for even rows */
+}
+
+md-outlined-button {
+    border: 1px solid var(--md-sys-color-primary); /* Material Design Primary color */
+    color: var(--md-sys-color-primary);
+    fill: var(--md-sys-color-primary);
+    background-color: transparent;
+    padding: 8px 16px; /* Example padding */
+    border-radius: 50px; /* Example border-radius */
+    cursor: pointer; /* Pointer cursor */
+    font-size: 14px; /* Font size */
+    text-align: left; /* Align text to the left */
+    display: flex; /* Use flexbox for icon and text alignment */
+    align-items: center; /* Center items vertically */
+    margin: 0 5px; /* Adjust margin as needed */
+}
+
+md-outlined-button:hover {
+    background-color: var(--md-sys-color-primary); /* Subtle hover overlay */
+    color: var(--md-sys-color-on-primary);
+    fill: var(--md-sys-color-on-primary);
+}
+
+.highlight {
+    transition: fill 0.3s;
+    transition: stroke 0.3s;
+}
+
+#graphInfoButton {
+    color: var(--md-sys-color-primary);
+    fill: var(--md-sys-color-primary);
+    background-color: transparent;
+    cursor: pointer; /* Pointer cursor */
+}
+
+#graphInfoButton:hover {
+    color: var(--md-sys-color-on-background);
+    fill: var(--md-sys-color-on-background);
+}

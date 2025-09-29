@@ -33,6 +33,7 @@ FIREWHEEL Documentation
    :maxdepth: 1
 
    cheat_sheet
+   vmr_explorer.rst
 
 .. only:: html
 
