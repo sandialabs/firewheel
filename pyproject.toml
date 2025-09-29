@@ -90,7 +90,7 @@ docs = [
     "sphinx-rtd-theme==3.0.2",
     "sphinxcontrib-spelling>=7.0.0,<=8.0.1",
     "sphinx-copybutton==0.5.2",
-    "pyenchant==3.2.2",
+    "pyenchant==3.3.0",
     "doc8==1.1.2",
     "pip-licenses==5.0.0",
     "sphinx-design==0.6.1",
