@@ -69,7 +69,7 @@ dependencies = [
     "pytest<=8.4.2",
     "pytest-cov<=6.0.0",
     "python-dotenv<=1.1.1",
-    "PyYAML<=6.0.2",
+    "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
     "requests==2.32.4",
     "rich>=13.6.0,<14.2",
