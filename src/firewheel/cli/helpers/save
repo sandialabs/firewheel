@@ -236,9 +236,9 @@ if __name__ == "__main__":
         description="Save VM state and schedule files.",
         prog="firewheel save"
     )
-    parser.add_argument("--name", type=str, default="firewheel_experiment", help="Name of the experiment to save.")
+    parser.add_argument("-n", "--name", type=str, default="firewheel_experiment", help="Name of the experiment to save.")
     parser.add_argument(
-        "--complete", action="store_true",
+        "-c", "--complete", action="store_true",
         help="If provided, save all files from the experiment, including cached images and VM resources."
     )
     args = parser.parse_args()
