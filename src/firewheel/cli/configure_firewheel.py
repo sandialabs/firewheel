@@ -1,10 +1,10 @@
 import os
 import cmd
+import shlex
 import pprint
 import argparse
 import operator
 import subprocess
-import shlex
 from inspect import cleandoc
 from pathlib import Path
 
