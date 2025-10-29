@@ -46,6 +46,7 @@ Edit the FIREWHEEL configuration with a text editor. The user must set either th
 environment variable or use the provided flag to override these environment variables.
 
 options:
+
   -e EDITOR, --editor EDITOR
                         Use the specified text editor.
 
@@ -67,6 +68,7 @@ positional arguments:
              command: ``firewheel config get logging.level``.
 
 options:
+
   -a, --all  Get the entire FIREWHEEL configuration.
 
 
@@ -90,12 +92,20 @@ positional arguments:
 config set
 ^^^^^^^^^^
 
-usage: firewheel config set (-f FILE | -s SETTING [VALUE ...])
+usage: firewheel config set (-f FILE | -j JSON | -s SETTING [VALUE ...])
 
 Set a FIREWHEEL configuration.
 
 options:
   -f FILE, --file FILE  Add config from a file.
+
+
+  -j JSON, --json JSON  Pass in a JSON string that can set/replace a subset of the configuration.
+                        This should include the top-level config key as well as any sub-keys.
+                        Any keys or sub-keys not present will not be impacted.
+                        For example, to change the value for the config key ``logging.level``, you
+                        can use the command:
+                        ``firewheel config set -j '{"logging":{"level":"INFO"}}'``.
 
   -s SETTING [VALUE ...], --single SETTING [VALUE ...]
                         Set (or create) a particular configuration value. Nested settings
@@ -355,4 +365,5 @@ Example:
 
         $ firewheel version
         2.6.0
+
 
