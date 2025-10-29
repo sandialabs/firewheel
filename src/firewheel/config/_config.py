@@ -20,6 +20,7 @@ Examples:
     firewheel.log
 """
 
+import shlex
 import shutil
 from typing import Any, Set, Dict, List, Final, Tuple, Union
 from pathlib import Path
@@ -315,8 +316,8 @@ class Config:
         This helper method enables getting the value for a specific configuration
         key. If a nested key is requested it should be represented using periods
         to indicate the nesting. This function will return the Python object
-        of the key. Alternatively, if the value if a list, the user can return
-        a  space separated string.
+        of the key. Alternatively, if the value is a list, the user can return
+        a space separated string.
 
         Args:
             key (str): The input key to get in *dot* notation. This means that
@@ -389,7 +390,7 @@ class Config:
         # Set the correct type of the input data
         try:
             if isinstance(cur_value, list):
-                value = value.split()
+                value = shlex.split(value)
             elif isinstance(cur_value, bool):
                 value = bool(strtobool(value))
             elif cur_value is not None:

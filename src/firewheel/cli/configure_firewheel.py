@@ -1,5 +1,6 @@
 import os
 import cmd
+import shlex
 import pprint
 import argparse
 import operator
@@ -43,7 +44,7 @@ class ConfigureFirewheel(cmd.Cmd):
         # Print the full help message on an error
         # (see: https://stackoverflow.com/a/29293080)
         try:
-            cmd_args = parser.parse_args(args.split())
+            cmd_args = parser.parse_args(shlex.split(args))
         except SystemExit as err:
             if err.code == 2:
                 parser.print_help()
@@ -202,7 +203,7 @@ class ConfigureFirewheel(cmd.Cmd):
 
         if cmd_args.single is not None:
             key = cmd_args.single[0]
-            value = " ".join(cmd_args.single[1:])
+            value = shlex.join(cmd_args.single[1:])
             self.log.debug(
                 "Setting the FIREWHEEL config value for `%s` to `%s`.", key, value
             )
