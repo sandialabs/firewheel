@@ -302,7 +302,7 @@ ignore = [
     "PERF203",  # try-except-in-loop
     "PERF401",  # manual-list-comprehension
 ]
-preview = true
+preview = false
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []

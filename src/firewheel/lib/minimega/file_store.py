@@ -79,7 +79,7 @@ class FileStoreFile:
 
         return self.handle.read(size)
 
-    def __exit__(  # noqa: DOC109, DOC110
+    def __exit__(
         self,
         exc_type: Union[BaseException, None] = None,
         exc_val: Union[BaseException, None] = None,
