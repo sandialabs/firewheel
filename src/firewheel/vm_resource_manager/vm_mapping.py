@@ -189,7 +189,7 @@ class VMMapping:
         count = res["count"]
         return count
 
-    def prepare_put(self, entry):  # noqa: DOC503
+    def prepare_put(self, entry):
         """
         Validate that the provided entry has the necessary fields and if it does
         not, provide details or raise an error in the case of a required field.

@@ -54,7 +54,7 @@ def populate_template(script_path: Path) -> None:
         python_bin=config["python"]["bin"],
     )
     # Write the script content to the completion script
-    with script_path.open("w") as script_file:
+    with script_path.open("w", encoding="utf-8") as script_file:
         script_file.write(script_content)
 
 

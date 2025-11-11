@@ -622,7 +622,7 @@ class VMResourceHandler:
         except Exception as exp:  # noqa: BLE001
             self.log.exception(exp)
 
-    def _transfer_data(self, name, location, interval=None, destination=None):  # noqa: DOC503
+    def _transfer_data(self, name, location, interval=None, destination=None):
         """
         The helper function which transfers data from the VM to the physical host
         based on the input parameters.
