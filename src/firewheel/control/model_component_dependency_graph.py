@@ -1,7 +1,5 @@
-import networkx as nx
 
 from firewheel.lib.log import Log
-from firewheel.lib.utilities import render_rich_string
 from firewheel.control.model_component import ModelComponent
 from firewheel.control.dependency_graph import DependencyGraph, InvalidNodeError
 
@@ -152,32 +150,3 @@ class ModelComponentDependencyGraph(DependencyGraph):
             if comp.name == model_component.name:
                 return comp
         return None
-
-    def get_cycles(self):
-        """
-        Try to identify all the cycles in the DiGraph that could be created by
-        a user. These errors are then logged.
-
-        Returns:
-            list: A list of cycles created by a user.
-        """
-        all_human_cycles = []
-        for cycle in nx.simple_cycles(self.dg):
-            human_cycle = []
-            for element in cycle:
-                if isinstance(element, str):
-                    human_cycle.append(
-                        render_rich_string(
-                            f"[magenta]{element}[/magenta] [cyan](Attribute)[/cyan]"
-                        )
-                    )
-                else:
-                    human_cycle.append(
-                        render_rich_string(
-                            f"[magenta]{self.component_map[element].name}[/magenta] "
-                            "[cyan](Model Component)[/cyan]"
-                        )
-                    )
-            self.log.error("Circular dependency detected: %s", human_cycle)
-            all_human_cycles.append(human_cycle)
-        return all_human_cycles
