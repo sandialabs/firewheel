@@ -180,7 +180,8 @@ class DependencyGraph:
             list: Entity IDs in canonical, dependency-satisfying order.
 
         Raises:
-            UnsatisfiableDependenciesError: Occurs if there are cycles.
+            HasACycle: Occurs if there are cycles.
+            UnsatisfiableDependenciesError: Occurs if the graph changes during iteration.
         """
         entity_ordering = []
         # Raises UnsatisfiableDependenciesError if there are cycles.
@@ -193,7 +194,7 @@ class DependencyGraph:
                     entity_ordering.append(node_id)
         except nx.NetworkXUnfeasible as exp:
             if self.has_cycles():
-                self.dependency_cycle_handler()
+                raise nx.HasACycle from exp
             raise UnsatisfiableDependenciesError from exp
 
         return entity_ordering
@@ -241,67 +242,3 @@ class DependencyGraph:
             edge["target"] = nodes[edge["target"]]["id"]
 
         return json.dumps(data)
-
-    def dependency_cycle_handler(self):
-        """
-        The dependency graph had cycles so we should retrieve those cycles and alert
-        the user.
-
-        Raises:
-            UnsatisfiableDependenciesError: Output the cycles in the graph.
-        """
-        all_human_cycles = self.get_cycles()
-        all_cycle_graphs = ""
-        for cycle in all_human_cycles:
-            cdg = nx.DiGraph()
-            for node in cycle:
-                cdg.add_node(node)
-
-            for i, node in enumerate(cycle[:-1]):
-                cdg.add_edge(node, cycle[i + 1])
-            cdg.add_edge(cycle[0], cycle[-1])
-
-            for line in nx.generate_network_text(cdg):
-                all_cycle_graphs += f"{line}\n"
-
-            all_cycle_graphs += "\n\n"
-
-        # Improving upon the default networkx diagrams
-        backedge: str = "╾"
-        all_cycle_graphs = all_cycle_graphs.replace(backedge, "◄─")
-        all_cycle_graphs = all_cycle_graphs.replace("╼", "►")
-
-        self.log.error(
-            "Unsatisfiable dependency graph contained %s cycles", len(all_human_cycles)
-        )
-        raise UnsatisfiableDependenciesError(
-            "Unsatisfiable: Circular dependency relationship(s) found.\n"
-            f"Simple cycles:\n{all_cycle_graphs}"
-        )
-
-    def get_cycles(self):
-        """
-        Try to identify all the cycles in the DiGraph that could be created by
-        a user. These errors are then logged.
-
-        Returns:
-            list: A list of cycles created by a user.
-        """
-        all_human_cycles = []
-        for cycle in nx.simple_cycles(self.dg):
-            human_cycle = []
-            for element in cycle:
-                if isinstance(element, str):
-                    human_cycle.append(
-                        str(f"[magenta]{element}[/magenta] [cyan](Attribute)[/cyan]")
-                    )
-                else:
-                    human_cycle.append(
-                        str(
-                            f"[magenta]{self.component_map[element].name}[/magenta] "
-                            "[cyan](Model Component)[/cyan]"
-                        )
-                    )
-            self.log.error("Circular dependency detected: %s", human_cycle)
-            all_human_cycles.append(human_cycle)
-        return all_human_cycles
