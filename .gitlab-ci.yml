@@ -33,7 +33,7 @@ stages:
 performance-ubuntu2204:
   stage: test
   tags:
-    - ubuntu2204
+    - $CI_PERFORMANCE_RUNNER
   needs: []
   variables:
     BASE_PYTHON: python3.10
@@ -57,6 +57,8 @@ performance-ubuntu2204:
   artifacts:
     paths:
       - profile
+  rules:
+    - if: $FIREWHEEL_TEST_PERFORMANCE == "true"
 
 ###############################
 # Create Documentation
@@ -64,6 +66,8 @@ performance-ubuntu2204:
 docs:
   image: $DOCKER_REGISTRY/python:3.11
   stage: lint
+  tags:
+    - $CI_DOCKER_RUNNER
   needs: []
   before_script:
     - !reference [.create_venv, before_script]
@@ -82,19 +86,17 @@ docs:
   rules:
     - if: $CI_COMMIT_BRANCH =~ /^documentation.*$/
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  tags:
-    - $CI_DOCKER_RUNNER
 
 pages:
   image: $DOCKER_REGISTRY/python:3.11
-  before_script:
-    - echo "Starting pages."
   stage: deploy
   tags:
     - $CI_DOCKER_RUNNER
   needs:
     - job: docs
       artifacts: true
+  before_script:
+    - echo "Starting pages."
   script:
     - mv documentation/html public
   artifacts:
@@ -103,9 +105,19 @@ pages:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+###############################
+# Build and Deploy
+#
+# Build FIREWHEEL as a Python package and
+# deploy it to a local package registry
+#
+###############################
 build:
   image: $DOCKER_REGISTRY/python:3.11
   stage: deploy
+  tags:
+    - $CI_DOCKER_RUNNER
+  needs: []
   before_script:
     - apt-get update && apt-get install -y git git-lfs
     - !reference [.create_venv, before_script]
@@ -117,9 +129,6 @@ build:
   artifacts:
     paths:
       - dist/*.whl
-  needs: []
-  tags:
-    - $CI_DOCKER_RUNNER
   rules:
     - if: '$CI_PIPELINE_SOURCE == "release"'
       when: always

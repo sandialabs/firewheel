@@ -19,9 +19,16 @@ fi
 if [[ -f "/etc/default/minimega" ]]; then
     # Check if any variables are already set
     while IFS='=' read -r key value; do
-        # Only set the variable if it is not already set
-        if [[ -z "${!key}" ]]; then
-            export "$key"="$value"
+        # Skip empty lines and comments
+        if [[ -n "$key" && -n "$value" && "$key" != \#* ]]; then
+            # Remove surrounding quotes
+            value="${value%\"}"
+            value="${value#\"}"
+
+            # Only set the variable if it is not already set
+            if [[ -z "${!key}" ]]; then
+                export "${key}=${value}"
+            fi
         fi
     done < <(grep -v '^#' "/etc/default/minimega")
 fi
