@@ -2,7 +2,11 @@ import networkx as nx
 
 from firewheel.lib.log import Log
 from firewheel.control.model_component import ModelComponent
-from firewheel.control.dependency_graph import DependencyGraph, InvalidNodeError
+from firewheel.control.dependency_graph import (
+    DependencyGraph,
+    InvalidNodeError,
+    UnsatisfiableDependenciesError,
+)
 
 
 class ModelComponentDependencyGraph(DependencyGraph):
@@ -191,7 +195,7 @@ class ModelComponentDependencyGraph(DependencyGraph):
         self.log.error(
             "Unsatisfiable dependency graph contained %s cycles", len(all_human_cycles)
         )
-        raise super().UnsatisfiableDependenciesError(
+        raise UnsatisfiableDependenciesError(
             "Unsatisfiable: Circular dependency relationship(s) found.\n"
             f"Simple cycles:\n{all_cycle_graphs}"
         )
