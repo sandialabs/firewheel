@@ -435,11 +435,12 @@ function updateGraph() {
     const color = d3.scaleOrdinal(d3.schemeDark2);
 
     // Create the SVG element for the tangled tree visualization
-    const width = Math.min(tangleLayout.layout.width, 1200); // Set a maximum width
+    const maxWidth = document.getElementById("scheduleContainer").offsetWidth;
+    const width = Math.min(tangleLayout.layout.width, maxWidth); // Set a maximum width
     const height = Math.min(tangleLayout.layout.height, 800); // Set a maximum height
 
-    svg.attr("width", 1200)
-        .attr("height", 800)
+    svg.attr("viewbox", `0 0 ${width} ${height}`)
+        .attr("height", height)
         .style("background-color", background_color);
 
     // Center the graph initially

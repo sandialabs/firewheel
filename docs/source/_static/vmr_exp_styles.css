@@ -541,3 +541,31 @@ md-outlined-button:hover {
     color: var(--md-sys-color-on-background);
     fill: var(--md-sys-color-on-background);
 }
+
+
+#graphContainer {
+  position: relative;
+}
+
+#graph {
+  width: 100%;
+}
+
+/* Custom container overrides for large-width screens */
+@media (min-width: 1920px) {
+  .container {
+    max-width: 1800px;
+  }
+}
+
+@media (min-width: 2560px) {
+  .container {
+    max-width: 2400px;
+  }
+}
+
+@media (min-width: 3840px) {
+  .container {
+    max-width: 3600px;
+  }
+}
