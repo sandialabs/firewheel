@@ -509,7 +509,7 @@ class ModelComponent:
         Upload all image files from the manifest.
 
         Returns:
-            dict: Actions for each specified file. Possible actions are:
+            dict: Statuses for each specified file. Possible statuses are:
 
             * ``no_date`` -- There was no upload date for the given file in the
                   ``ImageStore``. It was uploaded.
@@ -525,30 +525,38 @@ class ModelComponent:
             An empty dictionary is returned if no images are identified.
 
         """
-        return {
-            image_path: self._upload_image(image_path)
+        image_statuses = {
+            image_path: self._evaluate_image(image_path)
             for image_field in self.manifest.get("images", {})
             for image_path in image_field.get("paths", [])
         }
+        # Filter images that require uploads (and upload them)
+        upload_images = {
+            image_path: status
+            for image_path, status in image_statuses.items()
+            if status in {"no_date", "new_hash"}
+        }
+        if upload_images:
+            for image_path, status in upload_images.items():
+                self._upload_image(image_path, status)
+        return image_statuses
 
-    def _upload_image(self, image_path):
+    def _evaluate_image(self, image_path):
         """
-        Upload an image to the ``ImageStore``.
+        Evaluate an image's status (governing uploads to the ``ImageStore``).
 
         Args:
-            image_path (str): A path to an image to be added to the ``ImageStore``.
+            image_path (str): A path to an image to be evaluated.
 
         Returns:
-            str: An action for the specified image file. Possible actions are:
+            str: A status for the specified image file. Possible statuses are:
 
             * ``no_date`` -- There was no upload date for the given file in the
-                  ``ImageStore``. It was uploaded.
+                  ``ImageStore``.
             * ``new_hash`` -- The modified time of the file on disk differs from the
                   last upload time in the ``ImageStore`` and the hashes did not match.
-                  File was uploaded.
             * ``same_hash`` -- The file on disk was modified after the upload time in
-                  the ``ImageStore`` but the hashes are the same. File was
-                  not uploaded.
+                  the ``ImageStore`` but the hashes are the same.
             * :py:data:`False` -- None of the other conditions occurred. For example,
                   the file on disk was modified before the ``ImageStore`` upload time.
         """
@@ -558,11 +566,27 @@ class ModelComponent:
         modification_timestamp = self._get_modification_timestamp(path)
         upload_date = self.image_store.get_file_upload_date(path.name)
 
-        # If the image does not exist in the `FileStore`, then add it. If it does exist,
-        # then compare times. If the last modified time of the disk image is greater
-        # than the uploaded time of the image in the `FileStore`, then we should check
-        # the MD5 sums. If the MD5 sums differ, than we need to re-upload the image.
         if upload_date is None:
+            return "no_date"
+        elif modification_timestamp != upload_date:
+            # The timestamps do not match; compare the hashes
+            disk_hash = hash_file(path)
+            store_hash = self.image_store.get_file_hash(os.path.basename(path))
+            return "same_hash" if disk_hash == store_hash else "new_hash"
+        return False
+
+    def _upload_image(self, image_path, status):
+        """
+        Upload an image to the ``ImageStore`` based on the image's status.
+
+        Args:
+            image_path (str): A path to an image to be added to the ``ImageStore``.
+            status (str): The status of the image which determines how it will be
+                uploaded.
+        """
+        path = Path(self.path, image_path)
+
+        if status == "no_date":
             with Progress(
                 TextColumn(
                     f"[yellow]Adding {image_path} to cache. This may take a while."
@@ -572,26 +596,16 @@ class ModelComponent:
             ) as progress:
                 progress.add_task(description="upload_image")
                 self.image_store.add_image_file(path)
-            return "no_date"
-        elif modification_timestamp != upload_date:
-            # If date is different then hash it
-            disk_hash = hash_file(path)
-            store_hash = self.image_store.get_file_hash(os.path.basename(path))
-            # If hashes differ upload new image
-            if disk_hash != store_hash:
-                with Progress(
-                    TextColumn(
-                        f"[yellow]Updating {image_path} in cache. This may take a while."
-                    ),
-                    SpinnerColumn(spinner_name="line"),
-                    TimeElapsedColumn(),
-                ) as progress:
-                    progress.add_task(description="upload_image")
-                self.image_store.add_image_file(path)
-                return "new_hash"
-            else:
-                return "same_hash"
-        return False
+        elif status == "new_hash":
+            with Progress(
+                TextColumn(
+                    f"[yellow]Updating {image_path} in cache. This may take a while."
+                ),
+                SpinnerColumn(spinner_name="line"),
+                TimeElapsedColumn(),
+            ) as progress:
+                progress.add_task(description="upload_image")
+            self.image_store.add_image_file(path)
 
     @staticmethod
     def _verify_vmr_exists(vmr_path):
