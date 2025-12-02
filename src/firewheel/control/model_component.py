@@ -509,9 +509,7 @@ class ModelComponent:
         Upload all image files from the manifest.
 
         Returns:
-            list: Actions for each specified file. Order is sequential,
-            proceeding through images, for each image proceed through each
-            specified file before moving to next image. Possible actions are:
+            dict: Actions for each specified file. Possible actions are:
 
             * ``no_date`` -- There was no upload date for the given file in the
                   ``ImageStore``. It was uploaded.
@@ -524,14 +522,14 @@ class ModelComponent:
             * :py:data:`False` -- None of the other conditions occurred. For example,
                   the file on disk was modified before the ``ImageStore`` upload time.
 
-            An empty list is returned if no images are identified.
+            An empty dictionary is returned if no images are identified.
 
         """
-        return [
-            self._upload_image(image_path)
+        return {
+            image_path: self._upload_image(image_path)
             for image_field in self.manifest.get("images", {})
             for image_path in image_field.get("paths", [])
-        ]
+        }
 
     def _upload_image(self, image_path):
         """
