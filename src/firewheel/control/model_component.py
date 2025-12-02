@@ -4,7 +4,15 @@ from pathlib import Path
 from datetime import datetime
 
 import yaml
-from rich.progress import Progress, TextColumn, SpinnerColumn, TimeElapsedColumn
+from rich.live import Live
+from rich.console import Group
+from rich.progress import (
+    Progress,
+    TextColumn,
+    SpinnerColumn,
+    TimeElapsedColumn,
+    MofNCompleteColumn,
+)
 
 from firewheel.lib.log import Log
 from firewheel.lib.utilities import hash_file
@@ -113,6 +121,23 @@ class ModelComponent:
                 )
             self.arguments = arguments
         self.log = Log(name="ModelComponent").log
+
+        # Set progress bars for this MC
+        self.overall_image_cache_progress = Progress(
+            MofNCompleteColumn(),
+            SpinnerColumn(spinner_name="line"),
+            TextColumn(
+                "[yellow]Populating/refreshing the image cache for MC "
+                f"`[white]{name}`[/white]. This may take a while..."
+            ),
+        )
+        self.image_cache_progress = Progress(
+            TimeElapsedColumn(),
+            TextColumn("[yellow]- {task.description}"),
+        )
+        self.image_cache_progress_group = Group(
+            self.overall_image_cache_progress, self.image_cache_progress
+        )
 
     @property
     def repository_db(self):
@@ -530,15 +555,14 @@ class ModelComponent:
             for image_field in self.manifest.get("images", {})
             for image_path in image_field.get("paths", [])
         }
-        # Filter images that require uploads (and upload them)
-        upload_images = {
-            image_path: status
-            for image_path, status in image_statuses.items()
-            if status in {"no_date", "new_hash"}
-        }
-        if upload_images:
-            for image_path, status in upload_images.items():
-                self._upload_image(image_path, status)
+        if image_actions := self._determine_image_actions(image_statuses):
+            with Live(self.image_cache_progress_group):
+                overall_task_id = self.overall_image_cache_progress.add_task(
+                    "", total=len(image_actions)
+                )
+                for image_path, action in image_actions.items():
+                    self._upload_image(image_path, action=action)
+                    self.overall_image_cache_progress.update(overall_task_id, advance=1)
         return image_statuses
 
     def _evaluate_image(self, image_path):
@@ -575,37 +599,27 @@ class ModelComponent:
             return "same_hash" if disk_hash == store_hash else "new_hash"
         return False
 
-    def _upload_image(self, image_path, status):
+    def _determine_image_actions(self, image_statuses):
+        # Determine (and filter) images that require uploads
+        return {
+            image_path: "Adding" if status == "no_date" else "Updating"
+            for image_path, status in image_statuses.items()
+            if status in {"no_date", "new_hash"}
+        }
+
+    def _upload_image(self, image_path, action="Adding"):
         """
         Upload an image to the ``ImageStore`` based on the image's status.
 
         Args:
             image_path (str): A path to an image to be added to the ``ImageStore``.
-            status (str): The status of the image which determines how it will be
-                uploaded.
+            action (str): The action being performed on the image.
         """
-        path = Path(self.path, image_path)
-
-        if status == "no_date":
-            with Progress(
-                TextColumn(
-                    f"[yellow]Adding {image_path} to cache. This may take a while."
-                ),
-                SpinnerColumn(spinner_name="line"),
-                TimeElapsedColumn(),
-            ) as progress:
-                progress.add_task(description="upload_image")
-                self.image_store.add_image_file(path)
-        elif status == "new_hash":
-            with Progress(
-                TextColumn(
-                    f"[yellow]Updating {image_path} in cache. This may take a while."
-                ),
-                SpinnerColumn(spinner_name="line"),
-                TimeElapsedColumn(),
-            ) as progress:
-                progress.add_task(description="upload_image")
-            self.image_store.add_image_file(path)
+        update_cache_task_id = self.image_cache_progress.add_task(
+            description=f"{action} {image_path}"
+        )
+        self.image_store.add_image_file(Path(self.path, image_path))
+        self.image_cache_progress.stop_task(update_cache_task_id)
 
     @staticmethod
     def _verify_vmr_exists(vmr_path):
