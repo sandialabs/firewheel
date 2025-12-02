@@ -98,7 +98,7 @@ echo 'Hello, World!'
         self.assertEqual(image_list, [])
 
         res = mcp._upload_images()
-        self.assertEqual(res, ["no_date"])
+        self.assertEqual(res, {self.image_file_name: "no_date"})
 
         image_list = self.image_store.list_contents()
         image_list = [image[self.fn_key] for image in image_list]
@@ -115,8 +115,8 @@ echo 'Hello, World!'
         image_list = [image[self.fn_key] for image in image_list]
         self.assertEqual(image_list, [])
 
-        res = mcp._upload_images()
-        self.assertEqual(res, ["no_date"])
+        result = mcp._upload_images()
+        self.assertEqual(result, {self.image_file_name: "no_date"})
 
         first_upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         image_list = self.image_store.list_contents()
@@ -125,8 +125,8 @@ echo 'Hello, World!'
 
         # Make sure our upload time would change if we re-uploaded
         time.sleep(2)
-        res = mcp._upload_images()
-        self.assertEqual(res, [False])
+        result = mcp._upload_images()
+        self.assertEqual(result, {self.image_file_name: False})
 
         second_upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         image_list = self.image_store.list_contents()
@@ -160,14 +160,14 @@ echo 'Hello, World!'
         mcp.manifest["images"][0] = {"paths": [image_rel_path]}
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["no_date"])
+        self.assertEqual(result, {image_rel_path: "no_date"})
 
         image_list = self.image_store.list_contents()
         image_list = [image[self.fn_key] for image in image_list]
         self.assertEqual(image_list, [image_name])
 
         result = mcp._upload_images()
-        self.assertEqual(result, [False])
+        self.assertEqual(result, {image_rel_path: False})
 
     def test_upload_new_time_same_hash(self):
         mcp = ModelComponent(
@@ -180,7 +180,7 @@ echo 'Hello, World!'
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["no_date"])
+        self.assertEqual(result, {self.image_file_name: "no_date"})
 
         upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         upload_hash = self.image_store.get_file_hash(self.image_file_name)
@@ -202,7 +202,7 @@ echo 'Hello, World!'
         self.assertTrue(post_time > pre_time)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["same_hash"])
+        self.assertEqual(result, {self.image_file_name: "same_hash"})
 
     def test_upload_new_time_new_hash(self):
         mcp = ModelComponent(
@@ -215,7 +215,7 @@ echo 'Hello, World!'
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["no_date"])
+        self.assertEqual(result, {self.image_file_name: "no_date"})
 
         upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         upload_hash = self.image_store.get_file_hash(self.image_file_name)
@@ -237,7 +237,7 @@ echo 'Hello, World!'
         self.assertTrue(post_time > pre_time)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["new_hash"])
+        self.assertEqual(result, {self.image_file_name: "new_hash"})
 
     def test_upload_old_time_new_hash(self):
         # What is this test case accomplishing?
@@ -261,7 +261,7 @@ echo 'Hello, World!'
         time.sleep(2)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["no_date"])
+        self.assertEqual(result, {self.image_file_name: "no_date"})
 
         upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         self.assertEqual(upload_time, second_time)
@@ -273,7 +273,7 @@ echo 'Hello, World!'
         self.assertNotEqual(second_hash, post_hash)
 
         result = mcp._upload_images()
-        self.assertEqual(result, [False])
+        self.assertEqual(result, {self.image_file_name: False})
 
     def test_upload_revert_same_file(self):
         mcp = ModelComponent(
@@ -286,7 +286,7 @@ echo 'Hello, World!'
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["no_date"])
+        self.assertEqual(result, {self.image_file_name: "no_date"})
 
         upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         upload_hash = self.image_store.get_file_hash(self.image_file_name)
@@ -314,7 +314,7 @@ echo 'Hello, World!'
         self.assertTrue(post_time > pre_time)
 
         result = mcp._upload_images()
-        self.assertEqual(result, ["new_hash"])
+        self.assertEqual(result, {self.image_file_name: "new_hash"})
 
         upload_time = self.image_store.get_file_upload_date(self.image_file_name)
         upload_hash = self.image_store.get_file_hash(self.image_file_name)
@@ -347,7 +347,7 @@ echo 'Hello, World!'
 
         # This should be uploaded because even though the time is "older" the contents
         # are newer.
-        self.assertEqual(result, ["new_hash"])
+        self.assertEqual(result, {self.image_file_name: "new_hash"})
 
     def test_upload_image_one_not_another_from_manifest(self):
         mcp = ModelComponent(
