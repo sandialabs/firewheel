@@ -375,18 +375,15 @@ class ModelComponent:
 
     def _upload_vm_resource(self, resource):
         """
-        Upload a file to the VmResourceStore.
+        Upload a file to the ``VmResourceStore``.
         It interrupts the path of the VM resources in the following way:
 
-        * Non-recursive all dir's files: `path_to_dir`,
-          `path_to_dir/`, or `path_to_dir/*`
-        * Non-recursive all dir's files matching pattern: `path_to_dir/*.ext`
-        * Recursive all files: `path_to_dir/**`, `path_to_dir/**/`, or `path_to_dir/**/*`
-        * Recursive  all files matching pattern: `path_to_dir/**/*.ext`
-
-        Raises:
-            MissingVmResourceError: if the given file path does not exist,
-                or its modification time cannot be determined.
+        * Non-recursive all dir's files: ``path_to_dir``,
+          ``path_to_dir/``, or ``path_to_dir/*``
+        * Non-recursive all dir's files matching pattern: ``path_to_dir/*.ext``
+        * Recursive all files: ``path_to_dir/**``, ``path_to_dir/**/``, or
+          ``path_to_dir/**/*``
+        * Recursive  all files matching pattern: ``path_to_dir/**/*.ext``
 
         Args:
             resource (str): Path relative to this component's root to the file being
@@ -394,33 +391,29 @@ class ModelComponent:
 
         Returns:
             str: Indication of what happened. This may be one of:
-                `no_date` -- There was no upload date for the given file in the
-                            VmResourceStore. It was uploaded.
-                `new_hash` -- The modified time of the file on disk differs from the
-                            last upload time in the VmResourceStore and the hashes did not match.
-                            File was uploaded.
-                `same_hash` -- The file on disk was modified after the upload time in
-                            the VmResourceStore but the hashes are the same. File was
-                            not uploaded.
-                `False` -- None of the other conditions occurred. For example, the file
-                        on disk was modified before the VmResourceStore upload time
+                ``no_date`` -- There was no upload date for the given file in the
+                    ``VmResourceStore``. It was uploaded.
+                ``new_hash`` -- The modified time of the file on disk differs from the
+                    last upload time in the ``VmResourceStore`` and the hashes did not
+                    match. File was uploaded.
+                ``same_hash`` -- The file on disk was modified after the upload time in
+                    the ``VmResourceStore`` but the hashes are the same. File was not
+                    uploaded.
+                :py:data:`False` -- None of the other conditions occurred. For example,
+                    the file on disk was modified before the ``VmResourceStore`` upload
+                    time.
         """
-        path = os.path.join(self.path, resource)
-        try:
-            modified_time = os.path.getmtime(path)
-            last_modified_date = datetime.utcfromtimestamp(modified_time)
-            self.log.debug(
-                "Resource %s in %s has modified time of %s",
-                resource,
-                self.manifest["name"],
-                last_modified_date,
-            )
-        except OSError as exp:
-            raise MissingVmResourceError(path) from exp
+        path = Path(self.path, resource)
+        self._verify_vmr_exists(path)
 
-        upload_date = self.vm_resource_store.get_file_upload_date(
-            os.path.basename(resource)
+        modification_timestamp = self._get_modification_timestamp(path)
+        self.log.debug(
+            "Resource %s in %s has modified time of %s",
+            resource,
+            self.manifest["name"],
+            modification_timestamp,
         )
+        upload_date = self.vm_resource_store.get_file_upload_date(Path(resource).name)
         self.log.debug("VM Resource store file has upload date of %s", upload_date)
 
         if upload_date is None:
@@ -430,7 +423,7 @@ class ModelComponent:
             self.vm_resource_store.add_file(path)
             return "no_date"
 
-        if last_modified_date != upload_date:
+        if modification_timestamp != upload_date:
             self.log.debug("Resource on disk is different from store. Checksuming.")
             resource_hash = hash_file(path)
             store_hash = self.vm_resource_store.get_file_hash(resource)
@@ -454,27 +447,27 @@ class ModelComponent:
         Upload all VM resources from the manifest. It interrupts the path
         of the VM resources in the following way:
 
-        * Non-recursive all dir's files: `path_to_dir`,
-          `path_to_dir/`, or `path_to_dir/*`
-        * Non-recursive all dir's files matching pattern: `path_to_dir/*.ext`
-        * Recursive all files: `path_to_dir/**`, `path_to_dir/**/`, or `path_to_dir/**/*`
-        * Recursive  all files matching pattern: `path_to_dir/**/*.ext`
+        * Non-recursive all dir's files: ``path_to_dir``,
+          ``path_to_dir/``, or ``path_to_dir/*``
+        * Non-recursive all dir's files matching pattern: ``path_to_dir/*.ext``
+        * Recursive all files: ``path_to_dir/**``, ``path_to_dir/**/``, or
+          ``path_to_dir/**/*``
+        * Recursive  all files matching pattern: ``path_to_dir/**/*.ext``
 
         Returns:
-            bool: True if any resource was uploaded, False otherwise.
+            bool: :py:data:`True` if any resource was uploaded, :py:data:`False`
+                otherwise.
 
         Raises:
-            RuntimeError: If the `vm_resources` field in the MANIFEST is not a list.
+            RuntimeError: If the ``vm_resources`` field in the MANIFEST is not a list.
         """
-        if "vm_resources" not in self.manifest:
+        if (vm_resources := self.manifest.get("vm_resources")) is None:
             return False
-
-        if not isinstance(self.manifest["vm_resources"], list):
-            # The vm_resources must be in a list
+        elif not isinstance(vm_resources, list):
+            # The `vm_resources` must be in a list
             raise RuntimeError(
-                'Malformed MANIFEST, the "vm_resources" attribute '
-                f'must be a list. It is currently: "{self.manifest["vm_resources"]}"'
-                f'of type "{type(self.manifest["vm_resources"])}"'
+                'Malformed MANIFEST, the "vm_resources" attribute must be a list. '
+                f"It is currently: `{vm_resources}` of type `{type(vm_resources)}`."
             )
 
         any_uploaded = False
@@ -484,7 +477,7 @@ class ModelComponent:
         # Non-recursive, all dir's files matching pattern path_to_dir/*.ext -> no change
         # Recursive - all files: path_to_dir/**, path_to_dir/**/ -> path_to_dir/**/*
         # Recursive - all files matching pattern: path_to_dir/**/*.ext -> no change
-        for manifest_vm_resource in self.manifest["vm_resources"]:
+        for manifest_vm_resource in vm_resources:
             if Path(self.path).joinpath(manifest_vm_resource).is_dir():
                 manifest_vm_resource += "/*"
 
@@ -515,89 +508,129 @@ class ModelComponent:
         """
         Upload all image files from the manifest.
 
-        Raises:
-            MissingImageError: If the image is not found in the model component.
-
         Returns:
             list: Actions for each specified file. Order is sequential,
             proceeding through images, for each image proceed through each
             specified file before moving to next image. Possible actions are:
 
-            * `no_date` -- There was no upload date for the given file in the
-                           ImageStore. It was uploaded.
-            * `new_hash` -- The modified time of the file on disk differs from the
-                            last upload time in the ImageStore and the hashes did not match.
-                            File was uploaded.
-            * `same_hash` -- The file on disk was modified after the upload time in
-                            the ImageStore but the hashes are the same. File was
-                            not uploaded.
-            * `False` -- None of the other conditions occurred. For example, the file
-                        on disk was modified before the ImageStore upload time
+            * ``no_date`` -- There was no upload date for the given file in the
+                  ``ImageStore``. It was uploaded.
+            * ``new_hash`` -- The modified time of the file on disk differs from the
+                  last upload time in the ``ImageStore`` and the hashes did not match.
+                  File was uploaded.
+            * ``same_hash`` -- The file on disk was modified after the upload time in
+                  the ``ImageStore`` but the hashes are the same. File was
+                  not uploaded.
+            * :py:data:`False` -- None of the other conditions occurred. For example,
+                  the file on disk was modified before the ``ImageStore`` upload time.
+
+            An empty list is returned if no images are identified.
+
         """
-        if "images" not in self.manifest:
-            return False
-        images = self.manifest["images"]
-        ret_val = []
-        for image in images:
-            for end_path in image["paths"]:
-                path = os.path.join(self.path, end_path)
-                try:
-                    modified_time = os.path.getmtime(path)
-                    last_modified_date = datetime.utcfromtimestamp(modified_time)
-                except OSError as exp:
-                    # The image does not exist. This is a problem...unless the
-                    # image is already in the file store then it may or may not be an
-                    # issue. Either way it is weird and the user should fix it.
-                    raise MissingImageError(
-                        f"The image {path} is not present in the model component."
-                    ) from exp
+        return [
+            self._upload_image(image_path)
+            for image_field in self.manifest.get("images", {})
+            for image_path in image_field.get("paths", [])
+        ]
 
-                # Check the upload date of the image in the FileStore. If the image
-                # does not exist, None will be returned.
-                if not self.image_store.check_path(os.path.basename(path)):
-                    upload_date = None
-                else:
-                    upload_date = self.image_store.get_file_upload_date(
-                        os.path.basename(path)
-                    )
+    def _upload_image(self, image_path):
+        """
+        Upload an image to the ``ImageStore``.
 
-                # If the image does not exist in the FileStore, then add it.
-                # If it does exist, then compare times. If the last modified
-                # time of the disk image is greater than the uploaded time of
-                # the image in the FileStore, then we should check the MD5 sums. If the
-                # MD5 sums differ, than we need to re-upload the image.
-                if upload_date is None:
-                    with Progress(
-                        TextColumn(
-                            f"[yellow]Adding {end_path} to cache. This may take a while."
-                        ),
-                        SpinnerColumn(spinner_name="line"),
-                        TimeElapsedColumn(),
-                    ) as progress:
-                        progress.add_task(description="upload_image")
-                        self.image_store.add_image_file(path)
-                    ret_val.append("no_date")
-                elif last_modified_date != upload_date:
-                    # If date is different then hash it
-                    disk_hash = hash_file(path)
-                    store_hash = self.image_store.get_file_hash(os.path.basename(path))
-                    # If hashes differ upload new image
-                    if disk_hash != store_hash:
-                        with Progress(
-                            TextColumn(
-                                f"[yellow]Updating {end_path} in cache. This may take a while."
-                            ),
-                            SpinnerColumn(spinner_name="line"),
-                            TimeElapsedColumn(),
-                        ) as progress:
-                            progress.add_task(description="upload_image")
-                        self.image_store.add_image_file(path)
-                        ret_val.append("new_hash")
-                    else:
-                        ret_val.append("same_hash")
-                else:
-                    ret_val.append(False)
-        return ret_val
+        Args:
+            image_path (str): A path to an image to be added to the ``ImageStore``.
+
+        Returns:
+            str: An action for the specified image file. Possible actions are:
+
+            * ``no_date`` -- There was no upload date for the given file in the
+                  ``ImageStore``. It was uploaded.
+            * ``new_hash`` -- The modified time of the file on disk differs from the
+                  last upload time in the ``ImageStore`` and the hashes did not match.
+                  File was uploaded.
+            * ``same_hash`` -- The file on disk was modified after the upload time in
+                  the ``ImageStore`` but the hashes are the same. File was
+                  not uploaded.
+            * :py:data:`False` -- None of the other conditions occurred. For example,
+                  the file on disk was modified before the ``ImageStore`` upload time.
+        """
+        path = Path(self.path, image_path)
+        self._verify_image_exists(path)
+
+        modification_timestamp = self._get_modification_timestamp(path)
+        upload_date = self.image_store.get_file_upload_date(path.name)
+
+        # If the image does not exist in the `FileStore`, then add it. If it does exist,
+        # then compare times. If the last modified time of the disk image is greater
+        # than the uploaded time of the image in the `FileStore`, then we should check
+        # the MD5 sums. If the MD5 sums differ, than we need to re-upload the image.
+        if upload_date is None:
+            with Progress(
+                TextColumn(
+                    f"[yellow]Adding {image_path} to cache. This may take a while."
+                ),
+                SpinnerColumn(spinner_name="line"),
+                TimeElapsedColumn(),
+            ) as progress:
+                progress.add_task(description="upload_image")
+                self.image_store.add_image_file(path)
+            return "no_date"
+        elif modification_timestamp != upload_date:
+            # If date is different then hash it
+            disk_hash = hash_file(path)
+            store_hash = self.image_store.get_file_hash(os.path.basename(path))
+            # If hashes differ upload new image
+            if disk_hash != store_hash:
+                with Progress(
+                    TextColumn(
+                        f"[yellow]Updating {image_path} in cache. This may take a while."
+                    ),
+                    SpinnerColumn(spinner_name="line"),
+                    TimeElapsedColumn(),
+                ) as progress:
+                    progress.add_task(description="upload_image")
+                self.image_store.add_image_file(path)
+                return "new_hash"
+            else:
+                return "same_hash"
+        return False
+
+    @staticmethod
+    def _verify_vmr_exists(vmr_path):
+        """
+        Verify that the VM resource exists in the model component.
+
+        Args:
+            vmr_path (path): The path to the VM resource to verify.
+
+        Raises:
+            MissingVmResourceError: If the given file path does not exist.
+        """
+        if not vmr_path.exists():
+            raise MissingVmResourceError(vmr_path)
+
+    @staticmethod
+    def _verify_image_exists(image_path):
+        """
+        Verify that the image exists in the model component.
+
+        Args:
+            image_path (path): The path to the image to verify.
+
+        Raises:
+            MissingImageError: If the image is not found in the model component.
+        """
+        if not image_path.exists():
+            # The image does not exist. This is a problem... unless the image is already
+            # in the file store then it may or may not be an issue. Either way, it is
+            # weird and the user should fix it.
+            raise MissingImageError(
+                f"The image {image_path} is not present in the model component."
+            )
+
+    @staticmethod
+    def _get_modification_timestamp(path):
+        return datetime.utcfromtimestamp(path.stat().st_mtime)
 
     def set_dependency_graph_id(self, new_id):
         """
