@@ -713,7 +713,7 @@ see :ref:`cli_helper_section`."""
         )
         print("<Count>: <ID>:<Sequence Number> -- <command>")
         for line in self.history_file:
-            print("%d: %s" % (counter, line.strip("\n")))  # noqa: FS001
+            print("%d: %s" % (counter, line.strip("\n")))
             counter += 1
         # We're done, reset our file descriptor.
         self.history_file.close()

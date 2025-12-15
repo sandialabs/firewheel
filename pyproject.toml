@@ -82,7 +82,7 @@ mcs = [
     "firewheel-repo-vyos",
 ]
 format = [
-    "ruff==0.11.2",
+    "ruff==0.14.3",
 ]
 docs = [
     "Sphinx>=7.0.0,<=8.2.3",
@@ -302,7 +302,7 @@ ignore = [
     "PERF203",  # try-except-in-loop
     "PERF401",  # manual-list-comprehension
 ]
-preview = true
+preview = false
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []
