@@ -182,7 +182,7 @@ def retry(num_tries, exceptions=None, base_delay=10, exp_factor=2):
         """
 
         @_wraps(func)
-        def f_retry(*args, **kwargs):
+        def f_retry(*args, **kwargs):  # noqa: DOC109
             """
             The retry loop which attempts the function ``num_tries`` times
             and will catch exceptions passed into exceptions, then sleep
