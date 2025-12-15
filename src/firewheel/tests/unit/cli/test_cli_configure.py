@@ -45,7 +45,7 @@ class CliConfigureTestCase(unittest.TestCase):
         new_config = Config().get_config()
         self.assertEqual(new_config["logging"]["cli_log"], default_setting)
 
-    def test_do_set_single(self):
+    def test_do_set_single_string(self):
         new_log_name = "new_cli.log"
         old_setting = self.old_config["logging"]["cli_log"]
         self.assertNotEqual(old_setting, new_log_name)
@@ -55,6 +55,50 @@ class CliConfigureTestCase(unittest.TestCase):
         new_config = Config().get_config()
 
         self.assertEqual(new_config["logging"]["cli_log"], new_log_name)
+
+    def test_do_set_single_list_one_element(self):
+        new_nodes_string = "test_node"
+        old_setting = self.old_config["cluster"]["compute"]
+        self.assertNotEqual(old_setting, new_nodes_string)
+        args = f"-s cluster.compute {new_nodes_string}"
+        self.cli.do_set(args)
+
+        new_config = Config().get_config()
+
+        self.assertEqual(new_config["cluster"]["compute"], [new_nodes_string])
+
+    def test_do_set_single_list_one_element_with_space(self):
+        new_nodes_string = "test node"
+        old_setting = self.old_config["cluster"]["compute"]
+        self.assertNotEqual(old_setting, new_nodes_string)
+        args = f"-s cluster.compute '{new_nodes_string}'"
+        self.cli.do_set(args)
+
+        new_config = Config().get_config()
+
+        self.assertEqual(new_config["cluster"]["compute"], [new_nodes_string])
+
+    def test_do_set_single_list_multiple_elements(self):
+        new_nodes_string = "test_node0,test_node1"
+        old_setting = self.old_config["cluster"]["compute"]
+        self.assertNotEqual(old_setting, new_nodes_string)
+        args = f"-s cluster.compute {new_nodes_string}"
+        self.cli.do_set(args)
+
+        new_config = Config().get_config()
+
+        self.assertEqual(new_config["cluster"]["compute"], [new_nodes_string])
+
+    def test_do_set_single_list_multiple_elements_space(self):
+        new_nodes_string = "test_node0 test_node1"
+        old_setting = self.old_config["cluster"]["compute"]
+        self.assertNotEqual(old_setting, new_nodes_string)
+        args = f"-s cluster.compute {new_nodes_string}"
+        self.cli.do_set(args)
+
+        new_config = Config().get_config()
+
+        self.assertEqual(new_config["cluster"]["compute"], new_nodes_string.split(" "))
 
     @unittest.mock.patch("sys.stderr", new_callable=io.StringIO)
     @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
