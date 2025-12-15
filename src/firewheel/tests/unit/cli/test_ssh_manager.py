@@ -22,7 +22,7 @@ class _TestSSHProtocolManager:
         "-o",
         "HostKeyAlgorithms=+ssh-rsa",
         "-o",
-        f"ProxyCommand ssh -o BatchMode=yes {local_hostname} -W %h:%p",
+        f"ProxyCommand ssh -o BatchMode=yes o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {local_hostname} -W %h:%p",
     ]
 
 
