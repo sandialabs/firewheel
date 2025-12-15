@@ -371,9 +371,15 @@ Available Model Components
                 repo_name = repo_path.name
                 try:
                     pkg_metadata = metadata(f"{repo_name}")
-                    long_description = pkg_metadata.get('Description', 'No description available.')
+                    long_description = pkg_metadata.get("Description")
                     if long_description:
                         index += f"\n{long_description}"
+                    else:
+                        index += f"""
+    {'*' * len(repo_name)}
+    {repo_name}
+    {'*' * len(repo_name)}
+    """
                 except importlib.metadata.PackageNotFoundError:
                     index += f"""
 {'*' * len(repo_name)}
