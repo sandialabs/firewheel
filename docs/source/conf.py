@@ -370,10 +370,11 @@ Available Model Components
                 # Check if there is package metadata
                 repo_name = repo_path.name
                 try:
-                    message = metadata(f"{repo_name}")
+                    pkg_metadata = metadata(f"{repo_name}")
                     source = message.get_payload()
-                    if source:
-                        index += f"\n{source}"
+                    long_description = pkg_metadata.get('Description', 'No description available.'
+                    if long_description:
+                        index += f"\n{long_description}"
                 except importlib.metadata.PackageNotFoundError:
                     index += f"""
 {'*' * len(repo_name)}
