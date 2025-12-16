@@ -93,7 +93,7 @@ class CliCompletionTemplatingTestCase(unittest.TestCase):
         mock_script_path = Path("mock_script_path")
         populate_template(mock_script_path)
         # Check that the designated file was opened in write mode
-        self.mock_open_function.assert_called_once_with("w")
+        self.mock_open_function.assert_called_once_with("w", encoding="utf-8")
         # Check that the output of the `write` method is correct
         mock_handle = self.mock_open_function.return_value
         mock_handle.write.assert_called_once()
