@@ -646,7 +646,7 @@ class QemuGuestAgentDriver(AbstractDriver):
             RuntimeError: There is a read error.
             RuntimeError: The return didn't have a byte count.
             RuntimeError: The returned size does not match the read size.
-        """  # noqa: DAR402
+        """
 
         handle = None
         try:
