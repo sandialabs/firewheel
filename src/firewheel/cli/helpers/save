@@ -1,0 +1,208 @@
+AUTHOR
+FIREWHEEL Team
+DONE
+
+DESCRIPTION
+This Helper saves the current state of all VMs in the VM mapping and schedule database after making a Minimega API call to "ns save".
+The saved information is compressed into a single archive.
+
+**Usage:**  ``firewheel save [--name EXPERIMENT_NAME] [--complete]``
+
+Example
++++++++
+
+``firewheel save --name my_experiment --complete``
+
+DONE
+
+RUN LocalPython ON control
+#!/usr/bin/env python
+import sys
+import json
+import shutil
+import argparse
+import tempfile
+from pathlib import Path
+
+import minimega
+from rich.console import Console
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TextColumn,
+    MofNCompleteColumn,
+    TimeRemainingColumn,
+)
+
+from firewheel.config import config
+from firewheel.cli.utils import cli_output_theme
+from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.control.image_store import ImageStore
+from firewheel.lib.minimega.file_store import FileStore
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+
+
+def save_vm_state(experiment_name="firewheel_experiment", complete=False):
+    """
+    Saves the current state of all VMs and their schedules, optionally including all files from the experiment.
+
+    Args:
+        experiment_name (str): The name of the experiment to save.
+        complete (bool): If True, save all files from the experiment, including cached images and VM resources.
+
+    Returns:
+        int: 0 on success, 1 on failure.
+
+    Raises:
+        minimega.Error: If the minimega namespace (i.e., all VMs in the experiment) is not saved successfully.
+        RuntimeError: If we cannot connect to the location where the minimega namespace saved its files.
+    """
+    console = Console(theme=cli_output_theme)
+
+    # Initialize Minimega client
+    mm_api = minimegaAPI()
+
+    # Make the API call to "namespace save"
+    try:
+        with console.status("[yellow]Calling minimega to save namespace...[/yellow]", spinner="line"):
+            mm_api.mm.ns_save(name=experiment_name)
+        console.print("[green]Namespace saved successfully.[/green]")
+    except minimega.Error as exp:
+        console.print(f"[red]Error saving namespace: {exp}[/red]")
+        return 1
+
+    # Create a FileStore for the "saved" directory
+    try:
+        saved_exp = FileStore("saved")
+    except Exception as exp:
+        console.print("[red]FileStore connection failed.[/red]")
+        raise RuntimeError(
+            f"Invalid value for FileStore connection. Details: {exp}"
+        ) from exp
+
+    exp_files = Path(saved_exp.get_file_path(experiment_name))
+
+    # Initialize VMMapping and ScheduleDb
+    vm_mapping = VMMapping()
+    schedule_db = ScheduleDb()
+
+    # Retrieve experiment state
+    mapping = vm_mapping.get_all()
+    files = schedule_db.cache.list_distinct_contents()
+    schedule_db_paths = [schedule_db.cache.get_path(file) for file in files]
+
+    # Create a temporary directory to store the data
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # Copy the saved namespace files to the temporary directory
+        try:
+            if exp_files.exists():
+                with console.status("[yellow]Copying VM State/HDD files...[/yellow]", spinner="line"):
+                    shutil.copytree(exp_files, temp_path / exp_files.name)
+                console.print(
+                    "[green]Copied VM State/HDD files from "
+                    f"[cyan]{exp_files}[/cyan] to [cyan]{temp_path}[/cyan]"
+                )
+            else:
+                console.print(f"[yellow]The VM State/HDD files at [cyan]{exp_files}[/cyan] do not exist![/yellow]")
+        except OSError as exc:
+            console.print(f"[red]Error copying VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}[/red]")
+
+        # Save VM mapping states to a JSON file
+        mapping_file = temp_path / "vm_mapping.json"
+        try:
+            with open(mapping_file, "w", encoding="utf-8") as f:
+                json.dump(mapping, f)
+            console.print(f"[green]VM mapping states saved to [cyan]{mapping_file}[/cyan] successfully.[/green]")
+        except OSError as exc:
+            console.print(f"[red]Error saving VM mapping states to file: {exc}[/red]")
+            return 1
+
+        # Copy schedule files to the temporary directory
+        with Progress(TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeRemainingColumn()) as progress:
+            task = progress.add_task("[green]Copying schedule files...", total=len(schedule_db_paths))
+
+            schedule_dir = temp_path / "schedules"
+            schedule_dir.mkdir(parents=True, exist_ok=True)
+            for file in schedule_db_paths:
+                try:
+                    shutil.copy(file, schedule_dir)
+                except OSError as exc:
+                    console.print(f"[red]Error copying schedule file {file}: {exc}[/red]")
+                    return 1
+
+                progress.update(task, advance=1)
+
+        # If complete is True, copy all cached images and VM resources
+        if complete:
+            image_store = ImageStore()
+            img_files = Path(image_store.cache)
+            try:
+                if img_files.exists():
+                    with console.status("[yellow]Copying ImageStore cache...[/yellow]", spinner="line"):
+                        shutil.copytree(img_files, temp_path / img_files.name)
+                    console.print(
+                        "[green]Copied Image files from "
+                        f"[cyan]{img_files}[/cyan] to [cyan]{temp_path}[/cyan]"
+                    )
+                else:
+                    console.print(f"[yellow]The Image files at [cyan]{img_files}[/cyan] do not exist[/yellow]")
+            except OSError as exc:
+                console.print(f"[red]Error copying Image directory [cyan]{img_files}[/cyan]: {exc}[/red]")
+
+            vmr_store = VmResourceStore()
+            vmr_files = Path(vmr_store.cache)
+            try:
+                if vmr_files.exists():
+                    with console.status("[yellow]Copying VM Resource cache...[/yellow]", spinner="line"):
+                        shutil.copytree(vmr_files, temp_path / vmr_files.name)
+                    console.print(
+                        "[green]Copied VM Resources files from "
+                        f"[cyan]{vmr_files}[/cyan] to [cyan]{temp_path}[/cyan]"
+                    )
+                else:
+                    console.print(f"[yellow]The VM Resources files at [cyan]{vmr_files}[/cyan] do not exist[/yellow]")
+            except OSError as exc:
+                console.print(f"[red]Error copying VM Resources directory [cyan]{vmr_files}[/cyan]: {exc}[/red]")
+
+        # Getting the launch_cmds.mm as well
+        vmr_launch_cmds = Path(config["logging"]["root_dir"]) / "launch_cmds.mm"
+        if vmr_launch_cmds.exists():
+            shutil.copy(vmr_launch_cmds, temp_path)
+            console.print("[green]Copied VM Resources Handler Launch file.")
+        else:
+            console.print(
+                "[yellow]The VM Resources Handler Launch file at "
+                f"[cyan]{vmr_launch_cmds}[/cyan] does not exist[/yellow]"
+            )
+
+        # Compress the temporary directory into a single archive
+        archive_file = Path(f"{experiment_name}_backup")
+        try:
+            with console.status("[yellow]Compressing data...[/yellow]", spinner="line"):
+                shutil.make_archive(archive_file, "gztar", temp_path)
+            console.print(f"[green]Compressed data saved to [cyan]{archive_file}[/cyan] successfully.[/green]")
+        except OSError as exc:
+            console.print(f"[red]Error compressing the temporary directory: {exc}[/red]")
+            return 1
+
+        console.print(f"[green]VM state saved to [cyan]{archive_file}[/cyan] successfully.[/green]")
+    return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Save VM state and schedule files.")
+    parser.add_argument("--name", type=str, default="firewheel_experiment", help="Name of the experiment to save.")
+    parser.add_argument(
+        "--complete", action="store_true",
+        help="If provided, save all files from the experiment, including cached images and VM resources."
+    )
+    args = parser.parse_args()
+    sys.exit(save_vm_state(experiment_name=args.name, complete=args.complete))
+DONE
