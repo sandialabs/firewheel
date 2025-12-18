@@ -83,6 +83,5 @@ variables:
 # Move MC binaries into the appropriate locations
 .provision_mcs:
   before_script:
-  https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}\"|"
     - firewheel config set -j "{\"ansible\": {\"git_servers\": [{\"repositories\": [{\"path\": \"${LINUX_BIN_REPO_PATH}\"}, {\"path\": \"${DNS_BIN_REPO_PATH}\"}, {\"path\": \"${VYOS_BIN_REPO_PATH}\"}, {\"path\": \"${NTP_BIN_REPO_PATH}\"}, {\"path\": \"${LAYER2_BIN_REPO_PATH}\"}, {\"path\": \"${UTILITIES_BIN_REPO_PATH}\"}], \"server_url\": \"https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}\"}]}}"
     - firewheel repository install -i -s
