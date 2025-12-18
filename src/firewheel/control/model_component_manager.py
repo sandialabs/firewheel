@@ -7,7 +7,6 @@ import importlib.util
 from pathlib import Path
 from datetime import datetime
 
-import networkx as nx
 from rich.console import Console
 
 from firewheel.config import config
@@ -242,7 +241,7 @@ class ModelComponentManager:
                         try:
                             component = self.dg.get_first(component)
                         except UnsatisfiableDependenciesError:
-                            self._dependency_cycle_handler()
+                            self.dg.dependency_cycle_handler()
                     else:
                         mc_depends = component.get_model_component_depends()
                         for mcdep_name in mc_depends:
@@ -379,7 +378,7 @@ class ModelComponentManager:
 
             # Check for cycles. If one is found our graph cannot be satisfied.
             if self.dg.has_cycles():
-                self._dependency_cycle_handler()
+                self.dg.dependency_cycle_handler()
 
     def check_list_ordering(self, cur_mc_list, parent, component):
         """
@@ -414,43 +413,6 @@ class ModelComponentManager:
             raise
 
         return True
-
-    def _dependency_cycle_handler(self):
-        """
-        The dependency graph had cycles so we should retrieve those cycles and alert
-        the user.
-
-        Raises:
-            UnsatisfiableDependenciesError: Output the cycles in the graph.
-        """
-        all_human_cycles = self.dg.get_cycles()
-        all_cycle_graphs = ""
-        for cycle in all_human_cycles:
-            cdg = nx.DiGraph()
-            for node in cycle:
-                cdg.add_node(node)
-
-            for i, node in enumerate(cycle[:-1]):
-                cdg.add_edge(node, cycle[i + 1])
-            cdg.add_edge(cycle[0], cycle[-1])
-
-            for line in nx.generate_network_text(cdg):
-                all_cycle_graphs += f"{line}\n"
-
-            all_cycle_graphs += "\n\n"
-
-        # Improving upon the default networkx diagrams
-        backedge: str = "╾"
-        all_cycle_graphs = all_cycle_graphs.replace(backedge, "◄─")
-        all_cycle_graphs = all_cycle_graphs.replace("╼", "►")
-
-        self.log.error(
-            "Unsatisfiable dependency graph contained %s cycles", len(all_human_cycles)
-        )
-        raise UnsatisfiableDependenciesError(
-            "Unsatisfiable: Circular dependency relationship(s) found.\n"
-            f"Simple cycles:\n{all_cycle_graphs}"
-        )
 
     def _import_model_component_objects(self, path, mc_name):
         """

@@ -361,10 +361,14 @@ def main():
     mcm = ModelComponentManager()
     try:
         mcm.build_dependency_graph(initial_mc_list, install_mcs=cmd_args.no_install)
-    except UnsatisfiableDependenciesError as exp:
-        print(
+    except UnsatisfiableDependenciesError:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        exc_str = "".join(
+            traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
+        Console(theme=cli_output_theme).print(
             "Unable to build model component dependency graph due to the following "
-            f" error: {exp}\n\nNo Model Components were evaluated and no restart is "
+            f"error:\n\n{exc_str}\n\nNo Model Components were evaluated and no restart is "
             "required. "
         )
         sys.exit(1)
