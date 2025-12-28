@@ -1,0 +1,53 @@
+attribute_defaults: {}
+cli:
+    cache_dir: fw_cli
+    root_dir: ''
+cluster:
+    compute: []
+    control: []
+discovery:
+    hostname: localhost
+    install_dir: /opt/discovery
+    port: 8080
+grpc:
+    cache_dir: fw_grpc
+    db: prod
+    hostname: ''
+    port: 50051
+    root_dir: ''
+    threads: 2
+logging:
+    cli_log: cli.log
+    discovery_log: discovery.log
+    firewheel_log: firewheel.log
+    level: DEBUG
+    minimega_log: minimega.log
+    root_dir: ''
+    vmr_log_dir: vm_resource_logs
+minimega:
+    base_dir: /tmp/minimega
+    control_bridge: mega_bridge
+    degree: 0
+    experiment_interface: ''
+    files_dir: /tmp/minimega/files
+    install_dir: /opt/minimega
+    namespace: firewheel
+    use_gre: false
+python:
+    bin: python3
+    venv: ''
+ssh:
+    user: null
+system:
+    default_group: minimega
+    default_output_dir: /tmp/firewheel
+    umask: 0o0
+test:
+    grpc_db: test
+    image_db: testImageStoreDb
+    schedule_test_database: testScheduleDB
+    vm_resource_store_test_database: testVmResourceDB
+    vmmapping_test_database: testVmMappingDB
+vm_resource_manager:
+    default_state: uninitialized
+    experiment_start_buffer_sec: 60
