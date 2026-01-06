@@ -9,7 +9,7 @@ Once all of FIREWHEEL's :ref:`install-prereqs` have been completed, FIREWHEEL ca
 *************************************
 Creating a Python virtual environment
 *************************************
-FIREWHEEL requires a modern version of Python (currently 3.8-3.13) to run.
+FIREWHEEL requires a modern version of Python (currently 3.9-3.13) to run.
 For ease of use, we recommend installing FIREWHEEL into a virtual environment on all :ref:`cluster-nodes`.
 In this example, we are creating a Python version 3.10 :mod:`venv` called ``fwpy``.
 
