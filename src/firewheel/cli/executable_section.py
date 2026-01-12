@@ -84,7 +84,7 @@ class ExecutableSection(Section):
         """
         return True
 
-    def _load_executor(  # noqa: DOC503
+    def _load_executor(
         self, name: str
     ) -> Union[Type[Helpers], Type[LocalPython], Type[Python], Type[Shell]]:
         """

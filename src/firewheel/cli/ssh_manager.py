@@ -109,7 +109,11 @@ class _SSHProtocolManager(ABC):
             ("-o", "UserKnownHostsFile=/dev/null"),
             ("-o", "StrictHostKeyChecking=no"),
             ("-o", "HostKeyAlgorithms=+ssh-rsa"),
-            ("-o", f"ProxyCommand ssh -o BatchMode=yes {self.local_hostname} -W %h:%p"),
+            (
+                "-o",
+                f"ProxyCommand ssh -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "
+                f"{self.local_hostname} -W %h:%p"
+            ),
         ]
         return options
 

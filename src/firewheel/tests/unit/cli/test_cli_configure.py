@@ -1,6 +1,7 @@
 import io
 import os
 import copy
+import argparse
 import tempfile
 import unittest
 import unittest.mock
@@ -190,7 +191,7 @@ class CliConfigureTestCase(unittest.TestCase):
         msg = "Error: Failed to open FIREWHEEL configuration with"
         self.assertIn(msg, mock_stdout.getvalue())
 
-    @unittest.mock.patch.dict(os.environ, {'EDITOR': '', 'VISUAL': ''})
+    @unittest.mock.patch.dict(os.environ, {"EDITOR": "", "VISUAL": ""})
     @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
     def test_do_edit_none(self, mock_stdout):
         args = ""
@@ -245,3 +246,124 @@ class CliConfigureTestCase(unittest.TestCase):
 
         msg = "Prints help for the different sub-commands"
         self.assertIn(msg, mock_stdout.getvalue())
+
+    def test_valid_json(self):
+        json_string = '{"key": "value", "number": 123}'
+        expected = {"key": "value", "number": 123}
+        result = self.cli._argparse_check_json_type(json_string)
+        self.assertEqual(result, expected)
+
+    def test_empty_json(self):
+        json_string = "{}"
+        expected = {}
+        result = self.cli._argparse_check_json_type(json_string)
+        self.assertEqual(result, expected)
+
+    def test_invalid_json(self):
+        invalid_json_cases = [
+            '{"key": "value", "number": 123',  # Missing brace
+            '{"key": "value", "number": "123" "extra": "value"}',  # Missing comma
+            '{"key": "value", "number": [1, 2, 3,}',  # Trailing comma
+            '{key: "value"}',  # Missing quotes
+            '["value1", "value2",]',  # Trailing comma
+            "{'key': 'value'}",  # Single quotes
+        ]
+
+        for json_string in invalid_json_cases:
+            with self.subTest(json_string=json_string):
+                with self.assertRaises(argparse.ArgumentTypeError) as context:
+                    self.cli._argparse_check_json_type(json_string)
+                self.assertIn("Invalid JSON string", str(context.exception))
+
+    def test_json_with_nested_structure(self):
+        json_string = '{"outer": {"inner": "value"}}'
+        expected = {"outer": {"inner": "value"}}
+        result = self.cli._argparse_check_json_type(json_string)
+        self.assertEqual(result, expected)
+
+    def test_json_with_array(self):
+        json_string = '{"array": [1, 2, 3]}'
+        expected = {"array": [1, 2, 3]}
+        result = self.cli._argparse_check_json_type(json_string)
+        self.assertEqual(result, expected)
+
+    @unittest.mock.patch("firewheel.cli.configure_firewheel.Config")
+    def test_do_set_with_json(self, mock_config_cls):
+        mock_config_cls().get_config.return_value = {"key": "value"}
+        mock_config_cls().set_config = unittest.mock.Mock()
+        mock_config_cls().write = unittest.mock.Mock()
+
+        json_input = '{"key": "new_value", "nested": {"inner_key": "inner_value"}}'
+        args = f"--json '{json_input}'"
+
+        self.cli.do_set(args)
+
+        expected_config = {"key": "new_value", "nested": {"inner_key": "inner_value"}}
+        mock_config_cls().set_config.assert_called_once_with(expected_config)
+        mock_config_cls().write.assert_called_once()
+
+    @unittest.mock.patch("firewheel.cli.configure_firewheel.Config")
+    def test_do_set_with_invalid_json(self, mock_config_cls):
+        json_input = '{"key": "value", "nested": {"inner_key": "inner_value"'
+        args = f'--json "{json_input}"'
+
+        with self.assertRaises(SystemExit):
+            self.cli.do_set(args)
+
+    @unittest.mock.patch("firewheel.cli.configure_firewheel.Config")
+    def test_do_set_with_empty_json(self, mock_config_cls):
+        mock_config_cls().get_config.return_value = {"key": "value"}
+        mock_config_cls().set_config = unittest.mock.Mock()
+        mock_config_cls().write = unittest.mock.Mock()
+
+        json_input = "{}"
+        args = f'--json "{json_input}"'  # Create a string that simulates command-line input
+
+        self.cli.do_set(args)  # Pass the string instead of a Mock
+
+        expected_config = {"key": "value"}  # No changes should be made
+        mock_config_cls().set_config.assert_called_once_with(expected_config)
+        mock_config_cls().write.assert_called_once()
+
+    def test_update_existing_key(self):
+        original = {"key": "value", "nested": {"inner_key": "inner_value"}}
+        updates = {"key": "new_value"}
+        expected = {"key": "new_value", "nested": {"inner_key": "inner_value"}}
+        result = self.cli._update_nested_dict(original, updates)
+        self.assertEqual(result, expected)
+
+    def test_update_nested_key(self):
+        original = {"nested": {"inner_key": "inner_value"}}
+        updates = {"nested": {"inner_key": "new_inner_value"}}
+        expected = {"nested": {"inner_key": "new_inner_value"}}
+        result = self.cli._update_nested_dict(original, updates)
+        self.assertEqual(result, expected)
+
+    def test_add_new_key(self):
+        original = {"key": "value"}
+        updates = {"new_key": "new_value"}
+        expected = {"key": "value", "new_key": "new_value"}
+        result = self.cli._update_nested_dict(original, updates)
+        self.assertEqual(result, expected)
+
+    def test_update_with_non_nested_key(self):
+        original = {"key": "value"}
+        updates = {"key": {"sub_key": "sub_value"}}
+        expected = {"key": {"sub_key": "sub_value"}}
+        result = self.cli._update_nested_dict(original, updates)
+        self.assertEqual(result, expected)
+
+    def test_update_with_nested_and_non_nested_keys(self):
+        original = {"key": "value", "nested": {"inner_key": "inner_value"}}
+        updates = {
+            "key": "new_value",
+            "nested": {"inner_key": "new_inner_value"},
+            "new_key": "new_value",
+        }
+        expected = {
+            "key": "new_value",
+            "nested": {"inner_key": "new_inner_value"},
+            "new_key": "new_value",
+        }
+        result = self.cli._update_nested_dict(original, updates)
+        self.assertEqual(result, expected)
