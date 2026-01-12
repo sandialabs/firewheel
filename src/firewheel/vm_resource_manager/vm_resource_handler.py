@@ -20,7 +20,7 @@ import subprocess
 import importlib.util
 from queue import Queue, PriorityQueue
 from pathlib import Path, PureWindowsPath
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Timer, Thread, Condition
 
 from firewheel.config import config as global_config
@@ -312,7 +312,7 @@ class VMResourceHandler:
                             seconds=schedule_entry.start_time
                         )
 
-                        curtime = datetime.utcnow()
+                        curtime = datetime.now(timezone.utc)
                         delay = (runtime - curtime).total_seconds()
                         start_seconds = (
                             self.experiment_start_time - curtime
@@ -358,7 +358,7 @@ class VMResourceHandler:
                             seconds=schedule_entry.start_time
                         )
 
-                        curtime = datetime.utcnow()
+                        curtime = datetime.now(timezone.utc)
                         delay = (runtime - curtime).total_seconds()
                         start_seconds = (
                             self.experiment_start_time - curtime
