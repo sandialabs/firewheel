@@ -25,6 +25,7 @@ from threading import Timer, Thread, Condition
 
 from firewheel.config import config as global_config
 from firewheel.lib.log import UTCLog
+from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.vm_resource_manager import api, utils
 from firewheel.control.repository_db import RepositoryDb
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
@@ -114,6 +115,7 @@ class VMResourceHandler:
 
         # Priority Queue to hold on to ScheduleEvents
         self.prior_q = PriorityQueue()
+        self.mma = minimegaAPI()
         self.load_balance_factor = self.mma.get_cpu_commit_ratio() + 1
         self.log.info("Using load_balance_factor of %s", self.load_balance_factor)
 
