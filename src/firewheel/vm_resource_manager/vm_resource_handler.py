@@ -1040,7 +1040,7 @@ class VMResourceHandler:
                 if schedule_entry.executable:
                     # Handle preloading the call arguments if this SE
                     # is meant to be executed
-                    if not schedule_entry.data:
+                    if not schedule_entry.data and not schedule_entry.on_host:
                         # If there isn't data then the CWD hasn't been
                         # created inside the VM, so create them here
                         self.log.info("creating directory since no file data")
