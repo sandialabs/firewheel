@@ -4,7 +4,7 @@ import json
 import time
 import contextlib
 from typing import Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 from concurrent import futures
 from importlib.metadata import version
 
@@ -51,7 +51,7 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
         config = Config().get_config()
 
         self.log.info("Initialized FirewheelServicer log.")
-        self.server_start_time = datetime.now(timezone.utc)
+        self.server_start_time = datetime.utcnow()
         self.version = version("firewheel")
         self.cache_dir = os.path.join(
             config["grpc"]["root_dir"], config["grpc"]["cache_dir"]
@@ -135,7 +135,7 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             firewheel_grpc_pb2.GetInfoResponse: The server info.
         """
 
-        uptime = datetime.now(timezone.utc) - self.server_start_time
+        uptime = datetime.utcnow() - self.server_start_time
         uptime = uptime.total_seconds()
 
         experiment_running = bool(

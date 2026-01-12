@@ -1,5 +1,3 @@
-from datetime import timezone
-
 import grpc
 from google.protobuf.timestamp_pb2 import Timestamp  # pylint: disable=no-name-in-module
 
@@ -104,9 +102,7 @@ class FirewheelGrpcClient:
         try:
             experiment_launch_time = self.stub.GetExperimentLaunchTime(req)
             experiment_launch_time_dt = (
-                experiment_launch_time.launch_time.ToDatetime().replace(
-                    tzinfo=timezone.utc
-                )
+                experiment_launch_time.launch_time.ToDatetime()
             )
         except grpc.RpcError as exp:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
@@ -125,9 +121,7 @@ class FirewheelGrpcClient:
         try:
             experiment_start_time = self.stub.GetExperimentStartTime(req)
             experiment_start_time_dt = (
-                experiment_start_time.start_time.ToDatetime().replace(
-                    tzinfo=timezone.utc
-                )
+                experiment_start_time.start_time.ToDatetime()
             )
         except grpc.RpcError as exp:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
@@ -152,7 +146,7 @@ class FirewheelGrpcClient:
         )
         experiment_launch_time = self.stub.SetExperimentLaunchTime(req)
         experiment_launch_time_dt = (
-            experiment_launch_time.launch_time.ToDatetime().replace(tzinfo=timezone.utc)
+            experiment_launch_time.launch_time.ToDatetime()
         )
         return experiment_launch_time_dt
 
@@ -173,7 +167,7 @@ class FirewheelGrpcClient:
         )
         experiment_start_time = self.stub.SetExperimentStartTime(req)
         experiment_start_time_dt = (
-            experiment_start_time.start_time.ToDatetime().replace(tzinfo=timezone.utc)
+            experiment_start_time.start_time.ToDatetime()
         )
         return experiment_start_time_dt
 

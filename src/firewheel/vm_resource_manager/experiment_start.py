@@ -2,7 +2,7 @@
 Subsystem to determine and report an experiment start time.
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 from firewheel.config import config
 from firewheel.lib.log import Log
@@ -84,7 +84,7 @@ class ExperimentStart:
         delta = timedelta(
             seconds=int(config["vm_resource_manager"]["experiment_start_buffer_sec"])
         )
-        new_time = datetime.now(timezone.utc) + delta
+        new_time = datetime.utcnow() + delta
         self.grpc_client.set_experiment_start_time(new_time)
 
         return new_time
@@ -111,7 +111,7 @@ class ExperimentStart:
             added to the database: 1-second resolution, UTC.
         """
         # Check to make sure that it isn't already set
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.utcnow()
         self.grpc_client.set_experiment_launch_time(current_time)
 
         return current_time
@@ -156,7 +156,7 @@ class ExperimentStart:
             int: The time in seconds since when the experiment configured or
             None if experiment hasn't started yet.
         """
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.utcnow()
         start_time = self.get_start_time()
         if not start_time:
             return None
