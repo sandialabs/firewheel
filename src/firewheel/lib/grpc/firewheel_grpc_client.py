@@ -101,9 +101,7 @@ class FirewheelGrpcClient:
         req = firewheel_grpc_pb2.GetExperimentLaunchTimeRequest(db=self.db)
         try:
             experiment_launch_time = self.stub.GetExperimentLaunchTime(req)
-            experiment_launch_time_dt = (
-                experiment_launch_time.launch_time.ToDatetime()
-            )
+            experiment_launch_time_dt = experiment_launch_time.launch_time.ToDatetime()
         except grpc.RpcError as exp:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
                 self.log.exception(exp)
@@ -120,9 +118,7 @@ class FirewheelGrpcClient:
         req = firewheel_grpc_pb2.GetExperimentStartTimeRequest(db=self.db)
         try:
             experiment_start_time = self.stub.GetExperimentStartTime(req)
-            experiment_start_time_dt = (
-                experiment_start_time.start_time.ToDatetime()
-            )
+            experiment_start_time_dt = experiment_start_time.start_time.ToDatetime()
         except grpc.RpcError as exp:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
                 self.log.exception(exp)
@@ -145,9 +141,7 @@ class FirewheelGrpcClient:
             launch_time=launch_time_msg, db=self.db
         )
         experiment_launch_time = self.stub.SetExperimentLaunchTime(req)
-        experiment_launch_time_dt = (
-            experiment_launch_time.launch_time.ToDatetime()
-        )
+        experiment_launch_time_dt = experiment_launch_time.launch_time.ToDatetime()
         return experiment_launch_time_dt
 
     def set_experiment_start_time(self, start_time_dt):
@@ -166,9 +160,7 @@ class FirewheelGrpcClient:
             start_time=start_time_msg, db=self.db
         )
         experiment_start_time = self.stub.SetExperimentStartTime(req)
-        experiment_start_time_dt = (
-            experiment_start_time.start_time.ToDatetime()
-        )
+        experiment_start_time_dt = experiment_start_time.start_time.ToDatetime()
         return experiment_start_time_dt
 
     def clear_db(self):
