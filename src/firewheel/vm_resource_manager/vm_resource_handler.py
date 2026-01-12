@@ -293,7 +293,13 @@ class VMResourceHandler:
                             self.load_balance_factor
                             * random.SystemRandom().randint(1, 5)
                         )
-                        thread = Thread(target=self.run_vm_resource, kwargs=args)
+                        if schedule_entry.on_host:
+                            thread = Thread(
+                                target=self.run_vm_resource_host, kwargs=args
+                            )
+                        else:
+                            thread = Thread(target=self.run_vm_resource, kwargs=args)
+
                         # Keep track of negative time vm_resource threads
                         threads.append(thread)
                         # Start the vm_resource
@@ -330,9 +336,16 @@ class VMResourceHandler:
 
                         # Set a timer to kick off the vm_resource runner with
                         # the vm_resource
-                        thread = Timer(
-                            delay, self.run_vm_resource, args=(schedule_entry,)
-                        )
+                        if schedule_entry.on_host:
+                            thread = Timer(
+                                delay,
+                                self.run_vm_resource_host,
+                                args=(schedule_entry,),
+                            )
+                        else:
+                            thread = Timer(
+                                delay, self.run_vm_resource, args=(schedule_entry,)
+                            )
                         # Positive time vm_resources don't get held onto since
                         # they can be long running
                         thread.start()
