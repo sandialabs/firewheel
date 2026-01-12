@@ -2,7 +2,7 @@
 Subsystem to determine and report an experiment start time.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 
 from firewheel.config import config
 from firewheel.lib.log import Log

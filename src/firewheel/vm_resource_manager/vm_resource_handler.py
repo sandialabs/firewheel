@@ -20,7 +20,7 @@ import subprocess
 import importlib.util
 from queue import Queue, PriorityQueue
 from pathlib import Path, PureWindowsPath
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from threading import Timer, Thread, Condition
 
 from firewheel.config import config as global_config
@@ -299,7 +299,8 @@ class VMResourceHandler:
                         )
                         if schedule_entry.on_host:
                             thread = Thread(
-                                target=self.run_vm_resource_host, kwargs={"schedule_entry": schedule_entry}
+                                target=self.run_vm_resource_host,
+                                kwargs={"schedule_entry": schedule_entry},
                             )
                         else:
                             thread = Thread(target=self.run_vm_resource, kwargs=args)
@@ -481,8 +482,7 @@ class VMResourceHandler:
                 for entry in schedule_entry.data:
                     if entry.get("filename") == schedule_entry.executable:
                         local = True
-            self.log.debug("local=%s, mm_cmd=%s", local, mm_cmd)
-            self.log.debug("schedule_entry=%s", schedule_entry)
+
             if local:
                 # If the executable is held in the VM resource system
                 # so we can create the abs path.
@@ -521,7 +521,13 @@ class VMResourceHandler:
                         args = schedule_entry.arguments.split()
                     else:
                         args = schedule_entry.arguments
-                    new_args = [minimega_bin_path, "-base", self.mma.mm_base, "-e", *args]
+                    new_args = [
+                        minimega_bin_path,
+                        "-base",
+                        self.mma.mm_base,
+                        "-e",
+                        *args,
+                    ]
                     ret = subprocess.run(new_args, capture_output=True, check=True)
                     exitcode = ret.returncode
                 except subprocess.CalledProcessError as e:
@@ -926,7 +932,9 @@ class VMResourceHandler:
         if isinstance(content, dict):
             try:
                 # Only log a line if it is a JSON object.
-                content["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                content["timestamp"] = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 self.json_log.info(json.dumps(content))
             except TypeError:
                 self.log.debug("Could not parse '%s' into JSON formatting.", content)
@@ -940,12 +948,16 @@ class VMResourceHandler:
                 # Only log a line if it can be decoded
                 try:
                     data = json.loads(line.decode())
-                    data["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                    data["timestamp"] = datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                 except (json.JSONDecodeError, TypeError):
                     try:
                         # Convert decoded line into a dict
                         data = {"msg": line.decode()}
-                        data["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                        data["timestamp"] = datetime.now(timezone.utc).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
                     except TypeError:
                         return
                 self.json_log.info(json.dumps(data))
