@@ -474,15 +474,13 @@ class VMResourceHandler:
         else:
             # Check if the executable was loaded by the schedule entry
             local = False
-            mm_cmd = False
+            mm_cmd = bool("minimega" == schedule_entry.executable)
             if schedule_entry.data:
                 # Having both filename and minimega keys doesn't make sense,
                 # and should not be possible.
                 for entry in schedule_entry.data:
                     if entry.get("filename") == schedule_entry.executable:
                         local = True
-                    if entry.get("minimega") == schedule_entry.executable:
-                        mm_cmd = True
             self.log.debug("local=%s, mm_cmd=%s", local, mm_cmd)
             self.log.debug("schedule_entry=%s", schedule_entry)
             if local:
