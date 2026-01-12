@@ -264,22 +264,24 @@ class VMResourceHandler:
 
                     # Determine the paths inside the VM for this vm_resource
                     try:
-                        self.driver.create_paths(schedule_entry)
+                        if not schedule_entry.on_host:
+                            self.driver.create_paths(schedule_entry)
                     except OSError as exp:
                         self.log.exception(exp)
 
-                    success = self.load_files_in_target(schedule_entry)
-                    if not success:
-                        self.log.error(
-                            "Unable to load files into the VM: %s", schedule_entry
-                        )
+                    if not schedule_entry.on_host:
+                        success = self.load_files_in_target(schedule_entry)
+                        if not success:
+                            self.log.error(
+                                "Unable to load files into the VM: %s", schedule_entry
+                            )
 
-                        # Ignoring a failure typically will happen by a helper
-                        # (e.g. push file) where we don't want the VM resource
-                        # handler to exit on failure
-                        if not schedule_entry.ignore_failure:
-                            self.set_state("FAILED")
-                            sys.exit(1)
+                            # Ignoring a failure typically will happen by a helper
+                            # (e.g. push file) where we don't want the VM resource
+                            # handler to exit on failure
+                            if not schedule_entry.ignore_failure:
+                                self.set_state("FAILED")
+                                sys.exit(1)
 
                     if not schedule_entry.executable:
                         # No executable means that we're done
@@ -1005,6 +1007,7 @@ class VMResourceHandler:
             if event.get_type() == ScheduleEventType.NEW_ITEM:
                 schedule_entry = event.get_data()
                 if schedule_entry.on_host:
+                    temp_q.put((start_time, event))
                     continue
                 try:
                     self.driver.create_paths(schedule_entry)
