@@ -926,7 +926,7 @@ class VMResourceHandler:
         if isinstance(content, dict):
             try:
                 # Only log a line if it is a JSON object.
-                content["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                content["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 self.json_log.info(json.dumps(content))
             except TypeError:
                 self.log.debug("Could not parse '%s' into JSON formatting.", content)
@@ -940,12 +940,12 @@ class VMResourceHandler:
                 # Only log a line if it can be decoded
                 try:
                     data = json.loads(line.decode())
-                    data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    data["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 except (json.JSONDecodeError, TypeError):
                     try:
                         # Convert decoded line into a dict
                         data = {"msg": line.decode()}
-                        data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        data["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                     except TypeError:
                         return
                 self.json_log.info(json.dumps(data))
