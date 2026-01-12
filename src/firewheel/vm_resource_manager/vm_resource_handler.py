@@ -20,7 +20,7 @@ import subprocess
 import importlib.util
 from queue import Queue, PriorityQueue
 from pathlib import Path, PureWindowsPath
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Timer, Thread, Condition
 
 from firewheel.config import config as global_config
@@ -297,7 +297,7 @@ class VMResourceHandler:
                         )
                         if schedule_entry.on_host:
                             thread = Thread(
-                                target=self.run_vm_resource_host, kwargs=args
+                                target=self.run_vm_resource_host, kwargs={"schedule_entry": schedule_entry}
                             )
                         else:
                             thread = Thread(target=self.run_vm_resource, kwargs=args)
