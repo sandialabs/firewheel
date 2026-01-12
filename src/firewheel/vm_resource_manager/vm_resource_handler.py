@@ -481,10 +481,10 @@ class VMResourceHandler:
                 for entry in schedule_entry.data:
                     if entry.get("filename") == schedule_entry.executable:
                         local = True
-                        break
                     if entry.get("minimega") == schedule_entry.executable:
                         mm_cmd = True
-                        break
+            self.log.debug("local=%s, mm_cmd=%s", local, mm_cmd)
+            self.log.debug("schedule_entry=%s", schedule_entry)
             if local:
                 # If the executable is held in the VM resource system
                 # so we can create the abs path.
