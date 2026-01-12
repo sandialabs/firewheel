@@ -521,7 +521,7 @@ class VMResourceHandler:
                         args = schedule_entry.arguments.split()
                     else:
                         args = schedule_entry.arguments
-                    new_args = [minimega_bin_path, "-e", *args]
+                    new_args = [minimega_bin_path, "-base", self.mma.mm_base, "-e", *args]
                     ret = subprocess.run(new_args, capture_output=True, check=True)
                     exitcode = ret.returncode
                 except subprocess.CalledProcessError as e:
