@@ -1004,6 +1004,8 @@ class VMResourceHandler:
 
             if event.get_type() == ScheduleEventType.NEW_ITEM:
                 schedule_entry = event.get_data()
+                if schedule_entry.on_host:
+                    continue
                 try:
                     self.driver.create_paths(schedule_entry)
                 except socket.timeout:
@@ -1040,7 +1042,7 @@ class VMResourceHandler:
                 if schedule_entry.executable:
                     # Handle preloading the call arguments if this SE
                     # is meant to be executed
-                    if not schedule_entry.data and not schedule_entry.on_host:
+                    if not schedule_entry.data:
                         # If there isn't data then the CWD hasn't been
                         # created inside the VM, so create them here
                         self.log.info("creating directory since no file data")
