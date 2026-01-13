@@ -297,7 +297,6 @@ This could include running a script that modifies the entire network topology or
    - Be aware of potential security implications when running host-based actions from untrusted experiments.
    - Recall that schedules are per-VM. Therefore, if there are host-based actions that impact the entire experiment, ensure that they are scheduled appropriately to avoid conflicts or redundant executions.
 
-
 The primary method for scheduling host-based VM resources is through the use of the :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>` method, which creates a :py:class:`RunHostExecutableScheduleEntry <base_objects.RunHostExecutableScheduleEntry>` for executing Minimega commands.
 Additional interfaces into host-based scheduling may be added in the future to facilitate common tasks.
 
