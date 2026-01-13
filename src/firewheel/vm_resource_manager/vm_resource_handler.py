@@ -744,13 +744,12 @@ class VMResourceHandler:
         Args:
             content (str or dict): Buffer from agent output.
         """
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         # Handle content that is already a dictionary, i.e. from the handler
         if isinstance(content, dict):
+            content["timestamp"] = timestamp
             try:
                 # Only log a line if it is a JSON object.
-                content["timestamp"] = datetime.now(timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
                 self.json_log.info(json.dumps(content))
             except TypeError:
                 self.log.debug("Could not parse '%s' into JSON formatting.", content)
@@ -764,18 +763,13 @@ class VMResourceHandler:
                 # Only log a line if it can be decoded
                 try:
                     data = json.loads(line.decode())
-                    data["timestamp"] = datetime.now(timezone.utc).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
                 except (json.JSONDecodeError, TypeError):
                     try:
                         # Convert decoded line into a dict
                         data = {"msg": line.decode()}
-                        data["timestamp"] = datetime.now(timezone.utc).strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        )
                     except TypeError:
                         return
+                data["timestamp"] = timestamp
                 self.json_log.info(json.dumps(data))
 
     def print_output(self, schedule_entry, pid):
