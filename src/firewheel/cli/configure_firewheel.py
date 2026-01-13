@@ -160,7 +160,9 @@ class ConfigureFirewheel(cmd.Cmd):
         try:
             return json.loads(json_string)
         except json.decoder.JSONDecodeError as exc:
-            raise argparse.ArgumentTypeError(f"Invalid JSON string: {json_string}\n\n") from exc
+            raise argparse.ArgumentTypeError(
+                f"Invalid JSON string: {json_string}\n\n"
+            ) from exc
 
     def define_set_parser(self) -> argparse.ArgumentParser:
         """Create an :py:class:`argparse.ArgumentParser` for :ref:`command_config_set`.
