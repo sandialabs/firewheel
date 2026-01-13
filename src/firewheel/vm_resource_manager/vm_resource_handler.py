@@ -477,15 +477,15 @@ class VMResourceHandler:
             local = False
             mm_cmd = bool("minimega" == schedule_entry.executable)
             if schedule_entry.data:
-                # Having both filename and minimega keys doesn't make sense,
-                # and should not be possible.
                 for entry in schedule_entry.data:
                     if entry.get("filename") == schedule_entry.executable:
                         local = True
 
+            # Having both filename and minimega keys doesn't make sense,
+            # and should not be possible hence the `elif`.
             if local:
-                # If the executable is held in the VM resource system
-                # so we can create the abs path.
+                # If the executable is "local", it is held in the VM resource system
+                # and we should create the abs path.
                 local_path = Path(
                     self.vm_resource_store.get_path(schedule_entry.data["filename"])
                 )
@@ -502,7 +502,7 @@ class VMResourceHandler:
                     "Any host-based executables must be an absolute path or part of the VMR system."
                 )
 
-        # Call the update to subprocess
+        # Loop on subprocess failures
         while True:
             exitcode = None
             start = time.time()
