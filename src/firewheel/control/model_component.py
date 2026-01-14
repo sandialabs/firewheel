@@ -400,7 +400,8 @@ class ModelComponent:
 
     def _upload_vm_resource(self, resource):
         """
-        Upload a file to the ``VmResourceStore``.
+        Upload a file to the :py:class:`VmResourceStore
+        <firewheel.vm_resource_manager.vm_resource_store.VmResourceStore>`.
         It interrupts the path of the VM resources in the following way:
 
         * Non-recursive all dir's files: ``path_to_dir``,
@@ -537,15 +538,17 @@ class ModelComponent:
             dict: Statuses for each specified file. Possible statuses are:
 
             * ``no_date`` -- There was no upload date for the given file in the
-                  ``ImageStore``. It was uploaded.
+                  :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`.
+                  It was uploaded.
             * ``new_hash`` -- The modified time of the file on disk differs from the
-                  last upload time in the ``ImageStore`` and the hashes did not match.
-                  File was uploaded.
+                  last upload time in the :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`
+                  and the hashes did not match. File was uploaded.
             * ``same_hash`` -- The file on disk was modified after the upload time in
-                  the ``ImageStore`` but the hashes are the same. File was
-                  not uploaded.
+                  the :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`
+                  but the hashes are the same. File was not uploaded.
             * :py:data:`False` -- None of the other conditions occurred. For example,
-                  the file on disk was modified before the ``ImageStore`` upload time.
+                  the file on disk was modified before the :py:class:`ImageStore
+                  <firewheel.control.image_store.ImageStore>` upload time.
 
             An empty dictionary is returned if no images are identified.
 
@@ -567,7 +570,10 @@ class ModelComponent:
 
     def _evaluate_image(self, image_path):
         """
-        Evaluate an image's status (governing uploads to the ``ImageStore``).
+        Evaluate an image's status.
+
+        Perform an evaluation of the image's status. The result will govern
+        uploads to the :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`).
 
         Args:
             image_path (str): A path to an image to be evaluated.
@@ -576,13 +582,16 @@ class ModelComponent:
             str: A status for the specified image file. Possible statuses are:
 
             * ``no_date`` -- There was no upload date for the given file in the
-                  ``ImageStore``.
+                  :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`.
             * ``new_hash`` -- The modified time of the file on disk differs from the
-                  last upload time in the ``ImageStore`` and the hashes did not match.
+                  last upload time in the :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`
+                  and the hashes did not match.
             * ``same_hash`` -- The file on disk was modified after the upload time in
-                  the ``ImageStore`` but the hashes are the same.
+                  the :py:class:`ImageStore <firewheel.control.image_store.ImageStore>`
+                  but the hashes are the same.
             * :py:data:`False` -- None of the other conditions occurred. For example,
-                  the file on disk was modified before the ``ImageStore`` upload time.
+                  the file on disk was modified before the :py:class:`ImageStore
+                  <firewheel.control.image_store.ImageStore>` upload time.
         """
         path = Path(self.path, image_path)
         self._verify_image_exists(path)
@@ -609,10 +618,14 @@ class ModelComponent:
 
     def _upload_image(self, image_path, action="Adding"):
         """
-        Upload an image to the ``ImageStore`` based on the image's status.
+        Upload an image to the `ImageStore <firewheel.control.image_store.ImageStore>`.
+
+        Inspect the status of the image status and perform an upload to the
+        `ImageStore <firewheel.control.image_store.ImageStore>` accordingly.
 
         Args:
-            image_path (str): A path to an image to be added to the ``ImageStore``.
+            image_path (str): A path to an image to be added to the `ImageStore
+            <firewheel.control.image_store.ImageStore>`.
             action (str): The action being performed on the image.
         """
         update_cache_task_id = self.image_cache_progress.add_task(
