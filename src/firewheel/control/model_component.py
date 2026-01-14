@@ -449,7 +449,7 @@ class ModelComponent:
             return "no_date"
 
         if modification_timestamp != upload_date:
-            self.log.debug("Resource on disk is different from store. Checksuming.")
+            self.log.debug("Resource on disk is different from store. Checksumming.")
             resource_hash = hash_file(path)
             store_hash = self.vm_resource_store.get_file_hash(resource)
             self.log.debug(
