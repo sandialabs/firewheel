@@ -33,6 +33,12 @@ class ModelComponent:
     for FIREWHEEL experiments.
     """
 
+    # Default databases and file stores are common to all model components
+    # and have nontrivial instantiation times (only instantiate them once)
+    _default_repository_db = RepositoryDb()
+    _default_vm_resource_store = VmResourceStore()
+    _default_image_store = ImageStore()
+
     def __init__(
         self,
         name=None,
@@ -83,12 +89,9 @@ class ModelComponent:
         self.path = path
         self._install = install
 
-        if repository_db is not None:
-            self.repository_db = repository_db
-        if vm_resource_store is not None:
-            self.vm_resource_store = vm_resource_store
-        if image_store is not None:
-            self.image_store = image_store
+        self.repository_db = repository_db or self._default_repository_db
+        self.vm_resource_store = vm_resource_store or self._default_vm_resource_store
+        self.image_store = image_store or self._default_image_store
 
         if self.name is None and self.path is None:
             raise ValueError("Must specify at least name or path.")
@@ -138,72 +141,6 @@ class ModelComponent:
         self.image_cache_progress_group = Group(
             self.overall_image_cache_progress, self.image_cache_progress
         )
-
-    @property
-    def repository_db(self):
-        """
-        Use the specified :class:`RepositoryDb`.
-
-        Returns:
-            RepositoryDb: The specified repository database.
-        """
-        try:
-            if self._repository_db is None:
-                # pylint: disable=attribute-defined-outside-init
-                self._repository_db = RepositoryDb()
-        except AttributeError:
-            # pylint: disable=attribute-defined-outside-init
-            self._repository_db = RepositoryDb()
-        return self._repository_db
-
-    @repository_db.setter
-    def repository_db(self, value):
-        # pylint: disable=attribute-defined-outside-init
-        self._repository_db = value
-
-    @property
-    def vm_resource_store(self):
-        """
-        Use the specified :class:`VmResourceStore`.
-
-        Returns:
-            VmResourceStore: The specified resource store.
-        """
-        try:
-            if self._vm_resource_store is None:
-                # pylint: disable=attribute-defined-outside-init
-                self._vm_resource_store = VmResourceStore()
-        except AttributeError:
-            # pylint: disable=attribute-defined-outside-init
-            self._vm_resource_store = VmResourceStore()
-        return self._vm_resource_store
-
-    @vm_resource_store.setter
-    def vm_resource_store(self, value):
-        # pylint: disable=attribute-defined-outside-init
-        self._vm_resource_store = value
-
-    @property
-    def image_store(self):
-        """
-        Use the specified :class:`ImageStore`.
-
-        Returns:
-            ImageStore: The specified :class:`ImageStore`.
-        """
-        try:
-            if self._image_store is None:
-                # pylint: disable=attribute-defined-outside-init
-                self._image_store = ImageStore()
-        except AttributeError:
-            # pylint: disable=attribute-defined-outside-init
-            self._image_store = ImageStore()
-        return self._image_store
-
-    @image_store.setter
-    def image_store(self, value):
-        # pylint: disable=attribute-defined-outside-init
-        self._image_store = value
 
     def _load_manifest(self, path):
         """
