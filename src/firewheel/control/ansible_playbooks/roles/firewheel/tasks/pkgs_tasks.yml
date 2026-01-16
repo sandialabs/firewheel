@@ -1,0 +1,74 @@
+---
+###################################################################################################
+# Tasks File: pkgs_tasks.yml
+# Description:
+#   **This is not a replacement for `required_files`. This replaces a common download pattern for
+#   external packages and packages included here should be entered into required_files separately.**
+#   This Ansible tasks file is designed to process individual packages defined in the `INSTALL/pkgs`
+#   directory. Each package is represented as a `.yml` file containing metadata about the package,
+#   including its name, target tarball, target subdirectory, and the files it requires.
+#
+#   The tasks perform the following steps:
+#   1. Load package variables from the `.yml` file.
+#   2. Create the target subdirectory if it does not exist.
+#   3. Download and verify files for the package using `ansible.builtin.get_url`.
+#   4. Compress the package directory into a `.tgz` tarball.
+#   5. Remove the package directory after compression.
+#
+# Package `.yml` File Structure:
+#   Each package `.yml` file should follow this structure:
+#   ---
+#   name: "<package_name>"
+#   target_subdir: "<target_subdirectory>"  # Optional; defaults to "vm_resources"
+#   target: "<tarball_name>.tgz"
+#   files:
+#     - dest: "<destination_path>"
+#       url: "<file_url>"
+#       sha256: "<checksum>"
+#
+# Example:
+#   ---
+#   name: "htop"
+#   target_subdir: "vm_resources/debs"
+#   target: "htop-1_0_2_debs.tgz"
+#   files:
+#     - dest: "htop_1.0.2-3_amd64.deb"
+#       url: "http://archive.ubuntu.com/ubuntu/pool/universe/h/htop/htop_1.0.2-3_amd64.deb"
+#       sha256: "0311d8a26689935ca53e8e9252cb2d95a1fdc2f8278f4edb5733f555dad984a9"
+###################################################################################################
+
+- name: Load package variables
+  ansible.builtin.include_vars:
+    file: "{{ pkg_file }}"
+  failed_when: pkg_file is not defined or pkg_file|length == 0
+
+- name: Set default target_subdir if not specified
+  ansible.builtin.set_fact:
+    target_subdir: "{{ target_subdir | default('vm_resources') }}"
+
+- name: Create target subdirectory
+  ansible.builtin.file:
+    path: "{{ mc_dir }}/{{ target_subdir }}/{{ name }}"
+    state: directory
+
+- name: "Download and verify files for package: {{ name }}"
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ mc_dir }}/{{ target_subdir }}/{{ name }}/{{ item.dest }}"
+    checksum: "sha256:{{ item.sha256 }}"
+  loop: "{{ files }}"
+  when: files is defined and files|length > 0
+  failed_when: item.url is not defined or item.sha256 is not defined
+
+- name: Compress package directory into tarball
+  ansible.builtin.archive:
+    path: "{{ mc_dir }}/{{ target_subdir }}/{{ name }}"
+    dest: "{{ mc_dir }}/{{ target_subdir }}/{{ target }}"
+    format: gz
+  when: target is defined and target|length > 0
+
+- name: Remove package directory
+  ansible.builtin.file:
+    path: "{{ mc_dir }}/{{ target_subdir }}/{{ name }}"
+    state: absent
+  when: target_subdir is defined and name is defined and name|length > 0

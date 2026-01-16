@@ -50,14 +50,21 @@ The expected ``INSTALL`` directory structure is::
   MC_DIR
   └── INSTALL
       ├── tasks.yml
-      └── vars.yml
+      ├── vars.yml
+      └── pkgs/ (optional)
+          ├── package1.yml
+          ├── package2.yml
+          └── ...
 
-Where ``tasks.yml`` is a YAML list of Ansible tasks that will be `included <https://docs.ansible.com/ansible/latest/collections/ansible/builtin/include_tasks_module.html>`__ when installing the model component.
-The ``vars.yml`` file should be a YAML dictionary of all the variable keys/values which will be used when installing the model component.
+Where:
+- ``tasks.yml`` is a required YAML list of Ansible tasks that will be `included <https://docs.ansible.com/ansible/latest/collections/ansible/builtin/include_tasks_module.html>`__ when installing the model component.
+- ``vars.yml`` is a required YAML dictionary of all the variable keys/values which will be used when installing the model component.
+- ``pkgs/`` is an optional directory containing metadata files for external packages that need to be downloaded, verified, compressed, and cleaned up during installation.
+
 
 ``tasks.yml``
 =============
-The tasks file should be a YAML list with any tasks needed to ensure that the model component can execute correctly as intended.
+The tasks file should be a YAML list with any tasks needed to ensure that the model component can execute correctly as intended. At a minimum, this file must exist with a `---` line at the beginning.
 
 .. code-block:: yaml
   :caption: This is an example ``tasks.yml`` file that collects, verifies, and compresses needed binaries.
@@ -158,6 +165,28 @@ The full definition for ``required_files`` is:
     :required: false
 
 .. _mc_install_cache:
+
+``pkgs/`` Directory
+===================
+The ``pkgs/`` directory is an optional feature used to define metadata for external packages that need to be processed during the installation of a model component. Each package is represented as a `.yml` file containing the following metadata:
+
+.. code-block:: yaml
+  :caption: Example package metadata file (htop.yml)
+
+  name: "htop"
+  target_subdir: "vm_resources/debs"
+  target: "htop-1_0_2_debs.tgz"
+  files:
+    - dest: "htop_1.0.2-3_amd64.deb"
+      url: "http://archive.ubuntu.com/ubuntu/pool/universe/h/htop/htop_1.0.2-3_amd64.deb"
+      sha256: "0311d8a26689935ca53e8e9252cb2d95a1fdc2f8278f4edb5733f555dad984a9"
+
+The tasks for processing these packages are handled by the ``pkgs_tasks.yml`` file, which performs the following steps:
+1. Loads package variables from the `.yml` file.
+2. Creates the target subdirectory if it does not exist.
+3. Downloads and verifies files for the package using `ansible.builtin.get_url`.
+4. Compresses the package directory into a `.tgz` tarball.
+5. Removes the package directory after compression.
 
 ***************************
 Setting up an Offline Cache
