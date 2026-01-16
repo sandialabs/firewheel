@@ -68,7 +68,12 @@ class RepositoryDb:
 
         # Add all model components that have been added via entry points
         for entry in entry_points(group="firewheel.mc_repo"):
-            entries.append({"path": entry.load()[0]})
+            # Typically `entry` is a `__path__` attribute of a module; this attribute
+            # is defined as a sequence of strings enumerating the locations where the
+            # package's submodules will be found
+            # https://docs.python.org/3/reference/import.html#path-attributes-on-modules
+            for path in entry.load():
+                entries.append({"path": path})
 
         return iter(entries)
 
