@@ -1,0 +1,170 @@
+AUTHOR
+Your Name
+DONE
+
+DESCRIPTION
+This Helper loads the state of all VMs from a compressed backup file. It restores the VM mapping, schedule files, and any additional resources to their respective locations.
+
+**Usage:**  ``firewheel load --archive ARCHIVE_PATH``
+
+Example
++++++++
+
+``firewheel load --archive /path/to/my_experiment_backup.tar.gz``
+
+DONE
+
+RUN LocalPython ON control
+#!/usr/bin/env python
+import os
+import sys
+import json
+import shutil
+import argparse
+import tarfile
+import tempfile
+import subprocess
+from pathlib import Path
+from rich.console import Console
+
+import minimega
+
+from firewheel.config import config as fw_config
+from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.lib.minimega.file_store import FileStore
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+
+console = Console()
+
+def load_vm_state(archive_path):
+    """
+    Loads the state of all VMs and their schedules from a compressed backup file.
+
+    Args:
+        archive_path (str): The path to the compressed backup file.
+
+    Returns:
+        int: 0 on success, 1 on failure.
+    """
+    # Resolve the archive file path (handles both relative and absolute paths)
+    archive_file = Path(archive_path).resolve()
+
+    # Check if the archive file exists
+    if not archive_file.exists():
+        console.print(f"[red]Error: Archive file [cyan]{archive_file}[/cyan] does not exist.[/red]")
+        return 1
+
+    experiment_name = archive_file.name.split("_backup")[0]
+
+    # Create a temporary directory to extract the archive
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # Extract the archive
+        try:
+            with tarfile.open(archive_file, "r:gz") as tar:
+                with console.status("[yellow]Decompressing experiment archive...[/yellow]", spinner="line"):
+                    tar.extractall(path=temp_path)
+            console.print(f"[green]Extracted data from [cyan]{archive_file}[/cyan] to [cyan]{temp_path}[/cyan].[/green]")
+        except Exception as e:
+            console.print(f"[red]Error extracting the archive: {e}[/red]")
+            return 1
+
+        # Initialize FileStore, VMMapping, and ScheduleDb
+        try:
+            saved_exp = FileStore("saved")
+            vm_mapping = VMMapping()
+            schedule_db = ScheduleDb()
+        except Exception as exp:
+            console.print(f"[red]Error initializing resources: {exp}[/red]")
+            return 1
+
+        # Restore VM mapping states
+        mapping_file = temp_path / "vm_mapping.json"
+        try:
+            with open(mapping_file, "r", encoding="utf-8") as f:
+                mapping = json.load(f)
+            # Assuming there's a method to restore mapping in VMMapping
+            vm_mapping.batch_put(mapping)
+            console.print(f"[green]Restored VM mapping states from [cyan]{mapping_file}[/cyan] successfully.[/green]")
+        except Exception as e:
+            console.print(f"[red]Error restoring VM mapping states from file: {e}[/red]")
+            return 1
+
+        # Restore VM State/HDD files
+        exp_files = temp_path / experiment_name  # Adjust based on your structure
+        try:
+            if exp_files.exists():
+                shutil.copytree(exp_files, saved_exp.get_file_path(experiment_name))
+                console.print(f"[green]Restored VM State/HDD files from [cyan]{exp_files}[/cyan] to [cyan]{saved_exp.get_file_path(experiment_name)}[/cyan].[/green]")
+            else:
+                console.print(f"[yellow]The VM State/HDD files at [cyan]{exp_files}[/cyan] do not exist.[/yellow]")
+        except FileExistsError:
+                console.print(f"[yellow]The VM State/HDD files at [cyan]{exp_files}[/cyan] already exist. Using in-place files instead.[/yellow]")
+        except OSError as exc:
+            console.print(f"[red]Error restoring VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}[/red]")
+            return 1
+
+        # Restore schedule files
+        schedule_dir = temp_path / "schedules"
+        if schedule_dir.exists():
+            for file in schedule_dir.glob("*"):
+                try:
+                    shutil.copy(file, schedule_db.cache.cache)
+                    console.print(f"[green]Restored schedule file [cyan]{file}[/cyan] successfully.[/green]")
+                except OSError as exc:
+                    console.print(f"[red]Error restoring schedule file [cyan]{file}[/cyan]: {exc}[/red]")
+                    return 1
+        else:
+            console.print(f"[yellow]No schedule files found in [cyan]{schedule_dir}[/cyan].[/yellow]")
+
+        # Now that everything is in the correct place, we need to run the various minimega scripts:
+        # First we should launch the VM resource handlers
+        vmr_mm_script = temp_path / "launch_cmds.mm"
+        minimega_bin_path = os.path.join(
+            fw_config["minimega"]["install_dir"], "bin", "minimega"
+        )
+        try:
+            launch_handlers_ret = subprocess.run(
+                [
+                    minimega_bin_path,
+                    f"-base={fw_config['minimega']['base_dir']}",
+                    "-e",
+                    "read",
+                    str(vmr_mm_script),
+                ],
+                check=True
+            )
+            console.print(f"[green]Started VM Resource scripts: ret={launch_handlers_ret.returncode}.[/green]")
+        except minimega.Error as exp:
+            console.print(f"[red]Error starting VM resource scripts: {exp}[/red]")
+            return 1
+
+        # Start the VMs
+        saved_vm_state_script = Path(saved_exp.get_file_path(experiment_name)) / "launch.mm"
+        try:
+            launch_vms_ret = subprocess.run(
+                [
+                    minimega_bin_path,
+                    f"-base={fw_config['minimega']['base_dir']}",
+                    "-e",
+                    "read",
+                    str(saved_vm_state_script),
+                ],
+                check=True
+            )
+            console.print(f"[green]Started saved VMs: ret={launch_vms_ret.returncode}.[/green]")
+        except minimega.Error as exp:
+            console.print(f"[red]Error starting VMs: {exp}[/red]")
+            return 1
+
+    return 0
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Load VM state and schedule files.")
+    parser.add_argument("-a", "--archive", type=str, required=True, help="Path to the compressed backup file.")
+    args = parser.parse_args()
+    sys.exit(load_vm_state(archive_path=args.archive))
+DONE
