@@ -30,6 +30,8 @@ class ScheduleEntry:
                 exit if this entry fails.
             executable (str): Name of the executable to run.
             arguments (str):  Arguments to pass to the executable.
+            pause(bool): Whether or not this entry is a pause entry.
+            on_host(bool): Whether or not this entry is to be run on the host.
             data (list(dict)): List of dictionaries specifying required files: ::
 
                 Paths can be either absolute or relative to the VMR.
@@ -65,8 +67,9 @@ class ScheduleEntry:
         self.pause = None
         self.executable = None
         self.arguments = ""
+        self.on_host = False
 
-    def set_executable(self, path, arguments=None):
+    def set_executable(self, path, arguments=None, on_host=False):
         """
         Specify the name of a program to run within the VM.
 
@@ -74,6 +77,8 @@ class ScheduleEntry:
             path (str): Path inside the VM to the program to be run.
             arguments (str or list, optional): Arguments to pass on the command line
                 to the program. Defaults to None.
+            on_host (bool, optional): Whether or not the executable is to be run
+                on the host. Defaults to :py:data:`False`.
 
         Raises:
             RuntimeError: If the executable name is not a string.
@@ -83,6 +88,7 @@ class ScheduleEntry:
             raise RuntimeError("Executable name must be a string")
 
         self.executable = path
+        self.on_host = on_host
 
         if arguments:
             self.append_arguments(arguments)
@@ -228,6 +234,9 @@ class ScheduleEntry:
         string = (
             f"{type(self)}(\n"
             f"\tstart_time={self.start_time},\n"
+            f"\tignore_failure={self.ignore_failure},\n"
+            f"\tpause={self.pause},\n"
+            f"\ton_host={self.on_host},\n"
             f"\texecutable={self.executable},\n"
             f"\targuments={self.arguments},\n"
             f"\tdata={self.data}\n)"

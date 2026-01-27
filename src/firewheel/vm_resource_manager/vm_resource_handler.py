@@ -14,7 +14,9 @@ import random
 import socket
 import asyncio
 import inspect
+import platform
 import contextlib
+import subprocess
 import importlib.util
 from queue import Queue, PriorityQueue
 from pathlib import Path, PureWindowsPath
@@ -261,23 +263,23 @@ class VMResourceHandler:
                     schedule_entry = event.get_data()
 
                     # Determine the paths inside the VM for this vm_resource
-                    try:
-                        self.driver.create_paths(schedule_entry)
-                    except OSError as exp:
-                        self.log.exception(exp)
+                    if not schedule_entry.on_host:
+                        try:
+                            self.driver.create_paths(schedule_entry)
+                        except OSError as exp:
+                            self.log.exception(exp)
 
-                    success = self.load_files_in_target(schedule_entry)
-                    if not success:
-                        self.log.error(
-                            "Unable to load files into the VM: %s", schedule_entry
-                        )
+                        if not self.load_files_in_target(schedule_entry):
+                            self.log.error(
+                                "Unable to load files into the VM: %s", schedule_entry
+                            )
 
-                        # Ignoring a failure typically will happen by a helper
-                        # (e.g. push file) where we don't want the VM resource
-                        # handler to exit on failure
-                        if not schedule_entry.ignore_failure:
-                            self.set_state("FAILED")
-                            sys.exit(1)
+                            # Ignoring a failure typically will happen by a helper
+                            # (e.g. push file) where we don't want the VM resource
+                            # handler to exit on failure
+                            if not schedule_entry.ignore_failure:
+                                self.set_state("FAILED")
+                                sys.exit(1)
 
                     if not schedule_entry.executable:
                         # No executable means that we're done
@@ -287,13 +289,17 @@ class VMResourceHandler:
                     # Handle negative time vm_resources by kicking them off
                     # immediately
                     if schedule_entry.start_time < 0:
-                        args = {"schedule_entry": schedule_entry, "queue": reboot_queue}
                         # rate limit by some small random time
                         time.sleep(
                             self.load_balance_factor
                             * random.SystemRandom().randint(1, 5)
                         )
-                        thread = Thread(target=self.run_vm_resource, kwargs=args)
+                        kwargs = {"schedule_entry": schedule_entry}
+                        if not schedule_entry.on_host:
+                            kwargs["queue"] = reboot_queue
+
+                        thread = Thread(target=self.run_vm_resource, kwargs=kwargs)
+
                         # Keep track of negative time vm_resource threads
                         threads.append(thread)
                         # Start the vm_resource
@@ -330,9 +336,11 @@ class VMResourceHandler:
 
                         # Set a timer to kick off the vm_resource runner with
                         # the vm_resource
-                        thread = Timer(
-                            delay, self.run_vm_resource, args=(schedule_entry,)
+                        timer_target = (
+                            self.run_vm_resource_host
+                            if schedule_entry.on_host else self.run_vm_resource
                         )
+                        thread = Timer(delay, timer_target, args=(schedule_entry,))
                         # Positive time vm_resources don't get held onto since
                         # they can be long running
                         thread.start()
@@ -418,6 +426,172 @@ class VMResourceHandler:
         self.driver.close()
         self.log.debug("Exiting: %d", exitcode)
         sys.exit(exitcode)
+
+    def run_vm_resource_host(self, schedule_entry):
+        """
+        Wrapper around the logic of running an host-based vm_resource.
+        That is, a vm_resource that runs on the physical host instead of inside
+        the VM.
+
+        The new thread calls this wrapper, which can output errors to the
+        log file. This gives a convenient way to pass information back to
+        the user via the log.
+
+        Args:
+            schedule_entry (ScheduleEntry): An object specifying the VM resource to run.
+        """
+        try:
+            self._run_vm_resource_host(schedule_entry)
+        except (RuntimeError, ValueError) as exp:  # noqa: BLE001
+            self.log.exception(exp)
+
+    def _run_vm_resource_host(self, schedule_entry):
+        """
+        Function to handle running a VM resource on the physical host.
+
+        Args:
+            schedule_entry (ScheduleEntry): An object specifying the VM resource to run.
+
+        Raises:
+            RuntimeError: If host-based vm_resources request reboots.
+            ValueError: If the executable is not an absolute path or part of the VMR system.
+        """
+        if hasattr(schedule_entry, "reboot") and schedule_entry.reboot:
+            raise RuntimeError("Host-based vm_resources cannot request reboots!")
+
+        executable = Path(schedule_entry.executable)
+        if executable.is_absolute():
+            schedule_entry.exec_path = executable
+        else:
+            # Check if the executable was loaded by the schedule entry
+            local = False
+            mm_cmd = bool("minimega" == schedule_entry.executable)
+            if schedule_entry.data:
+                for entry in schedule_entry.data:
+                    if entry.get("filename") == schedule_entry.executable:
+                        local = True
+
+            # Having both filename and minimega keys doesn't make sense,
+            # and should not be possible hence the `elif`.
+            if local:
+                # If the executable is "local", it is held in the VM resource system
+                # and we should create the abs path.
+                local_path = Path(
+                    self.vm_resource_store.get_path(schedule_entry.data["filename"])
+                )
+                schedule_entry.exec_path = local_path / executable
+            elif mm_cmd:
+                schedule_entry.exec_path = "minimega"
+            else:
+                # The executable is not part of the VMR system and it was not provided
+                # as an absolute path so the executable is almost certainly supposed to
+                # be on the host's PATH. However, for security reasons, we should force
+                # users to either specify the full path (e.g. `/usr/bin/tar`) or have the
+                # file be part of the VMR system.
+                raise ValueError(
+                    "Any host-based executables must be an absolute path or part of the VMR system."
+                )
+
+        # Loop on subprocess failures
+        while True:
+            exitcode = None
+            start = time.time()
+            self.log.info(
+                "Calling executable '%s' on host '%s'",
+                schedule_entry.exec_path,
+                platform.node(),
+            )
+            if schedule_entry.exec_path == "minimega":
+                self.log.debug("Running minimega command: %s", schedule_entry.arguments)
+                try:
+                    minimega_bin_path = os.path.join(
+                        global_config["minimega"]["install_dir"], "bin", "minimega"
+                    )
+                    if isinstance(schedule_entry.arguments, str):
+                        args = schedule_entry.arguments.split()
+                    else:
+                        args = schedule_entry.arguments
+                    new_args = [
+                        minimega_bin_path,
+                        "-base",
+                        self.mma.mm_base,
+                        "-e",
+                        *args,
+                    ]
+                    ret = subprocess.run(new_args, capture_output=True, check=True)
+                    exitcode = ret.returncode
+                except subprocess.CalledProcessError as e:
+                    self.log.error(
+                        "Command failed with exit code %s, output=%s, stderr=%s",
+                        e.returncode,
+                        e.output.decode(),
+                        e.stderr.decode(),
+                    )
+                    self.log.exception(
+                        "Failed to run host-based vm_resource: %s",
+                        schedule_entry.arguments,
+                    )
+                    time.sleep(
+                        self.load_balance_factor * random.SystemRandom().randint(3, 10)
+                    )
+                    self.log.debug("Retrying host-based vm_resource")
+                    continue
+            else:
+                call_arguments = f"{schedule_entry.exec_path!s}"
+
+                # If there are arguments, then append them to the path to the executable
+                if schedule_entry.arguments:
+                    call_arguments += f" {schedule_entry.arguments}"
+
+                try:
+                    ret = subprocess.run(
+                        call_arguments, capture_output=True, check=True
+                    )
+                    exitcode = ret.returncode
+                except subprocess.CalledProcessError as e:
+                    self.log.error(
+                        "Command failed with exit code %s, output=%s, stderr=%s",
+                        e.returncode,
+                        e.output.decode(),
+                        e.stderr.decode(),
+                    )
+                    self.log.exception(
+                        "Failed to run host-based vm_resource: %s", call_arguments
+                    )
+                    time.sleep(
+                        self.load_balance_factor * random.SystemRandom().randint(3, 10)
+                    )
+                    self.log.debug("Retrying host-based vm_resource")
+                    continue
+
+            end = time.time()
+            if exitcode != 0:
+                self.log.warning(
+                    "Host-based %s exited after %05f seconds with code: %s",
+                    schedule_entry.executable,
+                    end - start,
+                    exitcode,
+                )
+            else:
+                self.log.debug(
+                    "%s exited after %05f seconds with code: %s",
+                    schedule_entry.executable,
+                    end - start,
+                    exitcode,
+                )
+
+            # Handle stdout and stderr
+            output = {}
+            output["name"] = schedule_entry.executable
+            output["pid"] = "n/a"
+
+            if ret.stdout:
+                self._print_stream(output, ret.stdout, "stdout")
+
+            if ret.stderr:
+                self._print_stream(output, ret.stderr, "stderr")
+
+            break
 
     def run_vm_resource(self, schedule_entry, queue=None):
         """
@@ -826,6 +1000,9 @@ class VMResourceHandler:
 
             if event.get_type() == ScheduleEventType.NEW_ITEM:
                 schedule_entry = event.get_data()
+                if schedule_entry.on_host:
+                    temp_q.put((start_time, event))
+                    continue
                 try:
                     self.driver.create_paths(schedule_entry)
                 except socket.timeout:
