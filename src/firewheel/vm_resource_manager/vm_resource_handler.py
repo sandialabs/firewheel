@@ -263,15 +263,13 @@ class VMResourceHandler:
                     schedule_entry = event.get_data()
 
                     # Determine the paths inside the VM for this vm_resource
-                    try:
-                        if not schedule_entry.on_host:
-                            self.driver.create_paths(schedule_entry)
-                    except OSError as exp:
-                        self.log.exception(exp)
-
                     if not schedule_entry.on_host:
-                        success = self.load_files_in_target(schedule_entry)
-                        if not success:
+                        try:
+                            self.driver.create_paths(schedule_entry)
+                        except OSError as exp:
+                            self.log.exception(exp)
+
+                        if not self.load_files_in_target(schedule_entry):
                             self.log.error(
                                 "Unable to load files into the VM: %s", schedule_entry
                             )
@@ -291,19 +289,16 @@ class VMResourceHandler:
                     # Handle negative time vm_resources by kicking them off
                     # immediately
                     if schedule_entry.start_time < 0:
-                        args = {"schedule_entry": schedule_entry, "queue": reboot_queue}
                         # rate limit by some small random time
                         time.sleep(
                             self.load_balance_factor
                             * random.SystemRandom().randint(1, 5)
                         )
-                        if schedule_entry.on_host:
-                            thread = Thread(
-                                target=self.run_vm_resource_host,
-                                kwargs={"schedule_entry": schedule_entry},
-                            )
-                        else:
-                            thread = Thread(target=self.run_vm_resource, kwargs=args)
+                        kwargs = {"schedule_entry": schedule_entry}
+                        if not schedule_entry.on_host:
+                            kwargs["queue"] = reboot_queue
+
+                        thread = Thread(target=self.run_vm_resource, kwargs=kwargs)
 
                         # Keep track of negative time vm_resource threads
                         threads.append(thread)
@@ -341,16 +336,11 @@ class VMResourceHandler:
 
                         # Set a timer to kick off the vm_resource runner with
                         # the vm_resource
-                        if schedule_entry.on_host:
-                            thread = Timer(
-                                delay,
-                                self.run_vm_resource_host,
-                                args=(schedule_entry,),
-                            )
-                        else:
-                            thread = Timer(
-                                delay, self.run_vm_resource, args=(schedule_entry,)
-                            )
+                        timer_target = (
+                            self.run_vm_resource_host
+                            if schedule_entry.on_host else self.run_vm_resource
+                        )
+                        thread = Timer(delay, timer_target, args=(schedule_entry,))
                         # Positive time vm_resources don't get held onto since
                         # they can be long running
                         thread.start()
