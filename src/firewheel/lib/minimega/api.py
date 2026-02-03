@@ -403,7 +403,7 @@ class minimegaAPI:  # noqa: N801
             config["minimega"]["install_dir"], "bin", "minimega"
         )
         new_args = [minimega_bin_path, "-e", *args]
-        ret = subprocess.check_output(new_args)
+        ret = subprocess.run(new_args, capture_output=True, check=True)
         return ret
 
     def _parse_host(self, host_item):
