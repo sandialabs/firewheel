@@ -171,35 +171,38 @@ class ModelComponentDependencyGraph(DependencyGraph):
         Raises:
             UnsatisfiableDependenciesError: Output the cycles in the graph.
         """
-        all_human_cycles = self.get_cycles()
-        all_cycle_graphs = ""
-        for cycle in all_human_cycles:
-            cdg = nx.DiGraph()
-            for node in cycle:
-                cdg.add_node(node)
-
-            for i, node in enumerate(cycle[:-1]):
-                cdg.add_edge(node, cycle[i + 1])
-            cdg.add_edge(cycle[0], cycle[-1])
-
-            for line in nx.generate_network_text(cdg):
-                all_cycle_graphs += f"{line}\n"
-
-            all_cycle_graphs += "\n\n"
-
-        # Improving upon the default networkx diagrams
-        backedge: str = "╾"
-        all_cycle_graphs = all_cycle_graphs.replace(backedge, "◄─")
-        all_cycle_graphs = all_cycle_graphs.replace("╼", "►")
+        cycle_graphs = [self._build_cycle_graph(cycle) for cycle in self.get_cycles()]
+        cycle_graph_outputs = [
+            self._format_cycle_graph_output(cycle_graph)
+            for cycle_graph in cycle_graphs
+        ]
+        all_cycle_graphs = "\n\n".join(cycle_graph_outputs)
 
         self.log.error(
-            "Unsatisfiable dependency graph contained %s cycles", len(all_human_cycles)
+            "Unsatisfiable dependency graph contained %s cycles", len(cycle_graphs)
         )
         raise UnsatisfiableDependenciesError(
             "Unsatisfiable: Circular dependency relationship(s) found.\n"
             f"Simple cycles:\n{all_cycle_graphs}"
         )
 
+def _build_cycle_graph(self, cycle):
+    cycle_graph = nx.DiGraph()
+    # Add nodes and edges to the cycle graph
+    for node in cycle:
+        cycle_graph.add_node(node)
+    for i, node in enumerate(cycle[:-1]):
+        next_node = cycle[i + 1]
+        cycle_graph.add_edge(node, next_node])
+    cycle_graph.add_edge(cycle[0], cycle[-1])
+    return cycle_graph
+    
+def _format_cycle_graph_output(self, cycle_graph)
+    raw_output_string = "\n".join(nx.generate_network_text(cycle_graph))
+    # Improve upon the default networkx diagrams
+    backedge: str = "╾"
+    output_string = raw_output_string.replace(backedge, "◄─").replace("╼", "►")  
+    return output_string
     def get_cycles(self):
         """
         Try to identify all the cycles in the DiGraph that could be created by
