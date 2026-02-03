@@ -186,23 +186,24 @@ class ModelComponentDependencyGraph(DependencyGraph):
             f"Simple cycles:\n{all_cycle_graphs}"
         )
 
-def _build_cycle_graph(self, cycle):
-    cycle_graph = nx.DiGraph()
-    # Add nodes and edges to the cycle graph
-    for node in cycle:
-        cycle_graph.add_node(node)
-    for i, node in enumerate(cycle[:-1]):
-        next_node = cycle[i + 1]
-        cycle_graph.add_edge(node, next_node])
-    cycle_graph.add_edge(cycle[0], cycle[-1])
-    return cycle_graph
-    
-def _format_cycle_graph_output(self, cycle_graph)
-    raw_output_string = "\n".join(nx.generate_network_text(cycle_graph))
-    # Improve upon the default networkx diagrams
-    backedge: str = "╾"
-    output_string = raw_output_string.replace(backedge, "◄─").replace("╼", "►")  
-    return output_string
+    def _build_cycle_graph(self, cycle):
+        cycle_graph = nx.DiGraph()
+        # Add nodes and edges to the cycle graph
+        for node in cycle:
+            cycle_graph.add_node(node)
+        for i, node in enumerate(cycle[:-1]):
+            next_node = cycle[i + 1]
+            cycle_graph.add_edge(node, next_node)
+        cycle_graph.add_edge(cycle[0], cycle[-1])
+        return cycle_graph
+
+    def _format_cycle_graph_output(self, cycle_graph):
+        raw_output_string = "\n".join(nx.generate_network_text(cycle_graph))
+        # Improve upon the default networkx diagrams
+        backedge: str = "╾"
+        output_string = raw_output_string.replace(backedge, "◄─").replace("╼", "►")
+        return output_string
+
     def get_cycles(self):
         """
         Try to identify all the cycles in the DiGraph that could be created by
