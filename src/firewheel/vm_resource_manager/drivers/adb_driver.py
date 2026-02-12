@@ -4,6 +4,7 @@ import json
 import adbutils
 import time
 import signal
+import base64
 
 EXIT_MAGIC = "ExitCode="
 
@@ -23,21 +24,71 @@ class ADBDriver(AbstractDriver):
         self._is_rooted = False
         super().__init__(config, log)
 
-
-    def connect(self):
+    def _wait_for_device_online(self):
         sleep_time = 1
         while not self.ping():
             self.log.debug("Waiting for device to come online")
             time.sleep(sleep_time)
-        self.log.debug("Getting root access on device")
-        if not self._is_rooted:
-            with self.lock:
-                self.adb_device.root()
-            self.is_rooted = True
+        
+    def _remount_system(self):
+        self._wait_for_device_online()
 
-            while not self.ping():
-                self.log.debug("Waiting for device to come online")
-                time.sleep(sleep_time)
+        #time.sleep(60) #FIXME debugging
+        while True:
+            import os
+            if os.path.exists("/tmp/flag"):
+                break
+            time.sleep(2)
+
+        returncode = self.adb_device.shell2("test -w /system").returncode
+        if returncode == 0:
+            # it was already writable
+            return
+
+        def _remount():
+            num_attempts = 10
+            for _ in range(num_attempts):
+                try:
+                    self.adb_device.adb_output("remount")
+                    break
+                except Exception as exc:
+                    self.log.exception(exc)
+            else:
+                raise RuntimeError("Error remounting /system as writable")
+
+        _remount()
+        self.reboot()
+        self._wait_for_device_online()
+        self._root()
+        self._wait_for_device_online()
+        _remount()
+        self._wait_for_device_online()
+
+    def _root(self):
+        with self.lock:
+            self.adb_device.root()
+        self._is_rooted = True
+
+    def _symlink_bash(self):
+        with self.lock:
+            self.adb_device.shell("ln -s /bin/sh /bin/bash")
+
+    def connect(self):
+        with self.lock:
+            self._wait_for_device_online()
+
+            self.log.debug("Getting root access on device")
+            if not self._is_rooted:
+                self._root()
+
+                self._wait_for_device_online()
+
+                # Also, we need to remount /system as writable
+                self._remount_system()
+
+                # And, for now, let's symlink bash to sh
+                self._symlink_bash()
+
         return 1
 
     def close(self):
@@ -58,7 +109,16 @@ class ADBDriver(AbstractDriver):
             # "adb get-state" returns "device" when the emulator/device is online
             with self.lock:
                 result = self.adb_device.get_state()
-            return result.strip() == "device"
+            online = result.strip() == "device"
+
+            if not online:
+                return False
+
+            # as an extra check, try to run a very simple shell command
+            with self.lock:
+                self.adb_device.shell("true")
+
+            return True
         except Exception as exc:
             # Any exception (including timeout) indicates the device is not reachable
             return False
@@ -102,6 +162,7 @@ class ADBDriver(AbstractDriver):
     
     def reboot(self):
         with self.lock:
+            self._is_rooted = False
             self.adb_device.reboot()
     
     def file_flush(self):
@@ -144,6 +205,8 @@ class ADBDriver(AbstractDriver):
         
         if isinstance(arg, (list, tuple)):
             arg = adbutils._utils.list2cmdline(arg)
+        if arg is None:
+            arg = ""
 
         full_cmd += path
         full_cmd += " "
@@ -159,6 +222,9 @@ class ADBDriver(AbstractDriver):
         self.output_cache[pid]['cmd'] = full_cmd # TODO debugging
 
         return pid
+
+    def async_exec( self, path, arg=None, env=None, input_data=None, capture_output=True):
+        return self.execute(path, arg, env, input_data, capture_output)
 
     def exec_status(self, pid):
         stream = self.output_cache[pid]["stream"]
@@ -184,7 +250,9 @@ class ADBDriver(AbstractDriver):
 
         # look for the "ExitCode=..." string in the output for exit code reporting
         self.output_cache[pid].setdefault("stdout", "")
-        if exited:
+        if "exitcode" in self.output_cache[pid]:
+            pass # TODO surely there's a cleaner way to do this logic
+        elif exited:
             idx = stdout.rfind(EXIT_MAGIC)
             self.log.debug("idx=%s", idx)
             exit_code_str = stdout[idx+len(EXIT_MAGIC):]
@@ -202,7 +270,6 @@ class ADBDriver(AbstractDriver):
         raise NotImplementedError
 
     def _write(self, filename, data, mode="w"):
-        self.log.info("filename=%s, data=%s, mode=%s", filename, data, mode)
         if mode == "w":
             redirect = ">"
         elif mode == "a":
@@ -210,8 +277,13 @@ class ADBDriver(AbstractDriver):
         else:
             raise ValueError("Unsupported file mode")
 
+        maybe_b64 = ""
+        if isinstance(data, bytes):
+            data = base64.b64encode(data)
+            maybe_b64 = " | base64 -d "
+
         with self.lock:
-            self.adb_device.shell(f"printf '{data}' {redirect} {filename}")
+            self.adb_device.shell(f"printf '{data}' {maybe_b64} {redirect} {filename}")
 
         return True
 
@@ -220,9 +292,10 @@ class ADBDriver(AbstractDriver):
             self.adb_device.sync.pull_file(filename, local_destination)
 
     def write_from_file(self, filename, local_filename, mode="w"):
-        with open(local_filename) as fhand:
+        with open(local_filename, "rb") as fhand:
             data = fhand.read()
         self._write(filename, data, mode)
+        return True
 
     def get_os(self):
         if self.target_os:
