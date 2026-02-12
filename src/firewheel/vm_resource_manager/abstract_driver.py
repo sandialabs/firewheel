@@ -743,6 +743,8 @@ class AbstractDriver(ABC):
         call_arguments = ""
         if "Windows" in self.get_os():
             base = Path("/launch")
+        elif "Android" in self.get_os():
+            base = Path("/data/var/launch")
         else:
             base = Path("/var/launch")
 

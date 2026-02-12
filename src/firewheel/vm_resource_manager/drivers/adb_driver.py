@@ -189,6 +189,7 @@ class ADBDriver(AbstractDriver):
             self.log.debug("idx=%s", idx)
             exit_code_str = stdout[idx+len(EXIT_MAGIC):]
             exit_code = int(exit_code_str)
+            self.output_cache[pid]['exitcode'] = exit_code
             
             self.output_cache[pid]["stdout"] += stdout[:idx]
         else:
@@ -201,6 +202,7 @@ class ADBDriver(AbstractDriver):
         raise NotImplementedError
 
     def _write(self, filename, data, mode="w"):
+        self.log.info("filename=%s, data=%s, mode=%s", filename, data, mode)
         if mode == "w":
             redirect = ">"
         elif mode == "a":
@@ -210,6 +212,8 @@ class ADBDriver(AbstractDriver):
 
         with self.lock:
             self.adb_device.shell(f"printf '{data}' {redirect} {filename}")
+
+        return True
 
     def read_file(self, filename, local_destination, mode="rb"):
         with self.lock:
