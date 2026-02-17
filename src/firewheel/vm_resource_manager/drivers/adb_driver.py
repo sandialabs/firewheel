@@ -3,16 +3,9 @@ from firewheel.vm_resource_manager.abstract_driver import AbstractDriver
 import json
 import adbutils
 import time
-import signal
 import base64
 
 EXIT_MAGIC = "ExitCode="
-
-class TimeoutException(Exception):
-    pass
-
-def timeout_handler(signum, frame):
-    raise TimeoutException()
 
 class ADBDriver(AbstractDriver):
     def __init__(self, config, log):
@@ -87,6 +80,8 @@ class ADBDriver(AbstractDriver):
                 self._remount_system()
 
                 # And, for now, let's symlink bash to sh
+                # It may get overwritten by the model component if the user
+                # wants to use bash features
                 self._symlink_bash()
 
         return 1
@@ -176,12 +171,18 @@ class ADBDriver(AbstractDriver):
         raise NotImplementedError
 
     def _get_pid_from_stream(self, stream):
+        # We want this phase to be a blocking read
+        old_blocking_status = stream.conn.getblocking()
+        stream.conn.setblocking(True)
+
         pid_str = ""
         while True:
+
             char = stream.read(1).decode("utf-8")
             if char == "\n":
                 break
             pid_str += char
+        stream.conn.setblocking(old_blocking_status)
         
         try:
             pid = int(pid_str)
@@ -191,8 +192,8 @@ class ADBDriver(AbstractDriver):
         
     def execute(self, path, arg=None, env=None, input_data=None, capture_output=True):
         # TODO we probably need a way to just use bash, but until it's installed, try and replace it with sh
-        if path == "/bin/bash":
-            path = "/bin/sh"
+        # if path == "/bin/bash":
+        #    path = "/bin/sh"
         full_cmd = ""
 
         if input_data is not None:
@@ -226,43 +227,59 @@ class ADBDriver(AbstractDriver):
     def async_exec( self, path, arg=None, env=None, input_data=None, capture_output=True):
         return self.execute(path, arg, env, input_data, capture_output)
 
+    def _is_pid_alive(self, pid):
+        returncode = self.adb_device.shell2(f"kill -0 {pid}").returncode
+        if returncode == 0:
+            return True
+        return False
+
     def exec_status(self, pid):
         stream = self.output_cache[pid]["stream"]
 
-        read_timeout = 1
-        timed_out = False
-        signal.alarm(read_timeout)
-        try:
-            stdout = stream.read_until_close()
-        except TimeoutException as exc:
-            timed_out = True
-        finally:
-            # end the timeout alarm
-            signal.alarm(0)
+        exited = not self._is_pid_alive(pid)
 
+        # We want this read to be non-blocking
+        old_blocking_status = stream.conn.getblocking()
+        stream.conn.setblocking(False)
+        stdout = ""
+        try:
+            while True:
+                byte = stream.read(1)
+                if byte == b"":
+                    break
+                char = byte.decode("utf-8")
+                stdout += char
+        except BlockingIOError:
+            # no more data to read
+            pass
+
+        stream.conn.setblocking(old_blocking_status)
 
         self.log.debug("process stdout: ****%s****", stdout)
         self.log.debug(self.output_cache[pid])
 
+
         # check if process has finished
-        exited = not timed_out
         self.output_cache[pid]["exited"] = exited
 
-        # look for the "ExitCode=..." string in the output for exit code reporting
+
         self.output_cache[pid].setdefault("stdout", "")
+        stdout = self.output_cache[pid]["stdout"] + stdout
         if "exitcode" in self.output_cache[pid]:
-            pass # TODO surely there's a cleaner way to do this logic
+            pass
+
         elif exited:
+            # look for the "ExitCode=..." string in the output for exit code reporting
             idx = stdout.rfind(EXIT_MAGIC)
-            self.log.debug("idx=%s", idx)
             exit_code_str = stdout[idx+len(EXIT_MAGIC):]
             exit_code = int(exit_code_str)
             self.output_cache[pid]['exitcode'] = exit_code
-            
-            self.output_cache[pid]["stdout"] += stdout[:idx]
-        else:
-            self.output_cache[pid]["stdout"] += stdout
+            self.output_cache[pid]["stdout"] = stdout[:idx]
 
+        else:
+            self.output_cache[pid]["stdout"] = stdout
+
+        self.log.info("exec_status of %s: %s", pid, self.output_cache[pid])
         return self.output_cache[pid]
 
 
@@ -270,6 +287,7 @@ class ADBDriver(AbstractDriver):
         raise NotImplementedError
 
     def _write(self, filename, data, mode="w"):
+        # self.log.info("Writing to %s with data='%s'", filename, str(data))
         if mode == "w":
             redirect = ">"
         elif mode == "a":
@@ -279,11 +297,11 @@ class ADBDriver(AbstractDriver):
 
         maybe_b64 = ""
         if isinstance(data, bytes):
-            data = base64.b64encode(data)
+            data = base64.b64encode(data).decode("utf-8")
             maybe_b64 = " | base64 -d "
 
         with self.lock:
-            self.adb_device.shell(f"printf '{data}' {maybe_b64} {redirect} {filename}")
+            self.adb_device.shell2(f"echo -n '{data}' {maybe_b64} {redirect} {filename}")
 
         return True
 
@@ -292,9 +310,12 @@ class ADBDriver(AbstractDriver):
             self.adb_device.sync.pull_file(filename, local_destination)
 
     def write_from_file(self, filename, local_filename, mode="w"):
+        """
         with open(local_filename, "rb") as fhand:
             data = fhand.read()
         self._write(filename, data, mode)
+        """
+        self.adb_device.sync.push(local_filename, filename)
         return True
 
     def get_os(self):

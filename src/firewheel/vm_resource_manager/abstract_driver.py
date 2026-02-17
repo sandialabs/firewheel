@@ -792,6 +792,13 @@ class AbstractDriver(ABC):
                 f"@echo off\r\npushd {PureWindowsPath(schedule_entry.working_dir)}\r\n"
             )
             call_arguments += str(PureWindowsPath(schedule_entry.exec_path))
+        elif "Android" in self.get_os():
+            call_arguments = str(
+                "#!/bin/sh\n"
+                'CURRENT_DIR="$(dirname "$0")"\n'
+                f"cd {schedule_entry.working_dir}\n"
+            )
+            call_arguments += f"{schedule_entry.exec_path!s}"
         else:
             call_arguments = str(
                 "#!/bin/bash\n"
