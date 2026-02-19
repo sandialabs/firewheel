@@ -1,8 +1,10 @@
-from firewheel.vm_resource_manager.abstract_driver import AbstractDriver
 import json
-import adbutils
 import time
 import base64
+
+import adbutils
+
+from firewheel.vm_resource_manager.abstract_driver import AbstractDriver
 
 EXIT_MAGIC = "ExitCode="
 
@@ -42,14 +44,6 @@ class ADBDriver(AbstractDriver):
         process to guarantee the partition is writable.
         """
         self._wait_for_device_online()
-
-        # time.sleep(60) #FIXME debugging
-        while True:
-            import os
-
-            if os.path.exists("/tmp/flag"):
-                break
-            time.sleep(2)
 
         returncode = self.adb_device.shell2("test -w /system").returncode
         if returncode == 0:
@@ -153,7 +147,7 @@ class ADBDriver(AbstractDriver):
                 self.adb_device.shell("true")
 
             return True
-        except Exception as exc:
+        except Exception:
             # Any exception (including timeout) indicates the device is not reachable
             return False
 
@@ -269,9 +263,6 @@ class ADBDriver(AbstractDriver):
         returns the PID of the spawned process and stores the output stream for
         later retrieval via :py:meth:`exec_status`.
         """
-        # TODO we probably need a way to just use bash, but until it's installed, try and replace it with sh
-        # if path == "/bin/bash":
-        #    path = "/bin/sh"
         full_cmd = ""
 
         if input_data is not None:
@@ -298,7 +289,6 @@ class ADBDriver(AbstractDriver):
         pid = self._get_pid_from_stream(output_stream)
 
         self.output_cache[pid] = {"stream": output_stream}
-        self.output_cache[pid]["cmd"] = full_cmd  # TODO debugging
 
         return pid
 
@@ -445,11 +435,6 @@ class ADBDriver(AbstractDriver):
             self.adb_device.sync.pull_file(filename, local_destination)
 
     def write_from_file(self, filename, local_filename, mode="w"):
-        """
-        with open(local_filename, "rb") as fhand:
-            data = fhand.read()
-        self._write(filename, data, mode)
-        """
         self.adb_device.sync.push(local_filename, filename)
         return True
 
