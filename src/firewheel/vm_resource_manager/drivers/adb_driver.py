@@ -453,7 +453,7 @@ class ADBDriver(AbstractDriver):
         cmd += '"'
 
         num_attempts = 10
-        for attempt in range(num_attempts):
+        for _ in range(num_attempts):
             with self.lock:
                 try:
                     self.target_os = self.adb_device.shell(cmd)
