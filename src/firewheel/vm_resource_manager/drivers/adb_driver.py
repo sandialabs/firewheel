@@ -1,4 +1,3 @@
-
 from firewheel.vm_resource_manager.abstract_driver import AbstractDriver
 import json
 import adbutils
@@ -7,9 +6,10 @@ import base64
 
 EXIT_MAGIC = "ExitCode="
 
+
 class ADBDriver(AbstractDriver):
     def __init__(self, config, log):
-                """Initialize the ADB driver.
+        """Initialize the ADB driver.
 
         Args:
             config (dict): Configuration containing adb_port and other information.
@@ -33,7 +33,7 @@ class ADBDriver(AbstractDriver):
         while not self.ping():
             self.log.debug("Waiting for device to come online")
             time.sleep(sleep_time)
-        
+
     def _remount_system(self):
         """Remount the /system partition as writable.
 
@@ -43,9 +43,10 @@ class ADBDriver(AbstractDriver):
         """
         self._wait_for_device_online()
 
-        #time.sleep(60) #FIXME debugging
+        # time.sleep(60) #FIXME debugging
         while True:
             import os
+
             if os.path.exists("/tmp/flag"):
                 break
             time.sleep(2)
@@ -184,13 +185,12 @@ class ADBDriver(AbstractDriver):
         # Use the shell command to get epoch seconds on the device.
         # Android's date supports +%s which returns seconds since epoch.
         with self.lock:
-            output = self.adb_device.shell('date +%s')
+            output = self.adb_device.shell("date +%s")
         # The output may contain newline characters; strip them.
         secs_str = output.strip()
         secs = int(secs_str)
         # Return as float seconds for consistency with other drivers.
         return float(secs)
-
 
     def set_time(self):
         """Set the VM time to the host's current time.
@@ -201,7 +201,7 @@ class ADBDriver(AbstractDriver):
         cur_time_nano = int(time.time() * 1e9)
         with self.lock:
             self.adb_device.shell(f"date -s {cur_time_nano}")
-    
+
     def reboot(self):
         """Reboot the Android device.
 
@@ -211,7 +211,7 @@ class ADBDriver(AbstractDriver):
         with self.lock:
             self._is_rooted = False
             self.adb_device.reboot()
-    
+
     def file_flush(self):
         """Flush a file to disk inside the guest VM.
 
@@ -249,19 +249,18 @@ class ADBDriver(AbstractDriver):
 
         pid_str = ""
         while True:
-
             char = stream.read(1).decode("utf-8")
             if char == "\n":
                 break
             pid_str += char
         stream.conn.setblocking(old_blocking_status)
-        
+
         try:
             pid = int(pid_str)
             return pid
         except ValueError:
             return None
-        
+
     def execute(self, path, arg=None, env=None, input_data=None, capture_output=True):
         """Run a program inside the Android VM.
 
@@ -282,7 +281,7 @@ class ADBDriver(AbstractDriver):
             for env_var in env:
                 full_cmd += env_var
                 full_cmd += " "
-        
+
         if isinstance(arg, (list, tuple)):
             arg = adbutils._utils.list2cmdline(arg)
         if arg is None:
@@ -291,7 +290,7 @@ class ADBDriver(AbstractDriver):
         full_cmd += path
         full_cmd += " "
         full_cmd += arg
-        full_cmd += f" & pid=$!; echo $pid; wait $pid; echo \"{EXIT_MAGIC}$?\"" # make it run in the background and echo the PID so we can save it
+        full_cmd += f' & pid=$!; echo $pid; wait $pid; echo "{EXIT_MAGIC}$?"'  # make it run in the background and echo the PID so we can save it
         with self.lock:
             output_stream = self.adb_device.shell(full_cmd, stream=True)
 
@@ -299,11 +298,13 @@ class ADBDriver(AbstractDriver):
         pid = self._get_pid_from_stream(output_stream)
 
         self.output_cache[pid] = {"stream": output_stream}
-        self.output_cache[pid]['cmd'] = full_cmd # TODO debugging
+        self.output_cache[pid]["cmd"] = full_cmd  # TODO debugging
 
         return pid
 
-    def async_exec(self, path, arg=None, env=None, input_data=None, capture_output=True):
+    def async_exec(
+        self, path, arg=None, env=None, input_data=None, capture_output=True
+    ):
         """Convenience wrapper for asynchronous execution.
 
         Delegates to :py:meth:`execute` to run the command asynchronously and
@@ -357,10 +358,8 @@ class ADBDriver(AbstractDriver):
         self.log.debug("process stdout: ****%s****", stdout)
         self.log.debug(self.output_cache[pid])
 
-
         # check if process has finished
         self.output_cache[pid]["exited"] = exited
-
 
         self.output_cache[pid].setdefault("stdout", "")
         stdout = self.output_cache[pid]["stdout"] + stdout
@@ -370,9 +369,9 @@ class ADBDriver(AbstractDriver):
         elif exited:
             # look for the "ExitCode=..." string in the output for exit code reporting
             idx = stdout.rfind(EXIT_MAGIC)
-            exit_code_str = stdout[idx+len(EXIT_MAGIC):]
+            exit_code_str = stdout[idx + len(EXIT_MAGIC) :]
             exit_code = int(exit_code_str)
-            self.output_cache[pid]['exitcode'] = exit_code
+            self.output_cache[pid]["exitcode"] = exit_code
             self.output_cache[pid]["stdout"] = stdout[:idx]
 
         else:
@@ -380,7 +379,6 @@ class ADBDriver(AbstractDriver):
 
         self.log.info("exec_status of %s: %s", pid, self.output_cache[pid])
         return self.output_cache[pid]
-
 
     def store_captured_output(self, pid, output):
         """
@@ -425,7 +423,9 @@ class ADBDriver(AbstractDriver):
             maybe_b64 = " | base64 -d "
 
         with self.lock:
-            self.adb_device.shell2(f"echo -n '{data}' {maybe_b64} {redirect} {filename}")
+            self.adb_device.shell2(
+                f"echo -n '{data}' {maybe_b64} {redirect} {filename}"
+            )
 
         return True
 
@@ -461,10 +461,10 @@ class ADBDriver(AbstractDriver):
             return self.target_os
 
         cmd = 'echo "'
-        cmd += '$(getprop ro.product.brand) '
-        cmd += 'Android '
-        cmd += '$(getprop ro.build.version.release) '
-        cmd += '($(getprop ro.product.model))'
+        cmd += "$(getprop ro.product.brand) "
+        cmd += "Android "
+        cmd += "$(getprop ro.build.version.release) "
+        cmd += "($(getprop ro.product.model))"
         cmd += '"'
 
         num_attempts = 10
