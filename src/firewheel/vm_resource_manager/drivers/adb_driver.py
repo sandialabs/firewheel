@@ -10,6 +10,10 @@ EXIT_MAGIC = "ExitCode="
 
 
 class ADBDriver(AbstractDriver):
+    """
+    Driver class for the Android Debug Bridge (ADB). This class can communicate
+    with an emulated Android device via ADB.
+    """
     def __init__(self, config, log):
         """Initialize the ADB driver.
 
@@ -82,7 +86,7 @@ class ADBDriver(AbstractDriver):
     def _symlink_bash(self):
         """Create a symbolic link ``/bin/bash`` → ``/bin/sh`` on the device.
 
-        The link is created under a thread‑safe lock so that concurrent callers
+        The link is created under a thread-safe lock so that concurrent callers
         do not race the underlying ``adb shell`` command.
         """
         with self.lock:
@@ -93,7 +97,7 @@ class ADBDriver(AbstractDriver):
 
         Ensures the device is online, obtains root access if necessary, remounts the
         system partition, and creates a ``bash`` symlink. The method acquires a lock
-        for thread‑safety and returns ``1`` on success.
+        for thread-safety and returns ``1`` on success.
         """
         with self.lock:
             self._wait_for_device_online()
@@ -133,6 +137,8 @@ class ADBDriver(AbstractDriver):
         Returns:
             bool: True if the device responds, False otherwise.
         """
+        _timeout = timeout # unused variable
+
         try:
             # "adb get-state" returns "device" when the emulator/device is online
             with self.lock:
@@ -147,8 +153,8 @@ class ADBDriver(AbstractDriver):
                 self.adb_device.shell("true")
 
             return True
-        except Exception:
-            # Any exception (including timeout) indicates the device is not reachable
+        except adbutils.errors.AdbError:
+            # Any ADB exception indicates the device is not reachable
             return False
 
     def sync(self):
@@ -200,7 +206,7 @@ class ADBDriver(AbstractDriver):
         """Reboot the Android device.
 
         Clears the internal ``_is_rooted`` flag and invokes ``adb reboot`` via the
-        ADB client. The operation is performed inside a thread‑safe lock.
+        ADB client. The operation is performed inside a thread-safe lock.
         """
         with self.lock:
             self._is_rooted = False
@@ -225,6 +231,17 @@ class ADBDriver(AbstractDriver):
             return json.loads(self.adb_device.shell("ip -j address"))
 
     def set_user_password(self, username, password):
+        """
+        Sets a user's password. This is not yet implemented for Android and is
+        not needed at this time.
+
+        Args:
+            username (str): The user account that will have its password changed.
+            password (str): A new password for the user account.
+
+        Raises:
+            NotImplementedError: This functionality is not yet needed
+        """
         raise NotImplementedError
 
     def _get_pid_from_stream(self, stream):
@@ -263,6 +280,8 @@ class ADBDriver(AbstractDriver):
         returns the PID of the spawned process and stores the output stream for
         later retrieval via :py:meth:`exec_status`.
         """
+        _capture_output = capture_output # unused variable
+
         full_cmd = ""
 
         if input_data is not None:
@@ -281,7 +300,10 @@ class ADBDriver(AbstractDriver):
         full_cmd += path
         full_cmd += " "
         full_cmd += arg
-        full_cmd += f' & pid=$!; echo $pid; wait $pid; echo "{EXIT_MAGIC}$?"'  # make it run in the background and echo the PID so we can save it
+
+        # make it run in the background and echo the PID so we can save it
+        full_cmd += f' & pid=$!; echo $pid; wait $pid; echo "{EXIT_MAGIC}$?"'
+
         with self.lock:
             output_stream = self.adb_device.shell(full_cmd, stream=True)
 
@@ -430,11 +452,24 @@ class ADBDriver(AbstractDriver):
                 where the file should be read to.
             mode (str): The mode of reading the file. Defaults to ``'rb'``.
         """
+        _mode = mode # unused variable
 
         with self.lock:
             self.adb_device.sync.pull_file(filename, local_destination)
 
     def write_from_file(self, filename, local_filename, mode="w"):
+        """
+        Given a local filename, use ``adb push`` to push that file into the
+        guest VM at the location specified by ``filename``.
+
+        Args:
+            filename (str): The name of the file to open for writing.
+            local_filename (str): Filename of the file containing data to
+                send to the VM.
+            mode (str): Mode for writing to the file. ``'w'`` or ``'a'``.
+
+        """
+        _mode = mode # unused variable
         self.adb_device.sync.push(local_filename, filename)
         return True
 
@@ -453,7 +488,7 @@ class ADBDriver(AbstractDriver):
         cmd += '"'
 
         num_attempts = 10
-        for _ in range(num_attempts):
+        for _attempt in range(num_attempts):
             with self.lock:
                 try:
                     self.target_os = self.adb_device.shell(cmd)
