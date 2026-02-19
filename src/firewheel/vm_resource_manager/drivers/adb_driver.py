@@ -137,7 +137,7 @@ class ADBDriver(AbstractDriver):
         Returns:
             bool: True if the device responds, False otherwise.
         """
-        _timeout = timeout # unused variable
+        _timeout = timeout  # unused variable
 
         try:
             # "adb get-state" returns "device" when the emulator/device is online
@@ -280,7 +280,7 @@ class ADBDriver(AbstractDriver):
         returns the PID of the spawned process and stores the output stream for
         later retrieval via :py:meth:`exec_status`.
         """
-        _capture_output = capture_output # unused variable
+        _capture_output = capture_output  # unused variable
 
         full_cmd = ""
 
@@ -405,7 +405,7 @@ class ADBDriver(AbstractDriver):
 
         Raises:
             NotImplementedError: This does not seem to be needed yet and should
-            be implemented if/when it is needed
+                be implemented if/when it is needed
         """
 
         raise NotImplementedError
@@ -452,7 +452,7 @@ class ADBDriver(AbstractDriver):
                 where the file should be read to.
             mode (str): The mode of reading the file. Defaults to ``'rb'``.
         """
-        _mode = mode # unused variable
+        _mode = mode  # unused variable
 
         with self.lock:
             self.adb_device.sync.pull_file(filename, local_destination)
@@ -469,7 +469,7 @@ class ADBDriver(AbstractDriver):
             mode (str): Mode for writing to the file. ``'w'`` or ``'a'``.
 
         """
-        _mode = mode # unused variable
+        _mode = mode  # unused variable
         self.adb_device.sync.push(local_filename, filename)
         return True
 
