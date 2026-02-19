@@ -9,6 +9,12 @@ EXIT_MAGIC = "ExitCode="
 
 class ADBDriver(AbstractDriver):
     def __init__(self, config, log):
+                """Initialize the ADB driver.
+
+        Args:
+            config (dict): Configuration containing adb_port and other information.
+            log (logging.Logger): Logger instance for emitting debug/info messages.
+        """
         log.info("Config = %s", config)
         self.console_port = config["adb_port"]
         self.adb_name = f"emulator-{self.console_port}"
@@ -18,12 +24,23 @@ class ADBDriver(AbstractDriver):
         super().__init__(config, log)
 
     def _wait_for_device_online(self):
+        """Wait until the device responds to ping.
+
+        Continuously calls :py:meth:`ping` until it returns ``True`` indicating the
+        Android device is online. Sleeps briefly between attempts.
+        """
         sleep_time = 1
         while not self.ping():
             self.log.debug("Waiting for device to come online")
             time.sleep(sleep_time)
         
     def _remount_system(self):
+        """Remount the /system partition as writable.
+
+        Ensures the device is online, then checks if the /system partition is already
+        writable. If not, attempts to remount it, reboot the device, and repeat the
+        process to guarantee the partition is writable.
+        """
         self._wait_for_device_online()
 
         #time.sleep(60) #FIXME debugging
@@ -58,15 +75,31 @@ class ADBDriver(AbstractDriver):
         self._wait_for_device_online()
 
     def _root(self):
+        """Obtain root access on the Android device.
+
+        Acquires a thread-safe lock before invoking ``adb root`` on the device.
+        Sets the internal ``_is_rooted`` flag to ``True`` on success.
+        """
         with self.lock:
             self.adb_device.root()
         self._is_rooted = True
 
     def _symlink_bash(self):
+        """Create a symbolic link ``/bin/bash`` → ``/bin/sh`` on the device.
+
+        The link is created under a thread‑safe lock so that concurrent callers
+        do not race the underlying ``adb shell`` command.
+        """
         with self.lock:
             self.adb_device.shell("ln -s /bin/sh /bin/bash")
 
     def connect(self):
+        """Establish a connection to the Android device.
+
+        Ensures the device is online, obtains root access if necessary, remounts the
+        system partition, and creates a ``bash`` symlink. The method acquires a lock
+        for thread‑safety and returns ``1`` on success.
+        """
         with self.lock:
             self._wait_for_device_online()
 
@@ -87,7 +120,12 @@ class ADBDriver(AbstractDriver):
         return 1
 
     def close(self):
-        # TODO this function is not needed I think
+        """Close the driver connection.
+
+        This method fulfills the abstract ``close`` contract but currently does
+        not perform any cleanup because the underlying resources are managed
+        elsewhere.
+        """
         return
 
     def ping(self, timeout=10):
@@ -119,7 +157,11 @@ class ADBDriver(AbstractDriver):
             return False
 
     def sync(self):
-        # TODO this function is not needed I think
+        """Synchronize the driver state.
+
+        Currently a placeholder that returns ``1``. In future this could ensure the
+        driver is in a consistent state after connection changes.
+        """
         return 1
 
     @staticmethod
@@ -151,19 +193,40 @@ class ADBDriver(AbstractDriver):
 
 
     def set_time(self):
+        """Set the VM time to the host's current time.
+
+        Computes the current host time in nanoseconds and sends a ``date -s``
+        command to the device. This helps keep the VM clock synchronized.
+        """
         cur_time_nano = int(time.time() * 1e9)
         with self.lock:
             self.adb_device.shell(f"date -s {cur_time_nano}")
     
     def reboot(self):
+        """Reboot the Android device.
+
+        Clears the internal ``_is_rooted`` flag and invokes ``adb reboot`` via the
+        ADB client. The operation is performed inside a thread‑safe lock.
+        """
         with self.lock:
             self._is_rooted = False
             self.adb_device.reboot()
     
     def file_flush(self):
+        """Flush a file to disk inside the guest VM.
+
+        This is a placeholder implementation that raises ``NotImplementedError``.
+        Subclasses should provide the actual logic to ensure data is flushed to
+        persistent storage on the VM.
+        """
         raise NotImplementedError
 
     def network_get_interfaces(self):
+        """Retrieve network interface information from the Android device.
+
+        Executes ``ip -j address`` via ADB and parses the JSON output to return a
+        Python data structure describing each network interface.
+        """
         with self.lock:
             return json.loads(self.adb_device.shell("ip -j address"))
 
@@ -171,6 +234,15 @@ class ADBDriver(AbstractDriver):
         raise NotImplementedError
 
     def _get_pid_from_stream(self, stream):
+        """Read the PID from an ADB output stream.
+
+        The ADB ``shell`` command used in :py:meth:`execute` returns a stream where
+        the first line contains the PID followed by a newline. This method reads
+        bytes from the stream until a newline character is encountered, restores
+        the original blocking mode of the underlying socket, converts the
+        collected characters to an integer PID, and returns it. If conversion fails
+        ``None`` is returned.
+        """
         # We want this phase to be a blocking read
         old_blocking_status = stream.conn.getblocking()
         stream.conn.setblocking(True)
@@ -191,6 +263,13 @@ class ADBDriver(AbstractDriver):
             return None
         
     def execute(self, path, arg=None, env=None, input_data=None, capture_output=True):
+        """Run a program inside the Android VM.
+
+        Constructs a command line, optionally prefixes it with input data, and
+        executes the command via ``adb shell`` in the background. The method
+        returns the PID of the spawned process and stores the output stream for
+        later retrieval via :py:meth:`exec_status`.
+        """
         # TODO we probably need a way to just use bash, but until it's installed, try and replace it with sh
         # if path == "/bin/bash":
         #    path = "/bin/sh"
@@ -224,16 +303,36 @@ class ADBDriver(AbstractDriver):
 
         return pid
 
-    def async_exec( self, path, arg=None, env=None, input_data=None, capture_output=True):
+    def async_exec(self, path, arg=None, env=None, input_data=None, capture_output=True):
+        """Convenience wrapper for asynchronous execution.
+
+        Delegates to :py:meth:`execute` to run the command asynchronously and
+        returns the same PID value.
+        """
         return self.execute(path, arg, env, input_data, capture_output)
 
     def _is_pid_alive(self, pid):
+        """Check whether a given PID is still running inside the VM.
+
+        Executes ``kill -0 <pid>`` via ADB; a zero return code indicates the
+        process exists, otherwise it is considered terminated.
+        """
         returncode = self.adb_device.shell2(f"kill -0 {pid}").returncode
         if returncode == 0:
             return True
         return False
 
     def exec_status(self, pid):
+        """Retrieve execution status and output for a PID.
+
+        Reads any pending stdout from the stored output stream, determines whether
+        the process has exited using :py:meth:`_is_pid_alive`, and, if the process
+        is finished, extracts the exit code from the ``ExitCode=`` marker that the
+        ``execute`` method appends to the command output. The method updates the
+        ``self.output_cache[pid]`` dictionary with keys ``exited`` (bool),
+        ``exitcode`` (int, when known), and ``stdout`` (captured output). The
+        populated dictionary is returned.
+        """
         stream = self.output_cache[pid]["stream"]
 
         exited = not self._is_pid_alive(pid)
@@ -284,10 +383,35 @@ class ADBDriver(AbstractDriver):
 
 
     def store_captured_output(self, pid, output):
+        """
+        Store output from a VM program.
+
+        Hold on to output that has been returned from a program
+        that was run inside the VM via the ``exec`` method.
+
+        Args:
+            pid (int): The PID for the process that produced the output.
+            output (str): The processed returned output to be cached.
+
+        Raises:
+            NotImplementedError: This does not seem to be needed yet and should
+            be implemented if/when it is needed
+        """
+
         raise NotImplementedError
 
     def _write(self, filename, data, mode="w"):
-        # self.log.info("Writing to %s with data='%s'", filename, str(data))
+        """
+        Write the provided data at the provided filename within the guest VM.
+
+        Args:
+            filename (str): name of the file to open for writing.
+            data (str): String of content to write to the file.
+            mode (str): Mode for writing to the file. ``'w'`` or ``'a'``.
+
+        Raises:
+            ValueError: if a file mode other than "w" or "a" are provided
+        """
         if mode == "w":
             redirect = ">"
         elif mode == "a":
@@ -306,6 +430,17 @@ class ADBDriver(AbstractDriver):
         return True
 
     def read_file(self, filename, local_destination, mode="rb"):
+        """
+        Read a file from a VM and put it onto the physical host.
+
+        Args:
+            filename (str): The file to read from inside the VM. This should be
+                the full path.
+            local_destination (pathlib.PurePosixPath): The path on the physical host
+                where the file should be read to.
+            mode (str): The mode of reading the file. Defaults to ``'rb'``.
+        """
+
         with self.lock:
             self.adb_device.sync.pull_file(filename, local_destination)
 
@@ -319,6 +454,9 @@ class ADBDriver(AbstractDriver):
         return True
 
     def get_os(self):
+        """
+        Get the Operating System details for the VM. Return the "pretty" name
+        """
         if self.target_os:
             return self.target_os
 
