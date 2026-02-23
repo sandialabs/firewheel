@@ -48,29 +48,28 @@ class ModelComponentManager:
     ensures that all the constraints (dependencies) are met by model components.
     """
 
-    def __init__(self, repository_db=None, attribute_defaults_config=None):
+    def __init__(
+        self, repository_db=None, attribute_defaults_config=None, console=None
+    ):
         """
-        Initialize class variables.
+        Initialize the model component manager.
 
         Args:
             repository_db (RepositoryDb): Users can provide a different repository
-                                          database.
+                database.
             attribute_defaults_config (dict): A set of default attributes to use when
-                                              selecting model components.
+                selecting model components.
+            console (rich.console.Console): A console to use for displaying
+                information to the user.
         """
         self.dg = None
-
-        if attribute_defaults_config is None:
-            self.attribute_defaults = config["attribute_defaults"]
-        else:
-            self.attribute_defaults = attribute_defaults_config
-
-        if repository_db:
-            self.repository_db = repository_db
-        else:
-            self.repository_db = RepositoryDb()
-
+        self.repository_db = repository_db or RepositoryDb()
+        self.attribute_defaults = (
+            attribute_defaults_config or config["attribute_defaults"]
+        )
         self.log = Log(name="ModelComponentManager").log
+        # Set the console for native FIREWHEEL output
+        self.console = console or Console()
 
     def get_ordered_model_component_list(self):
         """
@@ -676,8 +675,7 @@ class ModelComponentManager:
             f"{inspect.signature(plugin_instance.run)}", **fill_params
         )
 
-        console = Console()
-        console.print(
+        self.console.print(
             "\n\n[b red]Failed to initialize the plugin for model component "
             f"[magenta]{mc_name}[/magenta]."
             f"\n[yellow]Arguments:\n[magenta]{filled_args}[/magenta]"
@@ -688,7 +686,7 @@ class ModelComponentManager:
 
     def build_experiment_graph(self, dry_run=False):
         """
-        Builds the experiment graph by processing all the model components
+        Builds the experiment graph by processing all the model components.
 
         Args:
             dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
