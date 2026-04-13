@@ -1,39 +1,17 @@
-# This workflow will install Python dependencies and lint with a variety of Python versions
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# This workflow will enforce FIREWHEEL ecosystem standard linting
 
-name: Linting
+name: Lint
 
 on:
   push:
     branches: [ "*" ]
   pull_request:
     branches: [ "main" ]
-  # Allow reuse across the FIREWHEEL ecosystem
-  workflow_call:
-
-permissions:
-  contents: read
 
 jobs:
-  lint:
-
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10", "3.11"]
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Prepare to use tox-based environments
-      uses: sandialabs/firewheel/.github/actions/prepare-tox@v2
-    - name: Lint code
-      run: |
-        tox -e lint
-    - name: Lint documentation
-      run: |
-        tox -e lint-docs
+  call-firewheel-linting:
+    name: FIREWHEEL Linting
+    # Use the FIREWHEEL CI repo for both the workflow and its composite actions
+    uses: sandialabs/firewheel_ci/.github/workflows/linting.yml@v1
+    with:
+      actions-ref: v1
