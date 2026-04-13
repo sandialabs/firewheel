@@ -10,3 +10,5 @@ jobs:
   call-firewheel-publishing:
     name: Publish FIREWHEEL Packages
     uses: sandialabs/firewheel_ci/.github/workflows/python-publish.yml@v1
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
