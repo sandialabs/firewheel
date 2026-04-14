@@ -29,7 +29,10 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # full history
+        fetch-tags: true
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -41,11 +44,13 @@ jobs:
                                 openvswitch-switch qemu-kvm qemu-utils dnsmasq \
                                 ntfs-3g iproute2 libpcap-dev
     - name: Prepare minimega
-      uses: sandialabs/firewheel/.github/actions/prepare-minimega@v2
+      uses: sandialabs/firewheel_ci/.github/actions/prepare-minimega@v1
     - name: Prepare discovery
-      uses: sandialabs/firewheel/.github/actions/prepare-discovery@v2
+      uses: sandialabs/firewheel_ci/.github/actions/prepare-discovery@v1
     - name: Prepare FIREWHEEL
-      uses: sandialabs/firewheel/.github/actions/prepare-firewheel@v2
+      uses: sandialabs/firewheel_ci/.github/actions/prepare-firewheel@v1
+      with:
+        install-mode: "source"
     - name: Run unit tests
       run: |
         firewheel test unit -m 'not long and not mcs' \
