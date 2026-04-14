@@ -52,7 +52,7 @@ def is_pathname_valid(pathname: str) -> bool:  # pragma: no cover
         # the drive to which Windows was installed (e.g., the "%HOMEDRIVE%"
         # environment variable); else, the typical root directory.
         root_dirname = (
-            os.environ.get("HOMEDRIVE", "C:")  # noqa: IF100
+            os.environ.get("HOMEDRIVE", "C:")
             if sys.platform == "win32"
             else os.path.sep
         )

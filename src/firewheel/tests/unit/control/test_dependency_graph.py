@@ -9,7 +9,6 @@ from firewheel.tests.unit.test_utils import compare_graph_structures
 from firewheel.control.dependency_graph import (
     DependencyGraph,
     InvalidNodeError,
-    UnsatisfiableDependenciesError,
 )
 
 
@@ -378,7 +377,7 @@ class DependencyGraphTestCase(unittest.TestCase):
 
         self.assertTrue(compare_graph_structures(expected_structure, actual_structure))
         self.assertTrue(self.dependencyGraph.has_cycles())
-        with self.assertRaises(UnsatisfiableDependenciesError):
+        with self.assertRaises(nx.HasACycle):
             self.dependencyGraph.get_ordered_entity_list()
 
     def test_ordered_entity_list(self):

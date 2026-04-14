@@ -65,12 +65,16 @@ class Shell(AbstractExecutor):
                 "MM_FORCE",
                 "MM_RECOVER",
                 "MM_CGROUP",
-                "MM_APPEND"
+                "MM_APPEND",
             }
 
             # Concatenate minimega environment variables
             env_vars = [
-                *(f"{env}={os.environ[env]}" for env in minimega_vars if env in os.environ),
+                *(
+                    f"{env}={os.environ[env]}"
+                    for env in minimega_vars
+                    if env in os.environ
+                ),
                 f"FIREWHEEL={fw_path}",
                 f"FIREWHEEL_PYTHON={sys.executable}",
                 f"FIREWHEEL_GRPC_SERVER={grpc_path}",

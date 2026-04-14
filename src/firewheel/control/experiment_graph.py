@@ -1668,7 +1668,7 @@ class ExperimentGraph:
             self.log.debug("Only sampling %s of sources.", sample_pct)
         for source in vert_it:
             if sample_pct:
-                if random.random() < sample_pct:  # noqa: DUO102
+                if random.random() < sample_pct:
                     source_queue.put(source.graph_id)
             else:
                 source_queue.put(source.graph_id)

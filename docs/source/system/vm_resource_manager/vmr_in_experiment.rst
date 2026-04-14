@@ -277,3 +277,93 @@ Each VM will have its own log file which details the output of the VM Resource M
 
 If the output is properly formatted `JSON <https://www.json.org>`_, it will be parsed and output to a separate ``.json`` file within the same log folder.
 This is particularly useful for further data analysis either with Python or an `Elastic Stack <https://www.elastic.co/elastic-stack>`_.
+
+
+Using Host-Based VM Resources
+------------------------------
+
+Host-based VM resources allow users to execute commands on the physical host where the VM is running, enabling more dynamic interactions with the environment.
+Unlike traditional VM resource scheduling, which operates within the VM environment, host-based scheduling allows for direct interaction with the host system.
+This can include minimega-specific actions such as replaying VNC sessions, adding network taps, or hotplugging USB devices, which impact the VM, but are not possible within the VM itself.
+
+Additionally, when used thoughtfully (i.e., ideally in positive time), host-based VM resources can impact the entire experiment.
+This could include running a script that modifies the entire network topology or makes call a to external APIs to inject new information into the experiment.
+
+.. warning::
+
+   Host-based VM resources should be used with caution, as they have the potential to affect the stability and security of the host system.
+   It is essential to ensure that any commands executed on the host are safe and do not compromise the integrity of the host or other VMs running on it.
+   - Ensure that the executable specified is either an absolute path or part of the VMR system.
+   - Be aware of potential security implications when running host-based actions from untrusted experiments.
+   - Recall that schedules are per-VM. Therefore, if there are host-based actions that impact the entire experiment, ensure that they are scheduled appropriately to avoid conflicts or redundant executions.
+
+The primary method for scheduling host-based VM resources is through the use of the :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>` method, which creates a :py:class:`RunHostExecutableScheduleEntry <base_objects.RunHostExecutableScheduleEntry>` for executing Minimega commands.
+Additional interfaces into host-based scheduling may be added in the future to facilitate common tasks.
+
+:py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>` method allows a user to schedule Minimega commands directly on the host.
+The method needs a takes a :ref:`start-time` to know when to execute the specified program.
+It next needs a list of arguments that represent the Minimega command to run on the host.
+The first argument should typically be the Minimega subcommand (e.g., `vm <https://sandia-minimega.github.io/#header_4.6>`__, `tap <https://sandia-minimega.github.io/#header_5.63>`__, `vnc <https://sandia-minimega.github.io/#header_5.67>`__ etc.), followed by any additional parameters required for that command.
+An optional `extra_files` parameter allows users to specify any files that are part of that command and must be available on the host executing the command.
+These files should be included as VM resources in the model component's `MANIFEST` file.
+
+Examples
+""""""""
+
+**Example: VNC Replay**
+If a user has recorded a VNC session, they can replay it at a specific scheduled time during the experiment. First, ensure that the recorded VNC session is included as a VM resource and provided to the `extra_files` parameter. In this example, assume the session is called `open-browser.vnc`.
+
+.. code-block:: yaml
+   :caption: Example `MANIFEST` file snippet for scheduling a VNC replay.
+
+   vm_resources:
+     - vm_resources/**
+     - open-browser.vnc
+
+.. code-block:: python
+   :caption: Example `plugin.py` for scheduling a VNC replay on the host.
+
+   vm = Vertex(self.g, "desktop-0")
+   vm_resource_schedule.decorate(Ubuntu2204Desktop)
+   vm.run_host_mm_command(
+       10,
+       arguments=["vnc", "play", vm.name, "open-browser.vnc"],
+       extra_files=["open-browser.vnc"]
+   )
+
+**Example: Hotplugging USB Drive**
+Minimega can also dynamically hotplug (or unplug) USB devices.
+The desired USB drive must be available as a VM resource during the experiment and provided to the `extra_files` parameter.
+Assume we have a USB drive image called `mydrive.img`.
+
+.. code-block:: yaml
+   :caption: Example `MANIFEST` file snippet for hotplugging a USB drive.
+
+   vm_resources:
+     - vm_resources/**
+     - mydrive.img
+
+.. code-block:: python
+   :caption: Example `plugin.py` for hotplugging a USB drive on the host.
+
+   host = Vertex(self.g, "host")
+   host.decorate(LinuxHost)
+   host.run_host_mm_command(
+       -100,
+       arguments=["vm", "hotplug", "add", host.name, "mydrive.img", "2.0"],
+       extra_files=["mydrive.img"]
+   )
+
+
+:py:class:`RunHostExecutableScheduleEntry <base_objects.RunHostExecutableScheduleEntry>`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The :py:class:`RunHostExecutableScheduleEntry <base_objects.RunHostExecutableScheduleEntry>` class facilitates specifying a program to run from the physical host that launched the VM at a specified schedule time.
+
+- **Constructor Parameters:**
+  - `start_time`: The time at which to execute the command.
+  - `program`: The program to run on the physical host, which can be an absolute path, the string `"minimega"`, or an executable specified as a VM resource.
+  - `arguments`: Optional arguments to pass to the program.
+
+This class is used internally by :py:class:`VMEndpoint <base_objects.VMEndpoint>` methods such as :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>`.

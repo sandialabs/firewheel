@@ -7,7 +7,6 @@ import importlib.util
 from pathlib import Path
 from datetime import datetime
 
-import networkx as nx
 from rich.console import Console
 
 from firewheel.config import config
@@ -48,29 +47,28 @@ class ModelComponentManager:
     ensures that all the constraints (dependencies) are met by model components.
     """
 
-    def __init__(self, repository_db=None, attribute_defaults_config=None):
+    def __init__(
+        self, repository_db=None, attribute_defaults_config=None, console=None
+    ):
         """
-        Initialize class variables.
+        Initialize the model component manager.
 
         Args:
             repository_db (RepositoryDb): Users can provide a different repository
-                                          database.
+                database.
             attribute_defaults_config (dict): A set of default attributes to use when
-                                              selecting model components.
+                selecting model components.
+            console (rich.console.Console): A console to use for displaying
+                information to the user.
         """
         self.dg = None
-
-        if attribute_defaults_config is None:
-            self.attribute_defaults = config["attribute_defaults"]
-        else:
-            self.attribute_defaults = attribute_defaults_config
-
-        if repository_db:
-            self.repository_db = repository_db
-        else:
-            self.repository_db = RepositoryDb()
-
+        self.repository_db = repository_db or RepositoryDb()
+        self.attribute_defaults = (
+            attribute_defaults_config or config["attribute_defaults"]
+        )
         self.log = Log(name="ModelComponentManager").log
+        # Set the console for native FIREWHEEL output
+        self.console = console or Console()
 
     def get_ordered_model_component_list(self):
         """
@@ -242,7 +240,7 @@ class ModelComponentManager:
                         try:
                             component = self.dg.get_first(component)
                         except UnsatisfiableDependenciesError:
-                            self._dependency_cycle_handler()
+                            self.dg.dependency_cycle_handler()
                     else:
                         mc_depends = component.get_model_component_depends()
                         for mcdep_name in mc_depends:
@@ -379,7 +377,7 @@ class ModelComponentManager:
 
             # Check for cycles. If one is found our graph cannot be satisfied.
             if self.dg.has_cycles():
-                self._dependency_cycle_handler()
+                self.dg.dependency_cycle_handler()
 
     def check_list_ordering(self, cur_mc_list, parent, component):
         """
@@ -414,43 +412,6 @@ class ModelComponentManager:
             raise
 
         return True
-
-    def _dependency_cycle_handler(self):
-        """
-        The dependency graph had cycles so we should retrieve those cycles and alert
-        the user.
-
-        Raises:
-            UnsatisfiableDependenciesError: Output the cycles in the graph.
-        """
-        all_human_cycles = self.dg.get_cycles()
-        all_cycle_graphs = ""
-        for cycle in all_human_cycles:
-            cdg = nx.DiGraph()
-            for node in cycle:
-                cdg.add_node(node)
-
-            for i, node in enumerate(cycle[:-1]):
-                cdg.add_edge(node, cycle[i + 1])
-            cdg.add_edge(cycle[0], cycle[-1])
-
-            for line in nx.generate_network_text(cdg):
-                all_cycle_graphs += f"{line}\n"
-
-            all_cycle_graphs += "\n\n"
-
-        # Improving upon the default networkx diagrams
-        backedge: str = "╾"
-        all_cycle_graphs = all_cycle_graphs.replace(backedge, "◄─")
-        all_cycle_graphs = all_cycle_graphs.replace("╼", "►")
-
-        self.log.error(
-            "Unsatisfiable dependency graph contained %s cycles", len(all_human_cycles)
-        )
-        raise UnsatisfiableDependenciesError(
-            "Unsatisfiable: Circular dependency relationship(s) found.\n"
-            f"Simple cycles:\n{all_cycle_graphs}"
-        )
 
     def _import_model_component_objects(self, path, mc_name):
         """
@@ -676,8 +637,7 @@ class ModelComponentManager:
             f"{inspect.signature(plugin_instance.run)}", **fill_params
         )
 
-        console = Console()
-        console.print(
+        self.console.print(
             "\n\n[b red]Failed to initialize the plugin for model component "
             f"[magenta]{mc_name}[/magenta]."
             f"\n[yellow]Arguments:\n[magenta]{filled_args}[/magenta]"
@@ -688,7 +648,7 @@ class ModelComponentManager:
 
     def build_experiment_graph(self, dry_run=False):
         """
-        Builds the experiment graph by processing all the model components
+        Builds the experiment graph by processing all the model components.
 
         Args:
             dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
