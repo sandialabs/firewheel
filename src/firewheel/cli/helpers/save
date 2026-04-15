@@ -95,14 +95,14 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
             mm_api.mm.ns_save(name=experiment_name)
         console.print("[green]Namespace saved successfully.[/green]")
     except minimega.Error as exp:
-        console.print(f"[red]Error saving namespace: {exp}[/red]")
+        console.print(f"[error]Error saving namespace: {exp}[/error]")
         return 1
 
     # Create a FileStore for the "saved" directory
     try:
         saved_exp = FileStore("saved")
     except Exception as exp:
-        console.print("[red]FileStore connection failed.[/red]")
+        console.print("[error]FileStore connection failed.[/error]")
         raise RuntimeError(
             f"Invalid value for FileStore connection. Details: {exp}"
         ) from exp
@@ -134,7 +134,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
             else:
                 console.print(f"[yellow]The VM State/HDD files at [cyan]{exp_files}[/cyan] do not exist![/yellow]")
         except OSError as exc:
-            console.print(f"[red]Error copying VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}[/red]")
+            console.print(f"[error]Error copying VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}[/error]")
 
         # Save VM mapping states to a JSON file
         mapping_file = temp_path / "vm_mapping.json"
@@ -169,7 +169,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
                 try:
                     shutil.copy(file, schedule_dir)
                 except OSError as exc:
-                    console.print(f"[red]Error copying schedule file {file}: {exc}[/red]")
+                    console.print(f"[error]Error copying schedule file {file}: {exc}[/error]")
                     return 1
 
                 progress.update(task, advance=1)
@@ -189,7 +189,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
                 else:
                     console.print(f"[yellow]The Image files at [cyan]{img_files}[/cyan] do not exist[/yellow]")
             except OSError as exc:
-                console.print(f"[red]Error copying Image directory [cyan]{img_files}[/cyan]: {exc}[/red]")
+                console.print(f"[error]Error copying Image directory [cyan]{img_files}[/cyan]: {exc}[/error]")
 
             vmr_store = VmResourceStore()
             vmr_files = Path(vmr_store.cache)
@@ -204,7 +204,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
                 else:
                     console.print(f"[yellow]The VM Resources files at [cyan]{vmr_files}[/cyan] do not exist[/yellow]")
             except OSError as exc:
-                console.print(f"[red]Error copying VM Resources directory [cyan]{vmr_files}[/cyan]: {exc}[/red]")
+                console.print(f"[error]Error copying VM Resources directory [cyan]{vmr_files}[/cyan]: {exc}[/error]")
 
         # Getting the launch_cmds.mm as well
         vmr_launch_cmds = Path(config["logging"]["root_dir"]) / "launch_cmds.mm"
@@ -224,7 +224,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
                 shutil.make_archive(archive_file, "gztar", temp_path)
             console.print(f"[green]Compressed data saved to [cyan]{archive_file}[/cyan] successfully.[/green]")
         except OSError as exc:
-            console.print(f"[red]Error compressing the temporary directory: {exc}[/red]")
+            console.print(f"[error]Error compressing the temporary directory: {exc}[/error]")
             return 1
 
         console.print(f"[green]VM state saved to [cyan]{archive_file}[/cyan] successfully.[/green]")
