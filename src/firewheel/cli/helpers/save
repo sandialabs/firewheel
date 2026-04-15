@@ -232,7 +232,10 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Save VM state and schedule files.")
+    parser = argparse.ArgumentParser(
+        description="Save VM state and schedule files.",
+        prog="firewheel save"
+    )
     parser.add_argument("--name", type=str, default="firewheel_experiment", help="Name of the experiment to save.")
     parser.add_argument(
         "--complete", action="store_true",
