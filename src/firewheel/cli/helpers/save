@@ -17,12 +17,15 @@ DONE
 
 RUN LocalPython ON control
 #!/usr/bin/env python
+import base64
 import sys
+import pickle
 import json
 import shutil
 import argparse
 import tempfile
 from pathlib import Path
+from typing import List
 
 import minimega
 from rich.console import Console
@@ -42,6 +45,7 @@ from firewheel.lib.minimega.file_store import FileStore
 import firewheel.vm_resource_manager.api as vm_resource_api
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 def check_time():
@@ -63,6 +67,54 @@ def check_time():
     }
     return time_obj
 
+def prune_schedule_entries(seconds_since_start, schedule_path, output_location, console):
+    """
+    Prunes completed schedule entries that per the experiment start time.
+
+    Args:
+        seconds_since_start (int): The number of seconds since the experiment started.
+        schedule_path (str): The location of the schedule file to modify.
+        output_location (str): The location to save the pruned schedule file.
+        console (rich.console.Console): The console object to use for printing messages.
+
+    Returns:
+        None
+    """
+    schedule_obj = None
+    try:
+        with open(schedule_path, "r", encoding="utf8") as f_name:
+            schedule_obj = json.load(f_name)
+            decoded_text = base64.b64decode(schedule_obj["text"])
+            schedule_obj["text"] = decoded_text
+    except FileNotFoundError as exp:
+        console.print(f"[error]Schedule file not found at {schedule_path}: {exp}[/error]")
+        raise RuntimeError(f"Schedule file not found at {schedule_path}: {exp}") from exp
+    except json.JSONDecodeError as exp:
+        console.print(f"[error]Error decoding JSON from schedule file {schedule_path}: {exp}[/error]")
+        raise RuntimeError(f"Error decoding JSON from schedule file {schedule_path}: {exp}") from exp
+    
+    cur_schedule = []
+    try:
+        cur_schedule: List[ScheduleEntry] = pickle.loads(schedule_obj["text"])
+    except pickle.UnpicklingError as exp:
+        console.print(f"[error]Error loading schedule file {schedule_path}: {exp}[/error]")
+        raise RuntimeError(f"Error loading schedule file {schedule_path}: {exp}") from exp
+
+    updated_schedule = []
+    for entry in cur_schedule:
+        if entry.start_time > seconds_since_start:
+            updated_schedule.append(entry)
+            
+    updated_schedule_obj = {
+        "text": base64.b64encode(pickle.dumps(updated_schedule)),
+        "server_name": schedule_obj["server_name"],
+        "ip": schedule_obj["ip"],
+    }
+
+    with open(output_location, "w", encoding="utf8") as f_name:
+        json.dump(updated_schedule_obj, f_name) 
+        
+                
 def save_vm_state(experiment_name="firewheel_experiment", complete=False):
     """
     Saves the current state of all VMs and their schedules, optionally including all files from the experiment.
@@ -167,9 +219,8 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
             schedule_dir.mkdir(parents=True, exist_ok=True)
             for file in schedule_db_paths:
                 try:
-                    shutil.copy(file, schedule_dir)
-                except OSError as exc:
-                    console.print(f"[error]Error copying schedule file {file}: {exc}[/error]")
+                    prune_schedule_entries(experiment_time["seconds_since_start"], file, schedule_dir / Path(file).name, console)
+                except RuntimeError as exc:
                     return 1
 
                 progress.update(task, advance=1)
