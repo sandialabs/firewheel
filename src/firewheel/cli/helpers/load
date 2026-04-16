@@ -471,8 +471,8 @@ def build_vm_name_to_mm_id_map(
 
 
 def rewrite_launch_cmds_file(
-    input_path: pathlib.Path,
-    output_path: pathlib.Path,
+    input_path: Path,
+    output_path: Path,
     vm_name_to_mm_id: Mapping[str, str],
     mm_base: str,
 ) -> None:
