@@ -3,7 +3,8 @@ Your Name
 DONE
 
 DESCRIPTION
-This Helper loads the state of all VMs from a compressed backup file. It restores the VM mapping, schedule files, and any additional resources to their respective locations.
+This Helper loads the state of all VMs from a compressed backup file.
+It restores the VM mapping, schedule files, and any additional resources to their respective locations.
 
 **Usage:**  ``firewheel load --archive ARCHIVE_PATH``
 
@@ -25,6 +26,7 @@ import tarfile
 import tempfile
 import subprocess
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
 
@@ -33,6 +35,7 @@ from firewheel.cli.utils import cli_output_theme
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 
 console = Console(theme=cli_output_theme)
 
@@ -196,6 +199,31 @@ def _restore_vm_mapping(mapping_file: Path, vm_mapping: VMMapping) -> None:
         f"[green]Restored VM mapping states from [cyan]{mapping_file}[/cyan] successfully.[/green]"
     )
 
+def _restore_experiment_time(experiment_time_path: Path) -> None:
+    """
+    Restore the experiment start time from experiment_time_path.
+    The start time of the experiment is determined by taking the current time and subtracting the
+    "seconds_since_start" value stored in experiment_time_path.
+    That is, the experiment time is effectively shifted to be consistent with the current time,
+    but maintains the same relative timing for schedule entries.
+
+    Arguments:
+        experiment_time_path (Path): The path to the file containing the saved experiment time information.
+
+    Raises:
+        ValueError: If the "seconds_since_start" key is missing from the time file.
+    """
+    with experiment_time_path.open("r", encoding="utf-8") as f:
+        time_obj = json.load(f)
+
+    if "seconds_since_start" not in time_obj:
+        raise ValueError(f"Missing 'seconds_since_start' key in {experiment_time_path}")
+
+    new_start_time = datetime.now(timezone.utc) - timedelta(seconds=time_obj["seconds_since_start"])
+
+    start = ExperimentStart()
+    start.grpc_client.set_experiment_start_time(new_start_time)
+
 
 def _restore_experiment_files(exp_files: Path, destination: Path) -> None:
     """
@@ -331,6 +359,15 @@ def _restore_from_directory(source_dir: Path) -> int:
         return 1
     except OSError as exc:
         console.print(f"[red]Error restoring schedule files: {exc}[/red]")
+        return 1
+    
+    try:
+        _restore_experiment_time(source_dir / "experiment_time.json")
+    except FileNotFoundError as exc:
+        console.print(f"[red]Experiment time file not found: {exc}[/red]")
+        return 1
+    except ValueError as exc:
+        console.print(f"[red]Invalid experiment time file: {exc}[/red]")
         return 1
 
     try:
