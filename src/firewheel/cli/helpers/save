@@ -30,6 +30,7 @@ from typing import List
 import math
 import sys
 from typing import Any
+from datetime import datetime, UTC
 
 import minimega
 from rich.console import Console
@@ -361,11 +362,16 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
 
 
 if __name__ == "__main__":
+    
+    
     parser = argparse.ArgumentParser(
         description="Save VM state and schedule files.",
         prog="firewheel save"
     )
-    parser.add_argument("-n", "--name", type=str, default="firewheel_experiment", help="Name of the experiment to save.")
+    default_experiment_name = (
+        f"firewheel_experiment_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    )
+    parser.add_argument("-n", "--name", type=str, default=default_experiment_name, help="Name of the experiment to save.")
     parser.add_argument(
         "-c", "--complete", action="store_true",
         help="If provided, save all files from the experiment, including cached images and VM resources."
