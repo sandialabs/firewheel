@@ -3,15 +3,17 @@ FIREWHEEL Team
 DONE
 
 DESCRIPTION
-This Helper saves the current state of all VMs in the VM mapping and schedule database after making a Minimega API call to "ns save".
-The saved information is compressed into a single archive.
+This Helper saves the current state of all VMs in the VM mapping and schedule
+database after making a Minimega API call to "ns save". The saved information
+is written into a backup directory and can optionally be compressed into a
+single archive.
 
-**Usage:**  ``firewheel save [--name EXPERIMENT_NAME] [--complete]``
+**Usage:**  ``firewheel save [--name EXPERIMENT_NAME] [--complete] [--archive]``
 
 Example
 +++++++
 
-``firewheel save --name my_experiment --complete``
+``firewheel save --name my_experiment --complete --archive``
 
 DONE
 
@@ -24,42 +26,49 @@ import math
 import pickle
 import shutil
 import sys
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import minimega
 from rich.console import Console
 from rich.progress import (
-    Progress,
     BarColumn,
-    TextColumn,
     MofNCompleteColumn,
+    Progress,
+    TextColumn,
     TimeRemainingColumn,
 )
 
-from firewheel.config import config
-from firewheel.cli.utils import cli_output_theme
-from firewheel.lib.minimega.api import minimegaAPI
-from firewheel.control.image_store import ImageStore
-from firewheel.lib.minimega.file_store import FileStore
 import firewheel.vm_resource_manager.api as vm_resource_api
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.cli.utils import cli_output_theme
+from firewheel.config import config
+from firewheel.control.image_store import ImageStore
+from firewheel.lib.experiment_archive import (
+    IMAGESTORE_DIRNAME,
+    SCHEDULES_DIRNAME,
+    VMRESOURCESTORE_DIRNAME,
+    build_manifest,
+    write_manifest,
+)
+from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+
 
 def create_break_schedule_entry(start_time: int | float) -> ScheduleEntry:
     """Create a break schedule entry.
 
     A break event is represented as a ``ScheduleEntry`` with a pause event of
-    infinite duration. This recreates the essential behavior of
-    ``PauseScheduleEntry(start_time, math.inf)`` for use in this helper.
+    infinite duration.
 
     Args:
-        start_time: Time at which the break should begin. Must be ``math.inf``,
-            ``-math.inf``, ``0``, or any positive value. In practice, ``0`` is
-            converted to ``sys.float_info.min`` to match FIREWHEEL behavior.
+        start_time: Time at which the break should begin. Must be negative
+            infinity, 0, or any positive value. A value of 0 is converted to
+            ``sys.float_info.min`` to match FIREWHEEL behavior.
 
     Returns:
         A schedule entry containing an indefinite pause event.
@@ -93,19 +102,24 @@ def prepend_break_to_schedule(
         start_time: Time at which the break should begin.
 
     Returns:
-        A new list whose first element is a break entry followed by the
-        provided schedule entries.
-
-    Raises:
-        ValueError: If ``start_time`` is invalid for a break entry.
+        A new schedule list beginning with a break entry.
     """
     break_entry = create_break_schedule_entry(start_time)
     return [break_entry, *schedule_entries]
 
-def check_time():
+
+def check_time() -> dict[str, str | int]:
+    """Collect experiment time metadata.
+
+    Returns:
+        Dictionary containing the original experiment start time and the current
+        elapsed seconds since experiment start.
+
+    Raises:
+        RuntimeError: If the experiment has no start time.
+    """
     experiment_time = vm_resource_api.get_experiment_start_time()
 
-    # Time zone is UTC by definition.
     if not experiment_time:
         raise RuntimeError("Experiment must have a start time prior to saving!")
 
@@ -115,11 +129,11 @@ def check_time():
     else:
         seconds_since_start = 0
 
-    time_obj = {
-        "start_time": f"{experiment_time.isoformat()}",
+    return {
+        "start_time": experiment_time.isoformat(),
         "seconds_since_start": seconds_since_start,
     }
-    return time_obj
+
 
 def prune_schedule_entries(
     seconds_since_start: int,
@@ -130,15 +144,16 @@ def prune_schedule_entries(
     """Prune completed schedule entries and prepend a break event.
 
     Args:
-        seconds_since_start: The number of seconds since the experiment started.
-        schedule_path: The location of the schedule file to modify.
-        output_location: The location to save the pruned schedule file.
+        seconds_since_start: Number of seconds since the experiment started.
+        schedule_path: Path to the source schedule file.
+        output_location: Path where the updated schedule file will be written.
         console: Console object used for output.
 
     Raises:
-        RuntimeError: If the schedule file cannot be read, decoded, or written.
+        RuntimeError: If the schedule file cannot be read, decoded, parsed,
+            or written.
     """
-    schedule_obj: dict[str, Any] | None = None
+    schedule_obj: dict[str, Any]
     try:
         with schedule_path.open("r", encoding="utf8") as f_name:
             schedule_obj = json.load(f_name)
@@ -161,16 +176,10 @@ def prune_schedule_entries(
         console.print(f"[error]Error loading schedule file {schedule_path}: {exp}[/error]")
         raise RuntimeError(f"Error loading schedule file {schedule_path}: {exp}") from exp
 
-    updated_schedule: list[ScheduleEntry] = []
-    for entry in cur_schedule:
-        if entry.start_time > seconds_since_start:
-            updated_schedule.append(entry)
-
-    # Prepend a break so resumed experiments remain paused until explicitly resumed.
-    updated_schedule = prepend_break_to_schedule(
-        schedule_entries=updated_schedule,
-        start_time=0,
-    )
+    updated_schedule = [
+        entry for entry in cur_schedule if entry.start_time > seconds_since_start
+    ]
+    updated_schedule = prepend_break_to_schedule(updated_schedule, start_time=0)
 
     updated_schedule_obj = {
         "text": base64.b64encode(pickle.dumps(updated_schedule)).decode("UTF-8"),
@@ -188,8 +197,8 @@ def prune_schedule_entries(
         raise RuntimeError(
             f"Error writing updated schedule file to {output_location}: {exp}"
         ) from exp
-        
-                
+
+
 def save_vm_state(
     experiment_name: str = "firewheel_experiment",
     complete: bool = False,
@@ -216,7 +225,6 @@ def save_vm_state(
         RuntimeError: If the FileStore connection fails.
     """
     console = Console(theme=cli_output_theme)
-
     mm_api = minimegaAPI()
 
     try:
@@ -245,7 +253,6 @@ def save_vm_state(
         ) from exp
 
     exp_files = Path(saved_exp.get_file_path(experiment_name))
-
     vm_mapping = VMMapping()
     schedule_db = ScheduleDb()
 
@@ -254,11 +261,11 @@ def save_vm_state(
     schedule_db_paths = [Path(schedule_db.cache.get_path(file)) for file in files]
 
     output_dir = Path.cwd() / f"{experiment_name}_backup"
-
     if output_dir.exists():
         console.print(
             f"[error]Output directory [cyan]{output_dir}[/cyan] already exists.[/error]"
         )
+        console.print("[yellow]Choose a different --name or remove the existing directory.[/yellow]")
         return 1
 
     try:
@@ -269,7 +276,10 @@ def save_vm_state(
         )
         return 1
 
-    # Copy the saved namespace files to the output directory.
+    launch_cmds_included = False
+    imagestore_included = False
+    vm_resource_cache_included = False
+
     try:
         if exp_files.exists():
             with console.status(
@@ -279,7 +289,7 @@ def save_vm_state(
                 shutil.copytree(exp_files, output_dir / exp_files.name)
             console.print(
                 "[green]Copied VM State/HDD files from "
-                f"[cyan]{exp_files}[/cyan] to [cyan]{output_dir}[/cyan]"
+                f"[cyan]{exp_files}[/cyan] to [cyan]{output_dir}[/cyan][/green]"
             )
         else:
             console.print(
@@ -293,39 +303,35 @@ def save_vm_state(
 
     mapping_file = output_dir / "vm_mapping.json"
     try:
-        with mapping_file.open("w", encoding="utf-8") as f:
-            json.dump(mapping, f)
-        console.print(
-            f"[green]VM mapping states saved to [cyan]{mapping_file}[/cyan] successfully.[/green]"
-        )
+        with mapping_file.open("w", encoding="utf-8") as f_handle:
+            json.dump(mapping, f_handle)
     except OSError as exc:
         console.print(f"[error]Error saving VM mapping states to file: {exc}[/error]")
         return 1
 
     time_file = output_dir / "experiment_time.json"
     try:
-        with time_file.open("w", encoding="utf-8") as f:
-            json.dump(experiment_time, f)
-        console.print(
-            f"[green]Experiment time saved to [cyan]{time_file}[/cyan] successfully.[/green]"
-        )
+        with time_file.open("w", encoding="utf-8") as f_handle:
+            json.dump(experiment_time, f_handle)
     except OSError as exc:
         console.print(f"[error]Error saving experiment time to file: {exc}[/error]")
         return 1
+
+    schedule_dir = output_dir / SCHEDULES_DIRNAME
+    schedule_dir.mkdir(parents=True, exist_ok=True)
 
     with Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         MofNCompleteColumn(),
         TimeRemainingColumn(),
+        console=console,
     ) as progress:
         task = progress.add_task(
             "[green]Copying schedule files...",
             total=len(schedule_db_paths),
         )
 
-        schedule_dir = output_dir / "schedules"
-        schedule_dir.mkdir(parents=True, exist_ok=True)
         for file in schedule_db_paths:
             try:
                 prune_schedule_entries(
@@ -336,7 +342,6 @@ def save_vm_state(
                 )
             except RuntimeError:
                 return 1
-
             progress.update(task, advance=1)
 
     if complete:
@@ -348,18 +353,15 @@ def save_vm_state(
                     "[yellow]Copying ImageStore cache...[/yellow]",
                     spinner="line",
                 ):
-                    shutil.copytree(img_files, output_dir / img_files.name)
+                    shutil.copytree(img_files, output_dir / IMAGESTORE_DIRNAME)
+                imagestore_included = True
                 console.print(
-                    "[green]Copied Image files from "
-                    f"[cyan]{img_files}[/cyan] to [cyan]{output_dir}[/cyan]"
-                )
-            else:
-                console.print(
-                    f"[yellow]The Image files at [cyan]{img_files}[/cyan] do not exist[/yellow]"
+                    "[green]Copied ImageStore cache from "
+                    f"[cyan]{img_files}[/cyan] to [cyan]{output_dir / IMAGESTORE_DIRNAME}[/cyan][/green]"
                 )
         except OSError as exc:
             console.print(
-                f"[error]Error copying Image directory [cyan]{img_files}[/cyan]: {exc}[/error]"
+                f"[error]Error copying ImageStore cache [cyan]{img_files}[/cyan]: {exc}[/error]"
             )
 
         vmr_store = VmResourceStore()
@@ -370,36 +372,46 @@ def save_vm_state(
                     "[yellow]Copying VM Resource cache...[/yellow]",
                     spinner="line",
                 ):
-                    shutil.copytree(vmr_files, output_dir / vmr_files.name)
+                    shutil.copytree(vmr_files, output_dir / VMRESOURCESTORE_DIRNAME)
+                vm_resource_cache_included = True
                 console.print(
-                    "[green]Copied VM Resources files from "
-                    f"[cyan]{vmr_files}[/cyan] to [cyan]{output_dir}[/cyan]"
-                )
-            else:
-                console.print(
-                    f"[yellow]The VM Resources files at [cyan]{vmr_files}[/cyan] do not exist[/yellow]"
+                    "[green]Copied VM Resource cache from "
+                    f"[cyan]{vmr_files}[/cyan] to [cyan]{output_dir / VMRESOURCESTORE_DIRNAME}[/cyan][/green]"
                 )
         except OSError as exc:
             console.print(
-                f"[error]Error copying VM Resources directory [cyan]{vmr_files}[/cyan]: {exc}[/error]"
+                f"[error]Error copying VM Resource cache [cyan]{vmr_files}[/cyan]: {exc}[/error]"
             )
 
     vmr_launch_cmds = Path(config["logging"]["root_dir"]) / "launch_cmds.mm"
     if vmr_launch_cmds.exists():
         try:
             shutil.copy(vmr_launch_cmds, output_dir)
+            launch_cmds_included = True
             console.print("[green]Copied VM Resources Handler Launch file.[/green]")
         except OSError as exc:
             console.print(
-                "[error]Error copying VM Resources Handler Launch file "
-                f"[cyan]{vmr_launch_cmds}[/cyan]: {exc}[/error]"
+                f"[error]Error copying launch_cmds.mm from [cyan]{vmr_launch_cmds}[/cyan]: {exc}[/error]"
             )
-    else:
-        console.print(
-            "[yellow]The VM Resources Handler Launch file at "
-            f"[cyan]{vmr_launch_cmds}[/cyan] does not exist[/yellow]"
-        )
 
+    manifest = build_manifest(
+        experiment_name=experiment_name,
+        complete=complete,
+        archived=archive,
+        experiment_dir_name=exp_files.name,
+        has_launch_cmds=launch_cmds_included,
+        has_imagestore_cache=imagestore_included,
+        has_vm_resource_cache=vm_resource_cache_included,
+        schedule_count=len(schedule_db_paths),
+    )
+
+    try:
+        write_manifest(output_dir, manifest)
+    except OSError as exc:
+        console.print(f"[error]Error writing manifest: {exc}[/error]")
+        return 1
+
+    archive_path: Path | None = None
     if archive:
         archive_base = Path.cwd() / f"{experiment_name}_backup"
         try:
@@ -410,16 +422,24 @@ def save_vm_state(
                     root_dir=output_dir.parent,
                     base_dir=output_dir.name,
                 )
-            console.print(
-                f"[green]Compressed data saved to [cyan]{archive_base}.tar.gz[/cyan] successfully.[/green]"
-            )
+            archive_path = Path(f"{archive_base}.tar.gz")
         except OSError as exc:
             console.print(f"[error]Error compressing output directory: {exc}[/error]")
             return 1
 
+    console.rule("[bold green]Save Summary[/bold green]")
+    console.print(f"[green]Backup directory:[/green] [cyan]{output_dir}[/cyan]")
+    console.print(f"[green]Experiment name:[/green] [cyan]{experiment_name}[/cyan]")
+    console.print(f"[green]Schedule files:[/green] [cyan]{len(schedule_db_paths)}[/cyan]")
+    console.print(f"[green]Included launch_cmds.mm:[/green] [cyan]{launch_cmds_included}[/cyan]")
+    console.print(f"[green]Included ImageStore cache:[/green] [cyan]{imagestore_included}[/cyan]")
     console.print(
-        f"[green]VM state saved to [cyan]{output_dir}[/cyan] successfully.[/green]"
+        f"[green]Included VmResourceStore cache:[/green] "
+        f"[cyan]{vm_resource_cache_included}[/cyan]"
     )
+    if archive_path is not None:
+        console.print(f"[green]Archive:[/green] [cyan]{archive_path}[/cyan]")
+
     return 0
 
 
@@ -464,7 +484,6 @@ if __name__ == "__main__":
             archive=args.archive,
         )
     )
-
 DONE
 RUN Helpers ON control
 restart
