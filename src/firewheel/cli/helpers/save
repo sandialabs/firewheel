@@ -104,9 +104,9 @@ def prune_schedule_entries(seconds_since_start, schedule_path, output_location, 
     for entry in cur_schedule:
         if entry.start_time > seconds_since_start:
             updated_schedule.append(entry)
-            
+
     updated_schedule_obj = {
-        "text": base64.b64encode(pickle.dumps(updated_schedule)),
+        "text": base64.b64encode(pickle.dumps(updated_schedule)).decode("UTF-8"),
         "server_name": schedule_obj["server_name"],
         "ip": schedule_obj["ip"],
     }
