@@ -131,7 +131,7 @@ Assuming minimega is installed at ``/opt/minimega``, to start the client, you ca
 
 .. code-block:: bash
 
-    $ cd /opt/minimega/misc/web/novnc
+    $ cd /opt/minimega/web/novnc
     $ ./utils/launch.sh
 
 This will launch a VNC client that you can connect to in a browser.
