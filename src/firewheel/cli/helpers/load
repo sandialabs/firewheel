@@ -20,12 +20,16 @@ RUN LocalPython ON control
 import os
 import sys
 import json
+import re
 import shutil
 import argparse
 import tarfile
 import tempfile
 import subprocess
 from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+from firewheel.lib.minimega.api import minimegaAPI
 from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
@@ -256,6 +260,299 @@ def _restore_schedule_files(schedule_dir: Path, schedule_db: ScheduleDb) -> None
             console.print(f"[green]Restored schedule file [cyan]{file}[/cyan] successfully.[/green]")
 
 
+_JSON_LINE_PATTERN = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
+
+
+def update_socket_path(
+    process_config: dict[str, Any],
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> None:
+    """Update the socket path in a process configuration.
+
+    The socket filename is preserved, but the directory is rebuilt using the
+    new minimega ID associated with the VM name.
+
+    Args:
+        process_config: Parsed JSON configuration for a VM resource handler.
+            Must contain the keys ``"path"`` and ``"vm_name"``.
+        vm_name_to_mm_id: Mapping from VM name to the new minimega ID.
+        mm_base: Base directory for minimega socket paths.
+
+    Raises:
+        KeyError: If ``"path"`` or ``"vm_name"`` is missing from
+            ``process_config``, or if the VM name is not present in
+            ``vm_name_to_mm_id``.
+    """
+    original_socket_path = process_config["path"]
+    socket_filename = os.path.basename(original_socket_path)
+    vm_name = process_config["vm_name"]
+    mm_id = vm_name_to_mm_id[vm_name]
+    process_config["path"] = os.path.join(mm_base, mm_id, socket_filename)
+
+
+def _unescape_embedded_json(escaped_json: str) -> str:
+    """Convert embedded escaped JSON text into normal JSON text.
+
+    Args:
+        escaped_json: JSON string extracted from within single quotes in the
+            command line.
+
+    Returns:
+        The unescaped JSON text suitable for ``json.loads()``.
+    """
+    return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
+
+
+def _escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
+    """Escape JSON text for reinsertion into a launch command line.
+
+    Args:
+        json_text: Normal JSON text.
+        is_mesh_command: Whether the command is a ``mesh send`` command, which
+            requires an additional level of escaping.
+
+    Returns:
+        Escaped JSON text suitable for embedding in the output file.
+    """
+    if is_mesh_command:
+        return json_text.replace('"', r'\\\"')
+    return json_text.replace('"', r'\"')
+
+
+def parse_launch_command_line(line: str) -> tuple[str, dict[str, Any]]:
+    """Parse a launch command line into its prefix and JSON configuration.
+
+    Args:
+        line: One command line from the launch command file.
+
+    Returns:
+        A tuple of:
+            - the command prefix before the quoted JSON payload
+            - the parsed JSON configuration dictionary
+
+    Raises:
+        ValueError: If the line does not match the expected format.
+        json.JSONDecodeError: If the embedded JSON cannot be parsed.
+    """
+    stripped_line = line.rstrip("\n")
+    match = _JSON_LINE_PATTERN.match(stripped_line)
+    if match is None:
+        raise ValueError(f"Could not parse launch command line: {line!r}")
+
+    prefix, escaped_json = match.groups()
+    json_text = _unescape_embedded_json(escaped_json)
+    process_config = json.loads(json_text)
+    return prefix, process_config
+
+
+def update_launch_command_line(
+    line: str,
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> str:
+    """Update the JSON ``path`` field inside a launch command line.
+
+    Args:
+        line: One command line from the launch command file.
+        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
+        mm_base: Base directory for minimega socket paths.
+
+    Returns:
+        The updated command line.
+
+    Raises:
+        ValueError: If the line does not match the expected format.
+        json.JSONDecodeError: If the embedded JSON cannot be parsed.
+        KeyError: If required JSON fields or VM mappings are missing.
+    """
+    prefix, process_config = parse_launch_command_line(line)
+
+    update_socket_path(process_config, vm_name_to_mm_id, mm_base)
+
+    new_json_text = json.dumps(process_config, separators=(",", ":"))
+    is_mesh_command = prefix.startswith("mesh send ")
+    new_escaped_json = _escape_embedded_json(new_json_text, is_mesh_command)
+
+    return f"{prefix}'{new_escaped_json}'"
+
+
+def iter_process_configs(lines: Iterable[str]) -> list[dict[str, Any]]:
+    """Extract all process configurations from launch command lines.
+
+    Blank lines are ignored.
+
+    Args:
+        lines: Iterable of lines from a launch command file.
+
+    Returns:
+        A list of parsed process configuration dictionaries.
+
+    Raises:
+        ValueError: If any non-blank line does not match the expected format.
+        json.JSONDecodeError: If embedded JSON cannot be parsed.
+    """
+    process_configs: list[dict[str, Any]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        _, process_config = parse_launch_command_line(line)
+        process_configs.append(process_config)
+    return process_configs
+
+
+def build_vm_name_to_mm_id_map(
+    process_configs: Iterable[Mapping[str, Any]],
+    mm_api: minimegaAPI,
+) -> dict[str, str]:
+    """Build a VM name to minimega ID mapping from active minimega VMs.
+
+    This function reads expected VM identity information from the launch
+    command process configurations and matches them against the currently
+    running VMs reported by minimega.
+
+    Matching is attempted in this order:
+        1. By UUID, if the process config contains ``"vm_uuid"``
+        2. By VM name, if UUID matching is unavailable
+
+    Args:
+        process_configs: Parsed process configuration dictionaries extracted
+            from the launch command file.
+        mm_api: Connected minimega API instance.
+
+    Returns:
+        A mapping from VM name to minimega ID.
+
+    Raises:
+        RuntimeError: If a VM cannot be matched, or if multiple running VMs
+            match the same expected VM.
+        KeyError: If a process config is missing a required ``"vm_name"`` key.
+    """
+    running_vms = mm_api.mm_vms()
+
+    by_uuid: dict[str, dict[str, str]] = {}
+    by_name: dict[str, dict[str, str]] = {}
+
+    for vm_name, vm_info in running_vms.items():
+        by_name[vm_name] = vm_info
+        vm_uuid = vm_info.get("uuid")
+        if vm_uuid:
+            by_uuid[vm_uuid] = vm_info
+
+    vm_name_to_mm_id: dict[str, str] = {}
+
+    for process_config in process_configs:
+        expected_vm_name = str(process_config["vm_name"])
+        expected_vm_uuid = process_config.get("vm_uuid")
+
+        matched_vm: dict[str, str] | None = None
+
+        if isinstance(expected_vm_uuid, str) and expected_vm_uuid:
+            matched_vm = by_uuid.get(expected_vm_uuid)
+
+        if matched_vm is None:
+            matched_vm = by_name.get(expected_vm_name)
+
+        if matched_vm is None:
+            raise RuntimeError(
+                "Could not match launched VM from process config "
+                f"vm_name={expected_vm_name!r}, vm_uuid={expected_vm_uuid!r}"
+            )
+
+        mm_id = matched_vm.get("id")
+        if not isinstance(mm_id, str) or not mm_id:
+            raise RuntimeError(
+                f"Matched VM for {expected_vm_name!r} is missing a valid minimega ID"
+            )
+
+        vm_name_to_mm_id[expected_vm_name] = mm_id
+
+    return vm_name_to_mm_id
+
+
+def rewrite_launch_cmds_file(
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> None:
+    """Rewrite a launch command file with updated socket paths.
+
+    Each non-empty line is parsed, the embedded JSON configuration is updated,
+    and the modified command is written to the output file.
+
+    Args:
+        input_path: Path to the existing launch command file.
+        output_path: Path where the updated file will be written.
+        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
+        mm_base: Base directory for minimega socket paths.
+
+    Raises:
+        ValueError: If any line does not match the expected command format.
+        json.JSONDecodeError: If embedded JSON cannot be parsed.
+        KeyError: If required JSON fields or VM mappings are missing.
+        OSError: If reading or writing the files fails.
+    """
+    with input_path.open("r", encoding="utf-8") as infile, output_path.open("w", encoding="utf-8") as outfile:
+        for line in infile:
+            if not line.strip():
+                outfile.write(line)
+                continue
+
+            updated_line = update_launch_command_line(
+                line=line,
+                vm_name_to_mm_id=vm_name_to_mm_id,
+                mm_base=mm_base,
+            )
+            outfile.write(updated_line + "\n")
+
+
+def rebuild_launch_cmds_file_with_current_mm_ids(
+    input_path: Path,
+    output_path: Path,
+    mm_api: minimegaAPI,
+) -> dict[str, str]:
+    """Rebuild a launch command file using current minimega VM IDs.
+
+    This function:
+        1. Reads and parses the existing launch command file
+        2. Queries minimega for currently running VMs
+        3. Builds a VM name to minimega ID mapping
+        4. Rewrites the launch command file with updated socket paths
+
+    Args:
+        input_path: Path to the existing launch command file.
+        output_path: Path where the updated file will be written.
+        mm_api: Connected minimega API instance.
+
+    Returns:
+        The mapping from VM name to minimega ID used for the rewrite.
+
+    Raises:
+        ValueError: If any line does not match the expected command format.
+        json.JSONDecodeError: If embedded JSON cannot be parsed.
+        KeyError: If required JSON fields are missing.
+        RuntimeError: If VMs cannot be matched to currently running minimega VMs.
+        OSError: If file IO fails.
+    """
+    with input_path.open("r", encoding="utf-8") as infile:
+        process_configs = iter_process_configs(infile)
+
+    vm_name_to_mm_id = build_vm_name_to_mm_id_map(
+        process_configs=process_configs,
+        mm_api=mm_api,
+    )
+
+    rewrite_launch_cmds_file(
+        input_path=input_path,
+        output_path=output_path,
+        vm_name_to_mm_id=vm_name_to_mm_id,
+        mm_base=mm_api.mm_base,
+    )
+
+    return vm_name_to_mm_id
+
+
 def _run_minimega_script(script_path: Path, description: str) -> None:
     """
     Run a minimega script.
@@ -386,7 +683,16 @@ def _restore_from_directory(source_dir: Path) -> int:
         return 1
 
     try:
-        _run_minimega_script(source_dir / "launch_cmds.mm", "Started VM Resource scripts")
+        mm_api = minimegaAPI()
+        launch_cmd_path = Path(source_dir / "launch_cmds.mm")
+        launch_cmd_updated_path = Path(source_dir / "launch_cmds_updated.mm")
+        vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
+            input_path=launch_cmd_path,
+            output_path=launch_cmd_updated_path,
+            mm_api=mm_api,
+        )
+        console.print(f"[green]Mapped VM names to minimega IDs: {vm_name_to_mm_id}[/green]")
+        _run_minimega_script(launch_cmd_updated_path, "Started VM Resource scripts")
     except FileNotFoundError as exc:
         console.print(f"[red]minimega or launch script not found: {exc}[/red]")
         return 1
