@@ -360,6 +360,21 @@ def _restore_from_directory(source_dir: Path) -> int:
     except OSError as exc:
         console.print(f"[red]Error restoring schedule files: {exc}[/red]")
         return 1
+
+    try:
+        _run_minimega_script(saved_exp_path / "launch.mm", "Started saved VMs")
+    except FileNotFoundError as exc:
+        console.print(f"[red]minimega or VM launch script not found: {exc}[/red]")
+        return 1
+    except PermissionError as exc:
+        console.print(f"[red]Permission denied starting VMs: {exc}[/red]")
+        return 1
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]Error starting VMs: {exc}[/red]")
+        return 1
+    except OSError as exc:
+        console.print(f"[red]OS error starting VMs: {exc}[/red]")
+        return 1
     
     try:
         _restore_experiment_time(source_dir / "experiment_time.json")
@@ -383,21 +398,6 @@ def _restore_from_directory(source_dir: Path) -> int:
         return 1
     except OSError as exc:
         console.print(f"[red]OS error running VM resource scripts: {exc}[/red]")
-        return 1
-
-    try:
-        _run_minimega_script(saved_exp_path / "launch.mm", "Started saved VMs")
-    except FileNotFoundError as exc:
-        console.print(f"[red]minimega or VM launch script not found: {exc}[/red]")
-        return 1
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied starting VMs: {exc}[/red]")
-        return 1
-    except subprocess.CalledProcessError as exc:
-        console.print(f"[red]Error starting VMs: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]OS error starting VMs: {exc}[/red]")
         return 1
 
     return 0
