@@ -297,7 +297,7 @@ def save_vm_state(experiment_name="firewheel_experiment", complete=False):
             schedule_dir.mkdir(parents=True, exist_ok=True)
             for file in schedule_db_paths:
                 try:
-                    prune_schedule_entries(experiment_time["seconds_since_start"], file, schedule_dir / Path(file).name, console)
+                    prune_schedule_entries(experiment_time["seconds_since_start"], Path(file), schedule_dir / Path(file).name, console)
                 except RuntimeError as exc:
                     return 1
 
