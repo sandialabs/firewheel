@@ -49,10 +49,12 @@ if [ "$USE_GRE" = "True" ]; then
     $MINIMEGA_BIN -e ns bridge "$CONTROL_BRIDGE" gre
 fi
 
-if [ -d $MM_INSTALL_DIR/web/web ]; then
+if [ -d "$MM_INSTALL_DIR/web/web" ]; then
     MINIWEB_ROOT="$MM_INSTALL_DIR/web/web"
-else
+elif [ -d "$MM_INSTALL_DIR/misc/web" ]; then
     MINIWEB_ROOT="$MM_INSTALL_DIR/misc/web"
+else
+    MINIWEB_ROOT="$MM_INSTALL_DIR/web"
 fi
 
 MINIWEB_BIN="$MM_INSTALL_DIR/bin/miniweb -base=$MM_BASE_DIR -root=$MINIWEB_ROOT"
