@@ -27,6 +27,10 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+import math
+import sys
+from typing import Any
+
 import minimega
 from rich.console import Console
 from rich.progress import (
@@ -48,6 +52,59 @@ from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
+def create_break_schedule_entry(start_time: int | float) -> ScheduleEntry:
+    """Create a break schedule entry.
+
+    A break event is represented as a ``ScheduleEntry`` with a pause event of
+    infinite duration. This recreates the essential behavior of
+    ``PauseScheduleEntry(start_time, math.inf)`` for use in this helper.
+
+    Args:
+        start_time: Time at which the break should begin. Must be ``math.inf``,
+            ``-math.inf``, ``0``, or any positive value. In practice, ``0`` is
+            converted to ``sys.float_info.min`` to match FIREWHEEL behavior.
+
+    Returns:
+        A schedule entry containing an indefinite pause event.
+
+    Raises:
+        ValueError: If ``start_time`` is a negative finite value.
+    """
+    if start_time < 0 and not math.isinf(start_time):
+        raise ValueError(
+            "Valid start times for pause and break only include negative "
+            "infinity or greater than or equal to 0."
+        )
+
+    normalized_start_time: int | float = start_time
+    if start_time == 0:
+        normalized_start_time = sys.float_info.min
+
+    break_entry = ScheduleEntry(normalized_start_time)
+    break_entry.add_pause(math.inf)
+    return break_entry
+
+
+def prepend_break_to_schedule(
+    schedule_entries: list[ScheduleEntry],
+    start_time: int | float,
+) -> list[ScheduleEntry]:
+    """Prepend a break entry to a list of schedule entries.
+
+    Args:
+        schedule_entries: Existing schedule entries.
+        start_time: Time at which the break should begin.
+
+    Returns:
+        A new list whose first element is a break entry followed by the
+        provided schedule entries.
+
+    Raises:
+        ValueError: If ``start_time`` is invalid for a break entry.
+    """
+    break_entry = create_break_schedule_entry(start_time)
+    return [break_entry, *schedule_entries]
+
 def check_time():
     experiment_time = vm_resource_api.get_experiment_start_time()
 
@@ -67,22 +124,26 @@ def check_time():
     }
     return time_obj
 
-def prune_schedule_entries(seconds_since_start, schedule_path, output_location, console):
-    """
-    Prunes completed schedule entries that per the experiment start time.
+def prune_schedule_entries(
+    seconds_since_start: int,
+    schedule_path: Path,
+    output_location: Path,
+    console: Console,
+) -> None:
+    """Prune completed schedule entries and prepend a break event.
 
     Args:
-        seconds_since_start (int): The number of seconds since the experiment started.
-        schedule_path (str): The location of the schedule file to modify.
-        output_location (str): The location to save the pruned schedule file.
-        console (rich.console.Console): The console object to use for printing messages.
+        seconds_since_start: The number of seconds since the experiment started.
+        schedule_path: The location of the schedule file to modify.
+        output_location: The location to save the pruned schedule file.
+        console: Console object used for output.
 
-    Returns:
-        None
+    Raises:
+        RuntimeError: If the schedule file cannot be read, decoded, or written.
     """
-    schedule_obj = None
+    schedule_obj: dict[str, Any] | None = None
     try:
-        with open(schedule_path, "r", encoding="utf8") as f_name:
+        with schedule_path.open("r", encoding="utf8") as f_name:
             schedule_obj = json.load(f_name)
             decoded_text = base64.b64decode(schedule_obj["text"])
             schedule_obj["text"] = decoded_text
@@ -90,20 +151,29 @@ def prune_schedule_entries(seconds_since_start, schedule_path, output_location, 
         console.print(f"[error]Schedule file not found at {schedule_path}: {exp}[/error]")
         raise RuntimeError(f"Schedule file not found at {schedule_path}: {exp}") from exp
     except json.JSONDecodeError as exp:
-        console.print(f"[error]Error decoding JSON from schedule file {schedule_path}: {exp}[/error]")
-        raise RuntimeError(f"Error decoding JSON from schedule file {schedule_path}: {exp}") from exp
-    
-    cur_schedule = []
+        console.print(
+            f"[error]Error decoding JSON from schedule file {schedule_path}: {exp}[/error]"
+        )
+        raise RuntimeError(
+            f"Error decoding JSON from schedule file {schedule_path}: {exp}"
+        ) from exp
+
     try:
-        cur_schedule: List[ScheduleEntry] = pickle.loads(schedule_obj["text"])
+        cur_schedule: list[ScheduleEntry] = pickle.loads(schedule_obj["text"])
     except pickle.UnpicklingError as exp:
         console.print(f"[error]Error loading schedule file {schedule_path}: {exp}[/error]")
         raise RuntimeError(f"Error loading schedule file {schedule_path}: {exp}") from exp
 
-    updated_schedule = []
+    updated_schedule: list[ScheduleEntry] = []
     for entry in cur_schedule:
         if entry.start_time > seconds_since_start:
             updated_schedule.append(entry)
+
+    # Prepend a break so resumed experiments remain paused until explicitly resumed.
+    updated_schedule = prepend_break_to_schedule(
+        schedule_entries=updated_schedule,
+        start_time=0,
+    )
 
     updated_schedule_obj = {
         "text": base64.b64encode(pickle.dumps(updated_schedule)).decode("UTF-8"),
@@ -111,8 +181,16 @@ def prune_schedule_entries(seconds_since_start, schedule_path, output_location, 
         "ip": schedule_obj["ip"],
     }
 
-    with open(output_location, "w", encoding="utf8") as f_name:
-        json.dump(updated_schedule_obj, f_name) 
+    try:
+        with output_location.open("w", encoding="utf8") as f_name:
+            json.dump(updated_schedule_obj, f_name)
+    except OSError as exp:
+        console.print(
+            f"[error]Error writing updated schedule file to {output_location}: {exp}[/error]"
+        )
+        raise RuntimeError(
+            f"Error writing updated schedule file to {output_location}: {exp}"
+        ) from exp
         
                 
 def save_vm_state(experiment_name="firewheel_experiment", complete=False):
