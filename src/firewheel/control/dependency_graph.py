@@ -180,7 +180,8 @@ class DependencyGraph:
             list: Entity IDs in canonical, dependency-satisfying order.
 
         Raises:
-            UnsatisfiableDependenciesError: Occurs if there are cycles.
+            HasACycle: Occurs if there are cycles.
+            UnsatisfiableDependenciesError: Occurs if the graph changes during iteration.
         """
         entity_ordering = []
         # Raises UnsatisfiableDependenciesError if there are cycles.
@@ -192,6 +193,8 @@ class DependencyGraph:
                 if self.dg.nodes[node_id]["type"] == self.entity_type:
                     entity_ordering.append(node_id)
         except nx.NetworkXUnfeasible as exp:
+            if self.has_cycles():
+                raise nx.HasACycle from exp
             raise UnsatisfiableDependenciesError from exp
 
         return entity_ordering

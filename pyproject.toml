@@ -54,8 +54,8 @@ classifiers = [
 ]
 dependencies = [
     "ansible>=6.0.0,<=12.0.0",
-    "ansible-runner>=2.0.0,<=2.4.2",
-    "minimega==2.9",
+    "ansible-runner>=2.0.0,<=2.4.3",
+    "minimega>=2.9",
     "ClusterShell<=1.9.3",
     "colorama<=0.4.6",
     "coverage<=7.10.7",
@@ -67,13 +67,13 @@ dependencies = [
     "networkx>=2.3,<=3.4.2",
     "protobuf>=5.0.0,<7.0.0",
     "pytest<=8.4.2",
-    "pytest-cov<=7.0.0",
+    "pytest-cov<=7.1.0",
     "python-dotenv<=1.2.1",
     "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
     "requests==2.32.4",
-    "rich>=13.6.0,<14.3",
     "adbutils>=2.12.0",
+    "rich>=13.6.0,<14.4",
 ]
 
 [project.optional-dependencies]
@@ -93,7 +93,7 @@ docs = [
     "sphinx-copybutton==0.5.2",
     "pyenchant==3.3.0",
     "doc8==1.1.2",
-    "pip-licenses==5.5.0",
+    "pip-licenses==5.5.1",
     "sphinx-design==0.6.1",
 ]
 dev = [
