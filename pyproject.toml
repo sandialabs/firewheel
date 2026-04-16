@@ -72,6 +72,7 @@ dependencies = [
     "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
     "requests==2.32.4",
+    "adbutils>=2.12.0",
     "rich>=13.6.0,<14.4",
 ]
 
