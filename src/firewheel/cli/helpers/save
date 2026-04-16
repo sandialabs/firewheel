@@ -373,3 +373,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     sys.exit(save_vm_state(experiment_name=args.name, complete=args.complete))
 DONE
+RUN Helpers ON control
+restart
+DONE

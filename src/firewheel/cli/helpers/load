@@ -772,3 +772,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     sys.exit(load_vm_state(args.source))
 DONE
+RUN Helpers ON control
+vm resume --all
+DONE
