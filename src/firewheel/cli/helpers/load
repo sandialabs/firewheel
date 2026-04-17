@@ -43,6 +43,7 @@ from firewheel.lib.experiment_archive import (
     validate_backup_directory,
 )
 from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.lib.utilities import unescape_embedded_json, escape_embedded_json, print_phase_header, print_result_card, print_error, print_reused, print_success, copyfile_if_needed, copytree_if_needed, directories_are_identical, files_are_identical
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
@@ -51,191 +52,12 @@ from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 console = Console(theme=cli_output_theme)
 
-_JSON_LINE_PATTERN = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
-
-def _print_phase_header(title: str) -> None:
-    """Print a restore phase header.
-
-    Args:
-        title: Phase title to display.
-    """
-    console.rule(f"[bold blue]{title}[/bold blue]")
-
-
-def _print_success(message: str) -> None:
-    """Print a success message.
-
-    Args:
-        message: Message to display.
-    """
-    console.print(f"[green]✓ {message}[/green]")
-
-
-def _print_reused(message: str) -> None:
-    """Print a reused/skipped message.
-
-    Args:
-        message: Message to display.
-    """
-    console.print(f"[yellow]↺ {message}[/yellow]")
-
-def _print_error(message: str) -> None:
-    """Print an error message.
-
-    Args:
-        message: Message to display.
-    """
-    console.print(f"[red]✗ {message}[/red]")
-
-
-def _print_result_card(title: str, lines: list[tuple[str, str]]) -> None:
-    """Print a concise result card.
-
-    Args:
-        title: Card title.
-        lines: Sequence of key/value pairs to display.
-    """
-    console.print(f"[bold]{title}[/bold]")
-    for key, value in lines:
-        console.print(f"  [cyan]{key:<26}[/cyan] {value}")
-
 def _rollback_guidance() -> None:
     """Print rollback guidance for partial restore failures."""
     console.print(
         "[yellow]Restore may be partially applied. Recommended recovery: "
         "[bold]run firewheel restart hard and try again[/bold].[/yellow]"
     )
-
-
-def _files_are_identical(source: Path, destination: Path) -> bool:
-    """Return whether two files are byte-for-byte identical.
-
-    Args:
-        source: Source file path.
-        destination: Destination file path.
-
-    Returns:
-        True if both files exist and have identical contents, otherwise False.
-    """
-    if not source.is_file() or not destination.is_file():
-        return False
-    return filecmp.cmp(source, destination, shallow=False)
-
-
-def _directories_are_identical(source: Path, destination: Path) -> bool:
-    """Return whether two directory trees are identical.
-
-    Args:
-        source: Source directory path.
-        destination: Destination directory path.
-
-    Returns:
-        True if the directory trees have identical structure and file contents,
-        otherwise False.
-    """
-    if not source.is_dir() or not destination.is_dir():
-        return False
-
-    comparison = filecmp.dircmp(source, destination)
-
-    if comparison.left_only or comparison.right_only or comparison.funny_files:
-        return False
-
-    _, mismatch, errors = filecmp.cmpfiles(
-        source,
-        destination,
-        comparison.common_files,
-        shallow=False,
-    )
-    if mismatch or errors:
-        return False
-
-    for common_dir in comparison.common_dirs:
-        if not _directories_are_identical(source / common_dir, destination / common_dir):
-            return False
-
-    return True
-
-
-def _copytree_if_needed(source: Path, destination: Path, force: bool) -> bool:
-    """Copy a directory tree only when needed.
-
-    If the destination exists and is identical to the source, no action is taken.
-
-    Args:
-        source: Source directory.
-        destination: Destination directory.
-        force: Whether differing existing content may be overwritten.
-
-    Returns:
-        True if content was copied or overwritten, False if skipped because the
-        destination already matched the source.
-
-    Raises:
-        FileExistsError: If destination exists with different contents and
-            ``force`` is False.
-        OSError: If copying or deleting fails.
-    """
-    if not destination.exists():
-        shutil.copytree(source, destination)
-        return True
-
-    if _directories_are_identical(source, destination):
-        return False
-
-    if not force:
-        raise FileExistsError(
-            f"Destination already exists with different contents: {destination}"
-        )
-
-    if destination.is_dir():
-        shutil.rmtree(destination)
-    else:
-        destination.unlink()
-
-    shutil.copytree(source, destination)
-    return True
-
-
-def _copyfile_if_needed(source: Path, destination: Path, force: bool) -> bool:
-    """Copy a file only when needed.
-
-    If the destination exists and is identical to the source, no action is taken.
-
-    Args:
-        source: Source file.
-        destination: Destination file.
-        force: Whether differing existing content may be overwritten.
-
-    Returns:
-        True if content was copied or overwritten, False if skipped because the
-        destination already matched the source.
-
-    Raises:
-        FileExistsError: If destination exists with different contents and
-            ``force`` is False.
-        OSError: If copying or deleting fails.
-    """
-    if not destination.exists():
-        shutil.copy2(source, destination)
-        return True
-
-    if _files_are_identical(source, destination):
-        return False
-
-    if not force:
-        raise FileExistsError(
-            f"Destination already exists with different contents: {destination}"
-        )
-
-    if destination.is_dir():
-        shutil.rmtree(destination)
-    else:
-        destination.unlink()
-
-    shutil.copy2(source, destination)
-    return True
-
 
 def _restore_vm_mapping(
     mapping_file: Path,
@@ -279,24 +101,6 @@ def _restore_experiment_time(experiment_time_path: Path) -> None:
     start.grpc_client.set_experiment_start_time(new_start_time)
 
 
-def _restore_experiment_files(
-    exp_files: Path,
-    destination: Path,
-    force: bool,
-) -> bool:
-    """Restore VM state/HDD files into the saved experiment location.
-
-    Args:
-        exp_files: Source experiment directory from the backup.
-        destination: Destination path in FileStore.
-        force: Whether to replace differing existing content.
-
-    Returns:
-        True if files were copied, False if already identical.
-    """
-    return _copytree_if_needed(exp_files, destination, force=force)
-
-
 def _restore_schedule_files(
     schedule_dir: Path,
     schedule_db: ScheduleDb,
@@ -324,7 +128,7 @@ def _restore_schedule_files(
 
         processed_count += 1
         destination = destination_root / file.name
-        if _copyfile_if_needed(file, destination, force=force):
+        if copyfile_if_needed(file, destination, force=force):
             copied_count += 1
 
     return processed_count, copied_count
@@ -350,7 +154,7 @@ def _restore_optional_cache(
     if source_dir is None:
         return False, False
 
-    copied = _copytree_if_needed(source_dir, destination_dir, force=force)
+    copied = copytree_if_needed(source_dir, destination_dir, force=force)
     return True, copied
 
 
@@ -366,28 +170,16 @@ def update_socket_path(
     mm_id = vm_name_to_mm_id[vm_name]
     process_config["path"] = os.path.join(mm_base, mm_id, socket_filename)
 
-
-def _unescape_embedded_json(escaped_json: str) -> str:
-    """Convert embedded escaped JSON text into normal JSON text."""
-    return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
-
-
-def _escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
-    """Escape JSON text for reinsertion into a launch command line."""
-    if is_mesh_command:
-        return json_text.replace('"', r'\\\"')
-    return json_text.replace('"', r'\"')
-
-
 def parse_launch_command_line(line: str) -> tuple[str, dict[str, Any]]:
     """Parse a launch command line into prefix and JSON configuration."""
     stripped_line = line.rstrip("\n")
-    match = _JSON_LINE_PATTERN.match(stripped_line)
+    json_line_pattern = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
+    match = json_line_pattern.match(stripped_line)
     if match is None:
         raise ValueError(f"Could not parse launch command line: {line!r}")
 
     prefix, escaped_json = match.groups()
-    json_text = _unescape_embedded_json(escaped_json)
+    json_text = unescape_embedded_json(escaped_json)
     process_config = json.loads(json_text)
     return prefix, process_config
 
@@ -403,7 +195,7 @@ def update_launch_command_line(
 
     new_json_text = json.dumps(process_config, separators=(",", ":"))
     is_mesh_command = prefix.startswith("mesh send ")
-    new_escaped_json = _escape_embedded_json(new_json_text, is_mesh_command)
+    new_escaped_json = escape_embedded_json(new_json_text, is_mesh_command)
     return f"{prefix}'{new_escaped_json}'"
 
 
@@ -510,62 +302,6 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
 
     return vm_name_to_mm_id
 
-def _count_started_background_processes(output: str) -> int:
-    """Count started background processes from minimega output.
-
-    Args:
-        output: Captured minimega command output.
-
-    Returns:
-        Number of lines indicating a background process was started.
-    """
-    count = 0
-    for line in output.splitlines():
-        if "Started background process with id" in line:
-            count += 1
-    return count
-
-def _run_minimega_script(script_path: Path) -> tuple[int, str]:
-    """Run a minimega script and capture its output.
-
-    Args:
-        script_path: Path to the minimega script.
-
-    Returns:
-        Tuple of:
-            - return code
-            - combined stdout/stderr text
-
-    Raises:
-        subprocess.CalledProcessError: If minimega returns a non-zero status.
-        OSError: If the command cannot be launched.
-    """
-    minimega_bin_path = os.path.join(
-        fw_config["minimega"]["install_dir"], "bin", "minimega"
-    )
-
-    result = subprocess.run(
-        [
-            minimega_bin_path,
-            f"-base={fw_config['minimega']['base_dir']}",
-            "-e",
-            "read",
-            str(script_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    combined_output = ""
-    if result.stdout:
-        combined_output += result.stdout
-    if result.stderr:
-        if combined_output:
-            combined_output += "\n"
-        combined_output += result.stderr
-
-    return result.returncode, combined_output
 
 def _print_validation_summary(layout: BackupLayout) -> None:
     """Print a concise validated backup summary.
@@ -575,7 +311,8 @@ def _print_validation_summary(layout: BackupLayout) -> None:
     """
     manifest = layout.manifest
 
-    _print_result_card(
+    print_result_card(
+        console,
         "Validated Backup",
         [
             ("Root directory", str(layout.root_dir)),
@@ -623,7 +360,7 @@ def _validate_destination_paths(
     conflicts: list[str] = []
 
     if saved_exp_path.exists():
-        if not _directories_are_identical(layout.experiment_dir, saved_exp_path) and not force:
+        if not directories_are_identical(layout.experiment_dir, saved_exp_path) and not force:
             conflicts.append(str(saved_exp_path))
 
     schedule_cache_root = Path(schedule_db.cache.cache)
@@ -632,15 +369,15 @@ def _validate_destination_paths(
             continue
         dest = schedule_cache_root / schedule_file.name
         if dest.exists():
-            if not _files_are_identical(schedule_file, dest) and not force:
+            if not files_are_identical(schedule_file, dest) and not force:
                 conflicts.append(str(dest))
 
     if layout.imagestore_dir is not None and imagestore_cache.exists():
-        if not _directories_are_identical(layout.imagestore_dir, imagestore_cache) and not force:
+        if not directories_are_identical(layout.imagestore_dir, imagestore_cache) and not force:
             conflicts.append(str(imagestore_cache))
 
     if layout.vm_resource_store_dir is not None and vm_resource_cache.exists():
-        if not _directories_are_identical(layout.vm_resource_store_dir, vm_resource_cache) and not force:
+        if not directories_are_identical(layout.vm_resource_store_dir, vm_resource_cache) and not force:
             conflicts.append(str(vm_resource_cache))
 
     if conflicts:
@@ -667,9 +404,9 @@ def _restore_from_layout(
     Returns:
         ``0`` on success and ``1`` on failure.
     """
-    _print_phase_header("Phase 2: Validate Backup")
+    print_phase_header(console, "Phase 2: Validate Backup")
     _print_validation_summary(layout)
-    _print_success("Backup validated")
+    print_success(console, "Backup validated")
 
     try:
         saved_exp = FileStore("saved")
@@ -678,7 +415,7 @@ def _restore_from_layout(
         image_store = ImageStore()
         vm_resource_store = VmResourceStore()
     except Exception as exc:
-        _print_error(f"Failed to initialize restore dependencies: {exc}")
+        print_error(console, f"Failed to initialize restore dependencies: {exc}")
         return 1
 
     experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
@@ -695,15 +432,16 @@ def _restore_from_layout(
             vm_resource_cache=vm_resource_cache,
             force=force,
         )
-        _print_success("Restore destinations validated")
+        print_success(console, "Restore destinations validated")
     except FileExistsError as exc:
-        _print_error(f"{exc}")
+        print_error(console, f"{exc}")
         return 1
 
     if dry_run:
-        _print_phase_header("Dry Run Summary")
-        _print_success("Dry run completed successfully")
-        _print_result_card(
+        print_phase_header(console, "Dry Run Summary")
+        print_success(console, "Dry run completed successfully")
+        print_result_card(
+            console,
             "Planned Restore",
             [
                 ("Experiment", experiment_name),
@@ -728,7 +466,7 @@ def _restore_from_layout(
                 ("Experiment time", "Would restore last"),
             ],
         )
-        _print_reused("Existing identical files/directories would be reused without overwrite")
+        print_reused(console, "Existing identical files/directories would be reused without overwrite")
         return 0
 
     summary: dict[str, Any] = {
@@ -750,19 +488,19 @@ def _restore_from_layout(
     }
 
     try:
-        _print_phase_header("Phase 3: Restore Data")
+        print_phase_header(console, "Phase 3: Restore Data")
 
-        experiment_files_copied = _restore_experiment_files(
-            exp_files=layout.experiment_dir,
+        experiment_files_copied = copytree_if_needed(
+            source=layout.experiment_dir,
             destination=saved_exp_path,
             force=force,
         )
         summary["experiment_files_copied"] = experiment_files_copied
         summary["experiment_files_reused"] = not experiment_files_copied
         if experiment_files_copied:
-            _print_success("Restored saved VM files")
+            print_success(console, "Restored saved VM files")
         else:
-            _print_reused("Reused existing saved VM files")
+            print_reused(console, "Reused existing saved VM files")
 
         imagestore_present, imagestore_copied = _restore_optional_cache(
             source_dir=layout.imagestore_dir,
@@ -773,9 +511,9 @@ def _restore_from_layout(
         summary["imagestore_copied"] = imagestore_copied
         if imagestore_present:
             if imagestore_copied:
-                _print_success("Restored ImageStore cache")
+                print_success(console, "Restored ImageStore cache")
             else:
-                _print_reused("Reused existing ImageStore cache")
+                print_reused(console, "Reused existing ImageStore cache")
 
         vm_resource_cache_present, vm_resource_cache_copied = _restore_optional_cache(
             source_dir=layout.vm_resource_store_dir,
@@ -786,15 +524,15 @@ def _restore_from_layout(
         summary["vm_resource_cache_copied"] = vm_resource_cache_copied
         if vm_resource_cache_present:
             if vm_resource_cache_copied:
-                _print_success("Restored VmResourceStore cache")
+                print_success(console, "Restored VmResourceStore cache")
             else:
-                _print_reused("Reused existing VmResourceStore cache")
+                print_reused(console, "Reused existing VmResourceStore cache")
 
         summary["vm_mapping_entries"] = _restore_vm_mapping(
             layout.vm_mapping_path,
             vm_mapping,
         )
-        _print_success(
+        print_success(console,
             f"Restored VM mapping ({summary['vm_mapping_entries']} entries)"
         )
 
@@ -807,63 +545,63 @@ def _restore_from_layout(
             force=force,
         )
         if summary["schedule_files_copied"] == summary["schedule_files_processed"]:
-            _print_success(
+            print_success(console,
                 f"Restored schedules ({summary['schedule_files_copied']} files)"
             )
         elif summary["schedule_files_copied"] == 0:
-            _print_reused(
+            print_reused(console,
                 f"Reused existing schedules ({summary['schedule_files_processed']} files)"
             )
         else:
-            _print_success(
+            print_success(console,
                 "Restored schedules "
                 f"({summary['schedule_files_copied']} copied, "
                 f"{summary['schedule_files_processed'] - summary['schedule_files_copied']} reused)"
             )
-
-        _print_phase_header("Phase 4: Launch VMs")
-        _, vm_launch_output = _run_minimega_script(saved_exp_path / "launch.mm")
+        mm_api = minimegaAPI()
+        print_phase_header(console, "Phase 4: Launch VMs")
+        _, vm_launch_output = mm_api.run_minimega_script(saved_exp_path / "launch.mm")
         summary["started_vms"] = True
-        _print_success("Started saved VMs")
+        print_success(console, "Started saved VMs")
 
-        _print_phase_header("Phase 5: Launch VM Resource Handlers")
+        print_phase_header(console, "Phase 5: Launch VM Resource Handlers")
         if layout.launch_cmds_path is not None:
-            mm_api = minimegaAPI()
             launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
             vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
                 input_path=layout.launch_cmds_path,
                 output_path=launch_cmd_updated_path,
                 mm_api=mm_api,
             )
-            _print_success(
+            print_success(console,
                 f"Rebuilt VM resource handler socket paths for {len(vm_name_to_mm_id)} VMs"
             )
 
-            _, handler_output = _run_minimega_script(launch_cmd_updated_path)
-            summary["vm_processes_started"] = _count_started_background_processes(
+            _, handler_output = mm_api.run_minimega_script(launch_cmd_updated_path)
+            summary["vm_processes_started"] = mm_api.count_started_background_processes(
                 handler_output
             )
             summary["started_vm_resource_handlers"] = True
-            _print_success(
+            print_success(console,
                 "Started VM resource handlers "
                 f"({summary['vm_processes_started']} processes launched)"
             )
         else:
-            _print_reused("No VM resource handler launch file present; skipping")
+            print_reused(console, "No VM resource handler launch file present; skipping")
 
-        _print_phase_header("Phase 6: Finalize Restore")
+        print_phase_header(console, "Phase 6: Finalize Restore")
         _restore_experiment_time(layout.experiment_time_path)
         summary["restored_experiment_time"] = True
-        _print_success("Restored experiment time")
+        print_success(console, "Restored experiment time")
 
     except Exception as exc:
-        _print_error(f"Restore failed: {exc}")
+        print_error(console, f"Restore failed: {exc}")
         _rollback_guidance()
         return 1
 
-    _print_phase_header("Restore Complete")
-    _print_success("Experiment restore completed successfully")
-    _print_result_card(
+    print_phase_header(console, "Restore Complete")
+    print_success(console, "Experiment restore completed successfully")
+    print_result_card(
+        console,
         "Restore Result",
         [
             ("Experiment", str(summary["experiment_name"])),
@@ -941,16 +679,16 @@ def load_vm_state(
     """
     source_path = Path(source).resolve()
 
-    _print_phase_header("Phase 1: Read Backup Source")
+    print_phase_header("Phase 1: Read Backup Source")
     console.print(f"[cyan]Source:[/cyan] {source_path}")
 
     if not source_path.exists():
-        _print_error(f"Path [cyan]{source_path}[/cyan] does not exist.")
+        print_error(console, f"Path [cyan]{source_path}[/cyan] does not exist.")
         return 1
 
     if source_path.is_file():
         if not is_supported_archive(source_path):
-            _print_error(f"File [cyan]{source_path}[/cyan] is not a supported archive. "
+            print_error(console, f"File [cyan]{source_path}[/cyan] is not a supported archive. "
                          "Expected one of: .tar.gz, .tgz, .tar")
             return 1
 
@@ -964,13 +702,11 @@ def load_vm_state(
                 ):
                     extract_archive_safely(source_path, temp_path)
 
-                _print_success("Archive extracted safely")
+                print_success(console, "Archive extracted safely")
 
                 extracted_dirs = [p for p in temp_path.iterdir() if p.is_dir()]
                 if len(extracted_dirs) != 1:
-                    _print_error(
-                        "Archive must extract to exactly one top-level backup directory."
-                    )
+                    print_error(console, "Archive must extract to exactly one top-level backup directory.")
                     return 1
 
                 extracted_root = extracted_dirs[0]
@@ -980,19 +716,19 @@ def load_vm_state(
                 return _restore_from_layout(layout, dry_run=dry_run, force=force)
 
         except Exception as exc:
-            _print_error(f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
+            print_error(console, f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
             return 1
 
     if source_path.is_dir():
         try:
-            _print_success("Using existing backup directory")
+            print_success(console, "Using existing backup directory")
             layout = validate_backup_directory(source_path)
             return _restore_from_layout(layout, dry_run=dry_run, force=force)
         except Exception as exc:
-            _print_error(f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
+            print_error(console, f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
             return 1
 
-    _print_error(f"Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.")
+    print_error(console, f"Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.")
     return 1
 
 if __name__ == "__main__":

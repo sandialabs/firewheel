@@ -1,4 +1,6 @@
 import random
+import shutil
+import filecmp
 import hashlib
 import traceback
 from time import sleep
@@ -6,6 +8,201 @@ from pathlib import Path
 from functools import wraps as _wraps
 
 from rich.console import Console
+
+
+
+def unescape_embedded_json(escaped_json: str) -> str:
+    """Convert embedded escaped JSON text into normal JSON text."""
+    return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
+
+
+def escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
+    """Escape JSON text for reinsertion into a launch command line."""
+    if is_mesh_command:
+        return json_text.replace('"', r'\\\"')
+    return json_text.replace('"', r'\"')
+
+
+def files_are_identical(source: Path, destination: Path) -> bool:
+    """Return whether two files are byte-for-byte identical.
+
+    Args:
+        source: Source file path.
+        destination: Destination file path.
+
+    Returns:
+        True if both files exist and have identical contents, otherwise False.
+    """
+    if not source.is_file() or not destination.is_file():
+        return False
+    return filecmp.cmp(source, destination, shallow=False)
+
+
+def directories_are_identical(source: Path, destination: Path) -> bool:
+    """Return whether two directory trees are identical.
+
+    Args:
+        source: Source directory path.
+        destination: Destination directory path.
+
+    Returns:
+        True if the directory trees have identical structure and file contents,
+        otherwise False.
+    """
+    if not source.is_dir() or not destination.is_dir():
+        return False
+
+    comparison = filecmp.dircmp(source, destination)
+
+    if comparison.left_only or comparison.right_only or comparison.funny_files:
+        return False
+
+    _, mismatch, errors = filecmp.cmpfiles(
+        source,
+        destination,
+        comparison.common_files,
+        shallow=False,
+    )
+    if mismatch or errors:
+        return False
+
+    for common_dir in comparison.common_dirs:
+        if not _directories_are_identical(source / common_dir, destination / common_dir):
+            return False
+
+    return True
+
+
+def copytree_if_needed(source: Path, destination: Path, force: bool) -> bool:
+    """Copy a directory tree only when needed.
+
+    If the destination exists and is identical to the source, no action is taken.
+
+    Args:
+        source: Source directory.
+        destination: Destination directory.
+        force: Whether differing existing content may be overwritten.
+
+    Returns:
+        True if content was copied or overwritten, False if skipped because the
+        destination already matched the source.
+
+    Raises:
+        FileExistsError: If destination exists with different contents and
+            ``force`` is False.
+        OSError: If copying or deleting fails.
+    """
+    if not destination.exists():
+        shutil.copytree(source, destination)
+        return True
+
+    if directories_are_identical(source, destination):
+        return False
+
+    if not force:
+        raise FileExistsError(
+            f"Destination already exists with different contents: {destination}"
+        )
+
+    if destination.is_dir():
+        shutil.rmtree(destination)
+    else:
+        destination.unlink()
+
+    shutil.copytree(source, destination)
+    return True
+
+
+def copyfile_if_needed(source: Path, destination: Path, force: bool) -> bool:
+    """Copy a file only when needed.
+
+    If the destination exists and is identical to the source, no action is taken.
+
+    Args:
+        source: Source file.
+        destination: Destination file.
+        force: Whether differing existing content may be overwritten.
+
+    Returns:
+        True if content was copied or overwritten, False if skipped because the
+        destination already matched the source.
+
+    Raises:
+        FileExistsError: If destination exists with different contents and
+            ``force`` is False.
+        OSError: If copying or deleting fails.
+    """
+    if not destination.exists():
+        shutil.copy2(source, destination)
+        return True
+
+    if files_are_identical(source, destination):
+        return False
+
+    if not force:
+        raise FileExistsError(
+            f"Destination already exists with different contents: {destination}"
+        )
+
+    if destination.is_dir():
+        shutil.rmtree(destination)
+    else:
+        destination.unlink()
+
+    shutil.copy2(source, destination)
+    return True
+
+
+def print_phase_header(console, title: str) -> None:
+    """Print a restore phase header.
+
+    Args:
+        console: The console to print to.
+        title: Phase title to display.
+    """
+    console.rule(f"[bold blue]{title}[/bold blue]")
+
+
+def print_success(console, message: str) -> None:
+    """Print a success message.
+
+    Args:
+        console: The console to print to.
+        message: Message to display.
+    """
+    console.print(f"[green]✓ {message}[/green]")
+
+
+def print_reused(console, message: str) -> None:
+    """Print a reused/skipped message.
+
+    Args:
+        console: The console to print to.
+        message: Message to display.
+    """
+    console.print(f"[yellow]↺ {message}[/yellow]")
+
+def print_error(console, message: str) -> None:
+    """Print an error message.
+
+    Args:
+        console: The console to print to.
+        message: Message to display.
+    """
+    console.print(f"[red]✗ {message}[/red]")
+
+
+def print_result_card(console, title: str, lines: list[tuple[str, str]]) -> None:
+    """Print a concise result card.
+
+    Args:
+        console: The console to print to.
+        title: Card title.
+        lines: Sequence of key/value pairs to display.
+    """
+    console.print(f"[bold]{title}[/bold]")
+    for key, value in lines:
+        console.print(f"  [cyan]{key:<26}[/cyan] {value}")
 
 
 def render_rich_string(text):
