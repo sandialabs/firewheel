@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from datetime import timezone, datetime
+from importlib.metadata import version
 from firewheel.lib.utilities import get_safe_tarfile_members
 
 
@@ -114,6 +115,7 @@ def build_manifest(
 
     return {
         "format_version": FORMAT_VERSION,
+        "FIREWHEEL version": version("firewheel"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_name": experiment_name,
         "experiment_dir_name": experiment_dir_name,
