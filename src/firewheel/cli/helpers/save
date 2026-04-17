@@ -312,14 +312,13 @@ def save_vm_state(
     This function saves the current experiment state into a directory named
     ``<experiment_name>_backup`` in the current working directory. If
     ``archive`` is True, that directory is additionally compressed into a
-    ``.tar.gz`` archive.
+    ``.tar`` archive.
 
     Args:
         experiment_name: The name of the experiment to save.
         complete: If True, save all files from the experiment, including cached
             images and VM resources.
-        archive: If True, archive the saved output directory as a ``.tar.gz``
-            file.
+        archive: If True, archive the saved output directory as a ``.tar`` file.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -530,11 +529,11 @@ def save_vm_state(
             with console.status("[yellow]Compressing data...[/yellow]", spinner="line"):
                 shutil.make_archive(
                     str(archive_base),
-                    "gztar",
+                    "tar",
                     root_dir=output_dir.parent,
                     base_dir=output_dir.name,
                 )
-            archive_path = Path(f"{archive_base}.tar.gz")
+            archive_path = Path(f"{archive_base}.tar")
         except OSError as exc:
             console.print(f"[error]Error compressing output directory: {exc}[/error]")
             return 1
@@ -586,7 +585,7 @@ if __name__ == "__main__":
         "-a",
         "--archive",
         action="store_true",
-        help="If provided, archive the saved experiment directory as a .tar.gz file.",
+        help="If provided, archive the saved experiment directory as a .tar file.",
     )
     args = parser.parse_args()
     sys.exit(

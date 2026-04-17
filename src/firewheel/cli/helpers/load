@@ -12,7 +12,7 @@ content, saved VM files, and relaunches VM resource handler processes.
 Example
 +++++++
 
-``firewheel load /path/to/my_experiment_backup.tar.gz --force``
+``firewheel load /path/to/my_experiment_backup.tar --force``
 
 DONE
 
