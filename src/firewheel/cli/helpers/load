@@ -1,266 +1,215 @@
 AUTHOR
-Your Name
+FIREWHEEL Team
 DONE
 
 DESCRIPTION
-This Helper loads the state of all VMs from a compressed backup file.
-It restores the VM mapping, schedule files, and any additional resources to their respective locations.
+This Helper loads the state of all VMs from a FIREWHEEL backup directory or
+compressed archive. It restores the VM mapping, schedule files, optional cache
+content, saved VM files, and relaunches VM resource handler processes.
 
-**Usage:**  ``firewheel load --archive ARCHIVE_PATH``
+**Usage:**  ``firewheel load SOURCE [--dry-run] [--force]``
 
 Example
 +++++++
 
-``firewheel load --archive /path/to/my_experiment_backup.tar.gz``
+``firewheel load /path/to/my_experiment_backup.tar.gz --force``
 
 DONE
 
 RUN LocalPython ON control
 #!/usr/bin/env python
-import os
-import sys
+import argparse
 import json
+import os
 import re
 import shutil
-import argparse
-import tarfile
-import tempfile
 import subprocess
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from firewheel.lib.minimega.api import minimegaAPI
-from datetime import datetime, timezone, timedelta
-
 from rich.console import Console
+from rich.table import Table
 
-from firewheel.config import config as fw_config
 from firewheel.cli.utils import cli_output_theme
+from firewheel.config import config as fw_config
+from firewheel.control.image_store import ImageStore
+from firewheel.lib.experiment_archive import (
+    BackupLayout,
+    extract_archive_safely,
+    is_supported_archive,
+    validate_backup_directory,
+)
+from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.lib.minimega.file_store import FileStore
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
-from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 console = Console(theme=cli_output_theme)
 
-
-def _derive_experiment_name_from_archive(path: Path) -> str:
-    """
-    Derive the experiment name from an archive filename.
-    Example:
-      myexp_backup.tar.gz -> myexp
-      myexp_backup.tgz    -> myexp
-      myexp.tar           -> myexp
-    """
-    name = path.name
-
-    if name.endswith(".tar.gz"):
-        name = name[:-7]
-    elif name.endswith(".tgz"):
-        name = name[:-4]
-    elif name.endswith(".tar"):
-        name = name[:-4]
-
-    if "_backup" in name:
-        name = name.split("_backup")[0]
-
-    return name
+_JSON_LINE_PATTERN = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
 
 
-def _is_supported_archive(path: Path) -> bool:
-    """
-    Return True if the path appears to be a supported tar archive.
-    """
-    return (
-        path.name.endswith(".tar.gz")
-        or path.name.endswith(".tgz")
-        or path.name.endswith(".tar")
-    )
-
-
-def _find_experiment_dir(source_dir: Path) -> Path:
-    """
-    Find the single experiment directory inside source_dir.
-
-    Expected non-experiment entries include:
-      - vm_mapping.json
-      - launch_cmds.mm
-      - schedules/
-
-    Returns:
-        Path: The experiment directory.
-
-    Raises:
-        FileNotFoundError: If no candidate experiment directory is found.
-        ValueError: If multiple candidate experiment directories are found.
-        OSError: If source_dir cannot be read.
-    """
-    excluded_names = {"schedules", "__MACOSX"}
-
-    candidates = [
-        p for p in source_dir.iterdir()
-        if p.is_dir() and p.name not in excluded_names
-    ]
-
-    if not candidates:
-        raise FileNotFoundError(
-            f"No experiment directory found in {source_dir}"
-        )
-
-    if len(candidates) > 1:
-        candidate_names = ", ".join(sorted(p.name for p in candidates))
-        raise ValueError(
-            f"Multiple experiment directories found in {source_dir}: {candidate_names}"
-        )
-
-    return candidates[0]
-
-
-def _validate_restore_directory(source_dir: Path) -> Path:
-    """
-    Validate that source_dir contains the required files and structure.
-
-    Expected:
-      source_dir/
-        vm_mapping.json
-        launch_cmds.mm
-        schedules/
-        <experiment_name>/
-          launch.mm
-
-    Returns:
-        Path: The experiment directory path.
-
-    Raises:
-        FileNotFoundError, NotADirectoryError, ValueError
-    """
-    mapping_file = source_dir / "vm_mapping.json"
-    if not mapping_file.exists():
-        raise FileNotFoundError(f"Missing required file: {mapping_file}")
-    if not mapping_file.is_file():
-        raise FileNotFoundError(f"Expected a file but found otherwise: {mapping_file}")
-
-    launch_cmds = source_dir / "launch_cmds.mm"
-    if not launch_cmds.exists():
-        raise FileNotFoundError(f"Missing required file: {launch_cmds}")
-    if not launch_cmds.is_file():
-        raise FileNotFoundError(f"Expected a file but found otherwise: {launch_cmds}")
-
-    schedule_dir = source_dir / "schedules"
-    if not schedule_dir.exists():
-        raise FileNotFoundError(f"Missing required directory: {schedule_dir}")
-    if not schedule_dir.is_dir():
-        raise NotADirectoryError(f"Expected a directory: {schedule_dir}")
-
-    exp_dir = _find_experiment_dir(source_dir)
-
-    launch_mm = exp_dir / "launch.mm"
-    if not launch_mm.exists():
-        raise FileNotFoundError(
-            f"Experiment directory {exp_dir} is missing required file: {launch_mm}"
-        )
-    if not launch_mm.is_file():
-        raise FileNotFoundError(f"Expected a file but found otherwise: {launch_mm}")
-
-    return exp_dir
-
-
-def _extract_archive(archive_file: Path, temp_path: Path) -> None:
-    """
-    Extract archive_file into temp_path.
-
-    Raises:
-        tarfile.ReadError
-        tarfile.CompressionError
-        PermissionError
-        OSError
-    """
-    with tarfile.open(archive_file, "r:*") as tar:
-        with console.status("[yellow]Decompressing experiment archive...[/yellow]", spinner="line"):
-            tar.extractall(path=temp_path)
-
+def _rollback_guidance() -> None:
+    """Print rollback guidance for partial restore failures."""
     console.print(
-        f"[green]Extracted data from [cyan]{archive_file}[/cyan] to [cyan]{temp_path}[/cyan].[/green]"
+        "[yellow]Restore may be partially applied. Recommended recovery: "
+        "[bold]run firewheel restart hard and try again[/bold].[/yellow]"
     )
 
 
-def _restore_vm_mapping(mapping_file: Path, vm_mapping: VMMapping) -> None:
-    """
-    Restore VM mapping state from mapping_file.
+def _restore_vm_mapping(
+    mapping_file: Path,
+    vm_mapping: VMMapping,
+) -> int:
+    """Restore VM mapping state from a JSON file.
+
+    Args:
+        mapping_file: Path to VM mapping JSON.
+        vm_mapping: VM mapping database handle.
+
+    Returns:
+        Number of mapping entries restored.
 
     Raises:
-        FileNotFoundError
-        PermissionError
-        json.JSONDecodeError
-        OSError
+        FileNotFoundError: If the mapping file is missing.
+        json.JSONDecodeError: If the mapping file is invalid JSON.
+        OSError: If the file cannot be read.
     """
-    with mapping_file.open("r", encoding="utf-8") as f:
-        mapping = json.load(f)
+    with mapping_file.open("r", encoding="utf-8") as f_handle:
+        mapping = json.load(f_handle)
 
     vm_mapping.batch_put(mapping)
+    return len(mapping)
 
-    console.print(
-        f"[green]Restored VM mapping states from [cyan]{mapping_file}[/cyan] successfully.[/green]"
-    )
 
 def _restore_experiment_time(experiment_time_path: Path) -> None:
-    """
-    Restore the experiment start time from experiment_time_path.
-    The start time of the experiment is determined by taking the current time and subtracting the
-    "seconds_since_start" value stored in experiment_time_path.
-    That is, the experiment time is effectively shifted to be consistent with the current time,
-    but maintains the same relative timing for schedule entries.
+    """Restore the experiment start time.
 
-    Arguments:
-        experiment_time_path (Path): The path to the file containing the saved experiment time information.
+    The restored start time is shifted relative to the current time using the
+    saved ``seconds_since_start`` value.
+
+    Args:
+        experiment_time_path: Path to saved experiment time JSON.
 
     Raises:
-        ValueError: If the "seconds_since_start" key is missing from the time file.
+        ValueError: If the time file content is invalid.
+        FileNotFoundError: If the file is missing.
+        json.JSONDecodeError: If the file is invalid JSON.
+        OSError: If the file cannot be read.
     """
-    with experiment_time_path.open("r", encoding="utf-8") as f:
-        time_obj = json.load(f)
+    with experiment_time_path.open("r", encoding="utf-8") as f_handle:
+        time_obj = json.load(f_handle)
 
     if "seconds_since_start" not in time_obj:
         raise ValueError(f"Missing 'seconds_since_start' key in {experiment_time_path}")
 
-    new_start_time = datetime.now(timezone.utc) - timedelta(seconds=time_obj["seconds_since_start"])
+    seconds_since_start = int(time_obj["seconds_since_start"])
+    new_start_time = datetime.now(timezone.utc) - timedelta(seconds=seconds_since_start)
 
     start = ExperimentStart()
     start.grpc_client.set_experiment_start_time(new_start_time)
 
 
-def _restore_experiment_files(exp_files: Path, destination: Path) -> None:
-    """
-    Restore VM state/HDD files from exp_files into destination.
+def _restore_experiment_files(
+    exp_files: Path,
+    destination: Path,
+    force: bool,
+) -> None:
+    """Restore VM state/HDD files into the saved experiment location.
+
+    Args:
+        exp_files: Source experiment directory from the backup.
+        destination: Destination path in FileStore.
+        force: Whether to replace an existing destination directory.
 
     Raises:
-        FileExistsError
-        FileNotFoundError
-        PermissionError
-        OSError
+        FileExistsError: If destination exists and force is False.
+        OSError: If copy fails.
     """
+    if destination.exists():
+        if not force:
+            raise FileExistsError(f"Destination already exists: {destination}")
+        shutil.rmtree(destination)
+
     shutil.copytree(exp_files, destination)
-    console.print(
-        f"[green]Restored VM State/HDD files from [cyan]{exp_files}[/cyan] "
-        f"to [cyan]{destination}[/cyan].[/green]"
-    )
 
 
-def _restore_schedule_files(schedule_dir: Path, schedule_db: ScheduleDb) -> None:
-    """
-    Restore schedule files from schedule_dir into the schedule cache.
+def _restore_schedule_files(
+    schedule_dir: Path,
+    schedule_db: ScheduleDb,
+    force: bool,
+) -> int:
+    """Restore schedule files into the schedule cache.
+
+    Args:
+        schedule_dir: Source schedule directory.
+        schedule_db: ScheduleDb instance.
+        force: Whether existing schedule files may be overwritten.
+
+    Returns:
+        Number of schedule files restored.
 
     Raises:
-        PermissionError
-        OSError
+        FileExistsError: If a destination exists and force is False.
+        OSError: If copy fails.
     """
+    restored_count = 0
+    destination_root = Path(schedule_db.cache.cache)
+
     for file in schedule_dir.iterdir():
-        if file.is_file():
-            shutil.copy(file, schedule_db.cache.cache)
-            console.print(f"[green]Restored schedule file [cyan]{file}[/cyan] successfully.[/green]")
+        if not file.is_file():
+            continue
+
+        destination = destination_root / file.name
+        if destination.exists() and not force:
+            raise FileExistsError(
+                f"Schedule destination already exists: {destination}"
+            )
+
+        shutil.copy2(file, destination)
+        restored_count += 1
+
+    return restored_count
 
 
-_JSON_LINE_PATTERN = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
+def _restore_optional_cache(
+    source_dir: Path | None,
+    destination_dir: Path,
+    label: str,
+    force: bool,
+) -> bool:
+    """Restore an optional cache directory if present.
+
+    Args:
+        source_dir: Source directory from the backup. If None, nothing is done.
+        destination_dir: Destination cache directory.
+        label: Human-readable label for error messages.
+        force: Whether to replace an existing destination directory.
+
+    Returns:
+        True if the cache was restored, otherwise False.
+
+    Raises:
+        FileExistsError: If destination exists and force is False.
+        OSError: If restore fails.
+    """
+    if source_dir is None:
+        return False
+
+    if destination_dir.exists():
+        if not force:
+            raise FileExistsError(
+                f"{label} destination already exists: {destination_dir}"
+            )
+        shutil.rmtree(destination_dir)
+
+    shutil.copytree(source_dir, destination_dir)
+    return True
 
 
 def update_socket_path(
@@ -270,19 +219,13 @@ def update_socket_path(
 ) -> None:
     """Update the socket path in a process configuration.
 
-    The socket filename is preserved, but the directory is rebuilt using the
-    new minimega ID associated with the VM name.
-
     Args:
-        process_config: Parsed JSON configuration for a VM resource handler.
-            Must contain the keys ``"path"`` and ``"vm_name"``.
-        vm_name_to_mm_id: Mapping from VM name to the new minimega ID.
-        mm_base: Base directory for minimega socket paths.
+        process_config: Parsed process configuration.
+        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
+        mm_base: Minimega base directory.
 
     Raises:
-        KeyError: If ``"path"`` or ``"vm_name"`` is missing from
-            ``process_config``, or if the VM name is not present in
-            ``vm_name_to_mm_id``.
+        KeyError: If required fields or mappings are missing.
     """
     original_socket_path = process_config["path"]
     socket_filename = os.path.basename(original_socket_path)
@@ -295,11 +238,10 @@ def _unescape_embedded_json(escaped_json: str) -> str:
     """Convert embedded escaped JSON text into normal JSON text.
 
     Args:
-        escaped_json: JSON string extracted from within single quotes in the
-            command line.
+        escaped_json: Escaped JSON string from the launch line.
 
     Returns:
-        The unescaped JSON text suitable for ``json.loads()``.
+        Unescaped JSON text.
     """
     return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
 
@@ -308,12 +250,11 @@ def _escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
     """Escape JSON text for reinsertion into a launch command line.
 
     Args:
-        json_text: Normal JSON text.
-        is_mesh_command: Whether the command is a ``mesh send`` command, which
-            requires an additional level of escaping.
+        json_text: Raw JSON string.
+        is_mesh_command: Whether the command is a mesh command.
 
     Returns:
-        Escaped JSON text suitable for embedding in the output file.
+        Escaped JSON string.
     """
     if is_mesh_command:
         return json_text.replace('"', r'\\\"')
@@ -321,19 +262,17 @@ def _escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
 
 
 def parse_launch_command_line(line: str) -> tuple[str, dict[str, Any]]:
-    """Parse a launch command line into its prefix and JSON configuration.
+    """Parse a launch command line into prefix and JSON configuration.
 
     Args:
-        line: One command line from the launch command file.
+        line: Input command line.
 
     Returns:
-        A tuple of:
-            - the command prefix before the quoted JSON payload
-            - the parsed JSON configuration dictionary
+        Tuple of command prefix and parsed process configuration.
 
     Raises:
-        ValueError: If the line does not match the expected format.
-        json.JSONDecodeError: If the embedded JSON cannot be parsed.
+        ValueError: If the line is not in the expected format.
+        json.JSONDecodeError: If the embedded JSON is invalid.
     """
     stripped_line = line.rstrip("\n")
     match = _JSON_LINE_PATTERN.match(stripped_line)
@@ -351,46 +290,33 @@ def update_launch_command_line(
     vm_name_to_mm_id: Mapping[str, str],
     mm_base: str,
 ) -> str:
-    """Update the JSON ``path`` field inside a launch command line.
+    """Update the JSON path field inside a launch command line.
 
     Args:
-        line: One command line from the launch command file.
+        line: Input launch command line.
         vm_name_to_mm_id: Mapping from VM name to new minimega ID.
-        mm_base: Base directory for minimega socket paths.
+        mm_base: Minimega base directory.
 
     Returns:
-        The updated command line.
-
-    Raises:
-        ValueError: If the line does not match the expected format.
-        json.JSONDecodeError: If the embedded JSON cannot be parsed.
-        KeyError: If required JSON fields or VM mappings are missing.
+        Updated launch command line.
     """
     prefix, process_config = parse_launch_command_line(line)
-
     update_socket_path(process_config, vm_name_to_mm_id, mm_base)
 
     new_json_text = json.dumps(process_config, separators=(",", ":"))
     is_mesh_command = prefix.startswith("mesh send ")
     new_escaped_json = _escape_embedded_json(new_json_text, is_mesh_command)
-
     return f"{prefix}'{new_escaped_json}'"
 
 
 def iter_process_configs(lines: Iterable[str]) -> list[dict[str, Any]]:
-    """Extract all process configurations from launch command lines.
-
-    Blank lines are ignored.
+    """Extract process configurations from launch command lines.
 
     Args:
-        lines: Iterable of lines from a launch command file.
+        lines: Iterable of launch command lines.
 
     Returns:
-        A list of parsed process configuration dictionaries.
-
-    Raises:
-        ValueError: If any non-blank line does not match the expected format.
-        json.JSONDecodeError: If embedded JSON cannot be parsed.
+        Parsed process configurations.
     """
     process_configs: list[dict[str, Any]] = []
     for line in lines:
@@ -405,28 +331,17 @@ def build_vm_name_to_mm_id_map(
     process_configs: Iterable[Mapping[str, Any]],
     mm_api: minimegaAPI,
 ) -> dict[str, str]:
-    """Build a VM name to minimega ID mapping from active minimega VMs.
-
-    This function reads expected VM identity information from the launch
-    command process configurations and matches them against the currently
-    running VMs reported by minimega.
-
-    Matching is attempted in this order:
-        1. By UUID, if the process config contains ``"vm_uuid"``
-        2. By VM name, if UUID matching is unavailable
+    """Build a VM name to minimega ID mapping from running VMs.
 
     Args:
-        process_configs: Parsed process configuration dictionaries extracted
-            from the launch command file.
+        process_configs: Parsed process configurations.
         mm_api: Connected minimega API instance.
 
     Returns:
-        A mapping from VM name to minimega ID.
+        Mapping from VM name to minimega ID.
 
     Raises:
-        RuntimeError: If a VM cannot be matched, or if multiple running VMs
-            match the same expected VM.
-        KeyError: If a process config is missing a required ``"vm_name"`` key.
+        RuntimeError: If a VM cannot be matched.
     """
     running_vms = mm_api.mm_vms()
 
@@ -446,7 +361,6 @@ def build_vm_name_to_mm_id_map(
         expected_vm_uuid = process_config.get("vm_uuid")
 
         matched_vm: dict[str, str] | None = None
-
         if isinstance(expected_vm_uuid, str) and expected_vm_uuid:
             matched_vm = by_uuid.get(expected_vm_uuid)
 
@@ -478,22 +392,15 @@ def rewrite_launch_cmds_file(
 ) -> None:
     """Rewrite a launch command file with updated socket paths.
 
-    Each non-empty line is parsed, the embedded JSON configuration is updated,
-    and the modified command is written to the output file.
-
     Args:
-        input_path: Path to the existing launch command file.
-        output_path: Path where the updated file will be written.
-        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
-        mm_base: Base directory for minimega socket paths.
-
-    Raises:
-        ValueError: If any line does not match the expected command format.
-        json.JSONDecodeError: If embedded JSON cannot be parsed.
-        KeyError: If required JSON fields or VM mappings are missing.
-        OSError: If reading or writing the files fails.
+        input_path: Source launch command file.
+        output_path: Destination launch command file.
+        vm_name_to_mm_id: Mapping from VM name to minimega ID.
+        mm_base: Minimega base directory.
     """
-    with input_path.open("r", encoding="utf-8") as infile, output_path.open("w", encoding="utf-8") as outfile:
+    with input_path.open("r", encoding="utf-8") as infile, output_path.open(
+        "w", encoding="utf-8"
+    ) as outfile:
         for line in infile:
             if not line.strip():
                 outfile.write(line)
@@ -512,28 +419,15 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
     output_path: Path,
     mm_api: minimegaAPI,
 ) -> dict[str, str]:
-    """Rebuild a launch command file using current minimega VM IDs.
-
-    This function:
-        1. Reads and parses the existing launch command file
-        2. Queries minimega for currently running VMs
-        3. Builds a VM name to minimega ID mapping
-        4. Rewrites the launch command file with updated socket paths
+    """Rewrite launch_cmds.mm using current minimega IDs.
 
     Args:
-        input_path: Path to the existing launch command file.
-        output_path: Path where the updated file will be written.
+        input_path: Source launch_cmds.mm.
+        output_path: Output rewritten launch command file.
         mm_api: Connected minimega API instance.
 
     Returns:
-        The mapping from VM name to minimega ID used for the rewrite.
-
-    Raises:
-        ValueError: If any line does not match the expected command format.
-        json.JSONDecodeError: If embedded JSON cannot be parsed.
-        KeyError: If required JSON fields are missing.
-        RuntimeError: If VMs cannot be matched to currently running minimega VMs.
-        OSError: If file IO fails.
+        Mapping from VM name to minimega ID.
     """
     with input_path.open("r", encoding="utf-8") as infile:
         process_configs = iter_process_configs(infile)
@@ -554,14 +448,15 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
 
 
 def _run_minimega_script(script_path: Path, description: str) -> None:
-    """
-    Run a minimega script.
+    """Run a minimega script.
+
+    Args:
+        script_path: Script file to pass to minimega.
+        description: Human-readable action description.
 
     Raises:
-        subprocess.CalledProcessError
-        FileNotFoundError
-        PermissionError
-        OSError
+        subprocess.CalledProcessError: If minimega returns non-zero.
+        OSError: If the command cannot be launched.
     """
     minimega_bin_path = os.path.join(
         fw_config["minimega"]["install_dir"], "bin", "minimega"
@@ -581,148 +476,285 @@ def _run_minimega_script(script_path: Path, description: str) -> None:
     console.print(f"[green]{description}: ret={result.returncode}.[/green]")
 
 
-def _restore_from_directory(source_dir: Path) -> int:
-    """
-    Restore VM mappings, experiment files, schedules, and start scripts
-    from a validated directory structure.
-    """
-    try:
-        exp_dir = _validate_restore_directory(source_dir)
-    except FileNotFoundError as exc:
-        console.print(f"[red]Invalid restore directory: {exc}[/red]")
-        return 1
-    except NotADirectoryError as exc:
-        console.print(f"[red]Invalid restore directory: {exc}[/red]")
-        return 1
-    except ValueError as exc:
-        console.print(f"[red]Invalid restore directory layout: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]Unable to inspect restore directory [cyan]{source_dir}[/cyan]: {exc}[/red]")
-        return 1
+def _print_validation_summary(layout: BackupLayout) -> None:
+    """Print a validated backup summary.
 
-    experiment_name = exp_dir.name
+    Args:
+        layout: Validated backup layout.
+    """
+    manifest = layout.manifest
+
+    table = Table(title="Validated Backup Summary")
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Root directory", str(layout.root_dir))
+    table.add_row("Experiment name", str(manifest.get("experiment_name", layout.experiment_dir.name)))
+    table.add_row("Experiment dir", layout.experiment_dir.name)
+    table.add_row("Format version", str(manifest.get("format_version")))
+    table.add_row("Created at", str(manifest.get("created_at")))
+    table.add_row("Schedule count", str(manifest.get("schedule_count")))
+    table.add_row("Has launch_cmds.mm", str(layout.launch_cmds_path is not None))
+    table.add_row("Has ImageStore cache", str(layout.imagestore_dir is not None))
+    table.add_row("Has VmResourceStore cache", str(layout.vm_resource_store_dir is not None))
+
+    console.print(table)
+
+
+def _validate_destination_paths(
+    layout: BackupLayout,
+    saved_exp_path: Path,
+    schedule_db: ScheduleDb,
+    imagestore_cache: Path,
+    vm_resource_cache: Path,
+    force: bool,
+) -> None:
+    """Validate restore destination paths before modifying the system.
+
+    Args:
+        layout: Validated backup layout.
+        saved_exp_path: Target saved experiment path.
+        schedule_db: Schedule database handle.
+        imagestore_cache: ImageStore cache path.
+        vm_resource_cache: VmResourceStore cache path.
+        force: Whether overwriting existing content is allowed.
+
+    Raises:
+        FileExistsError: If an existing destination conflicts and force is False.
+    """
+    conflicts: list[str] = []
+
+    if saved_exp_path.exists() and not force:
+        conflicts.append(str(saved_exp_path))
+
+    schedule_cache_root = Path(schedule_db.cache.cache)
+    for schedule_file in layout.schedules_dir.iterdir():
+        if not schedule_file.is_file():
+            continue
+        dest = schedule_cache_root / schedule_file.name
+        if dest.exists() and not force:
+            conflicts.append(str(dest))
+
+    if layout.imagestore_dir is not None and imagestore_cache.exists() and not force:
+        conflicts.append(str(imagestore_cache))
+
+    if layout.vm_resource_store_dir is not None and vm_resource_cache.exists() and not force:
+        conflicts.append(str(vm_resource_cache))
+
+    if conflicts:
+        conflict_text = "\n".join(f"  - {item}" for item in conflicts)
+        raise FileExistsError(
+            "Restore would overwrite existing paths:\n"
+            f"{conflict_text}\n"
+            "Rerun with --force to overwrite."
+        )
+
+
+def _restore_from_layout(
+    layout: BackupLayout,
+    dry_run: bool,
+    force: bool,
+) -> int:
+    """Restore VM state from a validated backup layout.
+
+    Restore order:
+        1. validate
+        2. ensure destination paths are okay
+        3. restore files
+        4. restore VM mapping
+        5. restore schedules
+        6. launch VMs
+        7. restore/rewrite handler processes
+        8. restore experiment time
+
+    Args:
+        layout: Validated backup layout.
+        dry_run: Whether to validate only.
+        force: Whether to overwrite existing content.
+
+    Returns:
+        ``0`` on success, ``1`` on failure.
+    """
+    _print_validation_summary(layout)
 
     try:
         saved_exp = FileStore("saved")
         vm_mapping = VMMapping()
         schedule_db = ScheduleDb()
-    except OSError as exc:
-        console.print(f"[red]OS error initializing resources: {exc}[/red]")
-        return 1
-    except ValueError as exc:
-        console.print(f"[red]Configuration error initializing resources: {exc}[/red]")
-        return 1
-
-    mapping_file = source_dir / "vm_mapping.json"
-    try:
-        _restore_vm_mapping(mapping_file, vm_mapping)
-    except FileNotFoundError as exc:
-        console.print(f"[red]Required mapping file not found: {exc}[/red]")
-        return 1
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied reading mapping file: {exc}[/red]")
-        return 1
-    except json.JSONDecodeError as exc:
-        console.print(f"[red]Invalid JSON in mapping file [cyan]{mapping_file}[/cyan]: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]Error restoring VM mapping state: {exc}[/red]")
+        image_store = ImageStore()
+        vm_resource_store = VmResourceStore()
+    except Exception as exc:
+        console.print(f"[red]Failed to initialize restore dependencies: {exc}[/red]")
         return 1
 
-    saved_exp_path = Path(saved_exp.get_file_path(experiment_name))
+    experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
+    saved_exp_path = Path(saved_exp.get_file_path(layout.experiment_dir.name))
+    imagestore_cache = Path(image_store.cache)
+    vm_resource_cache = Path(vm_resource_store.cache)
+
     try:
-        _restore_experiment_files(exp_dir, saved_exp_path)
-    except FileExistsError:
-        console.print(
-            f"[yellow]The VM State/HDD files for experiment [cyan]{experiment_name}[/cyan] "
-            f"already exist at [cyan]{saved_exp_path}[/cyan]. Using in-place files instead.[/yellow]"
+        _validate_destination_paths(
+            layout=layout,
+            saved_exp_path=saved_exp_path,
+            schedule_db=schedule_db,
+            imagestore_cache=imagestore_cache,
+            vm_resource_cache=vm_resource_cache,
+            force=force,
         )
-    except FileNotFoundError as exc:
-        console.print(f"[red]Experiment files not found: {exc}[/red]")
-        return 1
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied restoring experiment files: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]Error restoring VM State/HDD directory: {exc}[/red]")
+    except FileExistsError as exc:
+        console.print(f"[red]{exc}[/red]")
         return 1
 
-    schedule_dir = source_dir / "schedules"
-    try:
-        _restore_schedule_files(schedule_dir, schedule_db)
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied restoring schedule files: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]Error restoring schedule files: {exc}[/red]")
-        return 1
+    if dry_run:
+        console.rule("[bold yellow]Dry Run Summary[/bold yellow]")
+        console.print("[green]Backup validation succeeded.[/green]")
+        console.print(f"[green]Experiment:[/green] [cyan]{experiment_name}[/cyan]")
+        console.print(f"[green]Would restore saved experiment files to:[/green] [cyan]{saved_exp_path}[/cyan]")
+        console.print(f"[green]Would restore VM mapping from:[/green] [cyan]{layout.vm_mapping_path}[/cyan]")
+        console.print(f"[green]Would restore schedules from:[/green] [cyan]{layout.schedules_dir}[/cyan]")
+        console.print(f"[green]Would launch saved VMs via:[/green] [cyan]{layout.launch_mm_path}[/cyan]")
+        if layout.launch_cmds_path is not None:
+            console.print(
+                f"[green]Would rewrite and launch VM resource handlers from:[/green] "
+                f"[cyan]{layout.launch_cmds_path}[/cyan]"
+            )
+        if layout.imagestore_dir is not None:
+            console.print(
+                f"[green]Would restore ImageStore cache to:[/green] [cyan]{imagestore_cache}[/cyan]"
+            )
+        if layout.vm_resource_store_dir is not None:
+            console.print(
+                "[green]Would restore VmResourceStore cache to:[/green] "
+                f"[cyan]{vm_resource_cache}[/cyan]"
+            )
+        console.print("[green]Would restore experiment time last.[/green]")
+        return 0
+
+    summary: dict[str, Any] = {
+        "experiment_name": experiment_name,
+        "saved_exp_path": str(saved_exp_path),
+        "vm_mapping_entries": 0,
+        "schedule_files": 0,
+        "restored_imagestore": False,
+        "restored_vm_resource_cache": False,
+        "started_vms": False,
+        "started_vm_resource_handlers": False,
+        "restored_experiment_time": False,
+    }
 
     try:
+        _restore_experiment_files(
+            exp_files=layout.experiment_dir,
+            destination=saved_exp_path,
+            force=force,
+        )
+
+        if layout.imagestore_dir is not None:
+            summary["restored_imagestore"] = _restore_optional_cache(
+                source_dir=layout.imagestore_dir,
+                destination_dir=imagestore_cache,
+                label="ImageStore cache",
+                force=force,
+            )
+
+        if layout.vm_resource_store_dir is not None:
+            summary["restored_vm_resource_cache"] = _restore_optional_cache(
+                source_dir=layout.vm_resource_store_dir,
+                destination_dir=vm_resource_cache,
+                label="VmResourceStore cache",
+                force=force,
+            )
+
+        summary["vm_mapping_entries"] = _restore_vm_mapping(
+            layout.vm_mapping_path,
+            vm_mapping,
+        )
+
+        summary["schedule_files"] = _restore_schedule_files(
+            layout.schedules_dir,
+            schedule_db,
+            force=force,
+        )
+
         _run_minimega_script(saved_exp_path / "launch.mm", "Started saved VMs")
-    except FileNotFoundError as exc:
-        console.print(f"[red]minimega or VM launch script not found: {exc}[/red]")
-        return 1
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied starting VMs: {exc}[/red]")
-        return 1
-    except subprocess.CalledProcessError as exc:
-        console.print(f"[red]Error starting VMs: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]OS error starting VMs: {exc}[/red]")
-        return 1
-    
-    try:
-        _restore_experiment_time(source_dir / "experiment_time.json")
-    except FileNotFoundError as exc:
-        console.print(f"[red]Experiment time file not found: {exc}[/red]")
-        return 1
-    except ValueError as exc:
-        console.print(f"[red]Invalid experiment time file: {exc}[/red]")
+        summary["started_vms"] = True
+
+        if layout.launch_cmds_path is not None:
+            mm_api = minimegaAPI()
+            launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
+            vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
+                input_path=layout.launch_cmds_path,
+                output_path=launch_cmd_updated_path,
+                mm_api=mm_api,
+            )
+            console.print(
+                f"[green]Mapped VM names to minimega IDs:[/green] [cyan]{vm_name_to_mm_id}[/cyan]"
+            )
+            _run_minimega_script(
+                launch_cmd_updated_path,
+                "Started VM Resource scripts",
+            )
+            summary["started_vm_resource_handlers"] = True
+
+        _restore_experiment_time(layout.experiment_time_path)
+        summary["restored_experiment_time"] = True
+
+    except Exception as exc:
+        console.print(f"[red]Restore failed: {exc}[/red]")
+        _rollback_guidance()
         return 1
 
-    try:
-        mm_api = minimegaAPI()
-        launch_cmd_path = Path(source_dir / "launch_cmds.mm")
-        launch_cmd_updated_path = Path(source_dir / "launch_cmds_updated.mm")
-        vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
-            input_path=launch_cmd_path,
-            output_path=launch_cmd_updated_path,
-            mm_api=mm_api,
-        )
-        console.print(f"[green]Mapped VM names to minimega IDs: {vm_name_to_mm_id}[/green]")
-        _run_minimega_script(launch_cmd_updated_path, "Started VM Resource scripts")
-    except FileNotFoundError as exc:
-        console.print(f"[red]minimega or launch script not found: {exc}[/red]")
-        return 1
-    except PermissionError as exc:
-        console.print(f"[red]Permission denied running VM resource scripts: {exc}[/red]")
-        return 1
-    except subprocess.CalledProcessError as exc:
-        console.print(f"[red]Error starting VM resource scripts: {exc}[/red]")
-        return 1
-    except OSError as exc:
-        console.print(f"[red]OS error running VM resource scripts: {exc}[/red]")
-        return 1
+    console.rule("[bold green]Load Summary[/bold green]")
+    table = Table(title="Restore Result")
+    table.add_column("Field", style="cyan")
+    table.add_column("Value", style="green")
 
+    table.add_row("Experiment", str(summary["experiment_name"]))
+    table.add_row("Saved experiment path", str(summary["saved_exp_path"]))
+    table.add_row("VM mapping entries restored", str(summary["vm_mapping_entries"]))
+    table.add_row("Schedule files restored", str(summary["schedule_files"]))
+    table.add_row("ImageStore cache restored", str(summary["restored_imagestore"]))
+    table.add_row(
+        "VmResourceStore cache restored",
+        str(summary["restored_vm_resource_cache"]),
+    )
+    table.add_row("VMs launched", str(summary["started_vms"]))
+    table.add_row(
+        "VM resource handlers launched",
+        str(summary["started_vm_resource_handlers"]),
+    )
+    table.add_row(
+        "Experiment time restored",
+        str(summary["restored_experiment_time"]),
+    )
+
+    console.print(table)
     return 0
 
 
-def load_vm_state(input_path: str) -> int:
+def load_vm_state(
+    source: str,
+    dry_run: bool = False,
+    force: bool = False,
+) -> int:
+    """Load VM state from a backup directory or supported archive.
+
+    Args:
+        source: Source directory or archive path.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite existing restore destinations.
+
+    Returns:
+        ``0`` on success, ``1`` on failure.
     """
-    Load VM state and schedules from either:
-      - a tar archive, or
-      - a directory containing the extracted restore content
-    """
-    source_path = Path(input_path).resolve()
+    source_path = Path(source).resolve()
 
     if not source_path.exists():
         console.print(f"[red]Error: Path [cyan]{source_path}[/cyan] does not exist.[/red]")
         return 1
 
     if source_path.is_file():
-        if not _is_supported_archive(source_path):
+        if not is_supported_archive(source_path):
             console.print(
                 f"[red]Error: File [cyan]{source_path}[/cyan] is not a supported archive. "
                 f"Expected one of: .tar.gz, .tgz, .tar[/red]"
@@ -732,27 +764,35 @@ def load_vm_state(input_path: str) -> int:
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
-                _extract_archive(source_path, temp_path)
-                return _restore_from_directory(temp_path)
-        except tarfile.ReadError as exc:
-            console.print(
-                f"[red]Error: File [cyan]{source_path}[/cyan] is not a readable tar archive: {exc}[/red]"
-            )
-            return 1
-        except tarfile.CompressionError as exc:
-            console.print(
-                f"[red]Error: Unsupported or invalid archive compression for [cyan]{source_path}[/cyan]: {exc}[/red]"
-            )
-            return 1
-        except PermissionError as exc:
-            console.print(f"[red]Permission denied accessing archive [cyan]{source_path}[/cyan]: {exc}[/red]")
-            return 1
-        except OSError as exc:
-            console.print(f"[red]OS error while processing archive [cyan]{source_path}[/cyan]: {exc}[/red]")
+                with console.status(
+                    "[yellow]Decompressing experiment archive...[/yellow]",
+                    spinner="line",
+                ):
+                    extract_archive_safely(source_path, temp_path)
+
+                extracted_dirs = [p for p in temp_path.iterdir() if p.is_dir()]
+                if len(extracted_dirs) != 1:
+                    console.print(
+                        "[red]Archive must extract to exactly one top-level backup directory.[/red]"
+                    )
+                    return 1
+
+                layout = validate_backup_directory(extracted_dirs[0])
+                return _restore_from_layout(layout, dry_run=dry_run, force=force)
+
+        except Exception as exc:
+            console.print(f"[red]Failed to load archive [cyan]{source_path}[/cyan]: {exc}[/red]")
             return 1
 
     if source_path.is_dir():
-        return _restore_from_directory(source_path)
+        try:
+            layout = validate_backup_directory(source_path)
+            return _restore_from_layout(layout, dry_run=dry_run, force=force)
+        except Exception as exc:
+            console.print(
+                f"[red]Invalid backup directory [cyan]{source_path}[/cyan]: {exc}[/red]"
+            )
+            return 1
 
     console.print(
         f"[red]Error: Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.[/red]"
@@ -762,15 +802,32 @@ def load_vm_state(input_path: str) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Load VM state and schedule files from either an archive or a directory."
+        description="Load VM state and schedule files from a backup directory or archive.",
+        prog="firewheel load",
     )
     parser.add_argument(
         "source",
         type=str,
-        help="Path to the compressed backup file or extracted experiment directory.",
+        help="Path to the backup archive or extracted backup directory.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the backup and restore targets without making changes.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing restore destinations if they already exist.",
     )
     args = parser.parse_args()
-    sys.exit(load_vm_state(args.source))
+    sys.exit(
+        load_vm_state(
+            source=args.source,
+            dry_run=args.dry_run,
+            force=args.force,
+        )
+    )
 DONE
 RUN Helpers ON control
 vm resume --all
