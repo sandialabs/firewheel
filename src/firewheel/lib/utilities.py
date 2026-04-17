@@ -225,72 +225,67 @@ def render_rich_string(text):
     return capture.get()
 
 
-def badpath(path, base):
-    """
-    Checks to see if the provided file path is underneath the given base path.
+def badpath(path: str, base: Path) -> bool:
+    """Check whether a path escapes the provided base directory.
 
     Args:
-        path (str): The proposed extraction path of the tar file member to check.
-        base (pathlib.Path): The path of the current working directory.
+        path: Proposed extraction path.
+        base: Intended extraction base directory.
 
     Returns:
-        bool: :py:data:`True` if the path is not under the proposed base path
-        otherwise :py:data:`False`.
+        True if the resolved path escapes the base directory, otherwise False.
     """
-    joint = base / path
-    joint = joint.absolute().resolve()
-    return not str(joint).startswith(str(base))
+    joint = (base / path).resolve()
+    return not str(joint).startswith(str(base.resolve()))
 
 
-def badlink(info, base):
-    """
-    Checks to see if the provided link is underneath the given base path.
+def badlink(info: tarfile.TarInfo, base: Path) -> bool:
+    """Check whether a tar link target escapes the provided base directory.
 
     Args:
-        info (tarfile.TarInfo): The file member that is going to be extracted.
-        base (pathlib.Path): The path of the current working directory.
+        info: Tar file member to inspect.
+        base: Intended extraction base directory.
 
     Returns:
-        bool: :py:data:`True` if the path is not under the proposed base path
-        otherwise :py:data:`False`.
+        True if the resolved link target escapes the base directory, otherwise
+        False.
     """
-    link_path = base / Path(info.name).parent
-    link_path = link_path.absolute().resolve()
+    link_path = (base / Path(info.name).parent).resolve()
     return badpath(info.linkname, link_path)
 
 
-def get_safe_tarfile_members(tarfile):
-    """
-    Identify and return the members of a :py:class:`tarfile.TarFile` that are considered safe.
-    See the documentation for :py:meth:`tarfile.TarFile.extractall` for more information.
-    This function, as well as :py:func:`badlink` and :py:func:`badpath` were based on
-    https://stackoverflow.com/a/10077309.
+def get_safe_tarfile_members(
+    tarfile_obj: tarfile.TarFile,
+    base: Path,
+) -> list[tarfile.TarInfo]:
+    """Return tar members considered safe to extract under a base directory.
 
     Args:
-        tarfile (tarfile.TarFile): The tar file to extract.
+        tarfile_obj: Open tar archive.
+        base: Intended extraction base directory.
 
     Returns:
-        list: A list of "safe" members to extract.
+        List of safe tar members.
     """
-    base = Path(".").resolve().absolute()
-
-    result = []
+    resolved_base = base.resolve()
+    result: list[tarfile.TarInfo] = []
     console = Console()
-    for member in tarfile.getmembers():
-        if badpath(member.name, base):
-            console.print(f"[b red] {member.name} is blocked: illegal path")
-        elif member.issym() and badlink(member, base):
+
+    for member in tarfile_obj.getmembers():
+        if badpath(member.name, resolved_base):
+            console.print(f"[b red]{member.name} is blocked: illegal path[/b red]")
+        elif member.issym() and badlink(member, resolved_base):
             console.print(
-                f"[b red] {member.name} is blocked: Symlink to [cyan]{member.linkname}"
+                f"[b red]{member.name} is blocked: symlink to [cyan]{member.linkname}[/cyan][/b red]"
             )
-        elif member.islnk() and badlink(member, base):
+        elif member.islnk() and badlink(member, resolved_base):
             console.print(
-                f"[b red] {member.name} is blocked: hard link to [cyan]{member.linkname}"
+                f"[b red]{member.name} is blocked: hard link to [cyan]{member.linkname}[/cyan][/b red]"
             )
         else:
             result.append(member)
-    return result
 
+    return result
 
 def strtobool(val):
     """Convert a string representation of truth to true (1) or false (0).

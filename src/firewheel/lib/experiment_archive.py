@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from datetime import timezone, datetime
+from firewheel.lib.utilities import get_safe_tarfile_members
 
 
 MANIFEST_FILENAME = "manifest.json"
@@ -149,37 +150,6 @@ def load_manifest(root_dir: Path) -> dict[str, Any]:
         return json.load(f_handle)
 
 
-def _safe_tar_members(archive: tarfile.TarFile, destination: Path) -> list[tarfile.TarInfo]:
-    """Validate archive members for safe extraction.
-
-    This rejects absolute paths and traversal outside the extraction root.
-
-    Args:
-        archive: Open tar archive.
-        destination: Intended extraction directory.
-
-    Returns:
-        Validated tar members.
-
-    Raises:
-        ValueError: If an unsafe archive member is detected.
-    """
-    validated_members: list[tarfile.TarInfo] = []
-    destination_resolved = destination.resolve()
-
-    for member in archive.getmembers():
-        member_name = member.name
-
-        if member_name.startswith("/") or Path(member_name).is_absolute():
-            raise ValueError(f"Archive contains absolute path entry: {member_name!r}")
-
-        target_path = (destination / member_name).resolve()
-        if destination_resolved not in target_path.parents and target_path != destination_resolved:
-            raise ValueError(f"Archive contains unsafe path traversal entry: {member_name!r}")
-
-        validated_members.append(member)
-
-    return validated_members
 
 
 def extract_archive_safely(archive_path: Path, destination: Path) -> None:
@@ -192,11 +162,11 @@ def extract_archive_safely(archive_path: Path, destination: Path) -> None:
     Raises:
         tarfile.ReadError: If the file is not a readable tar archive.
         tarfile.CompressionError: If the archive compression is invalid.
-        ValueError: If the archive contains unsafe paths.
         OSError: If extraction fails.
     """
+    destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:*") as archive:
-        members = _safe_tar_members(archive, destination)
+        members = get_safe_tarfile_members(archive, destination)
         archive.extractall(path=destination, members=members)
 
 
