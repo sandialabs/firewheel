@@ -24,6 +24,7 @@ import base64
 import json
 import math
 import pickle
+import time
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -198,6 +199,108 @@ def prune_schedule_entries(
             f"Error writing updated schedule file to {output_location}: {exp}"
         ) from exp
 
+def wait_for_ns_save_completion(
+    mm_api: minimegaAPI,
+    console: Console,
+    timeout_seconds: int = 600,
+    poll_interval_seconds: float = 2.0,
+) -> dict[str, dict[str, int]]:
+    """Wait for minimega namespace save completion across all hosts.
+
+    After ``ns_save(name=...)`` is issued, minimega continues saving
+    asynchronously. This function polls ``ns_save()`` with no arguments until
+    every reported host has ``completed == total``.
+
+    Args:
+        mm_api: Connected minimega API instance.
+        console: Console used to render progress output.
+        timeout_seconds: Maximum time to wait for completion.
+        poll_interval_seconds: Delay between polling attempts.
+
+    Returns:
+        Mapping keyed by host name containing integer ``completed`` and ``total``
+        values for the final successful poll.
+
+    Raises:
+        RuntimeError: If the status output is malformed or save does not
+            complete before the timeout.
+        minimega.Error: If minimega returns an error while polling.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    last_status: dict[str, dict[str, int]] = {}
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task(
+            "[green]Waiting for namespace save to complete...",
+            total=None,
+        )
+
+        while time.monotonic() < deadline:
+            raw_status = mm_api.mm.ns_save()
+            mapped_status = mm_api.mmr_map(raw_status)
+
+            if not mapped_status:
+                raise RuntimeError("minimega ns save status returned no host data")
+
+            all_complete = True
+            current_status: dict[str, dict[str, int]] = {}
+            aggregate_completed = 0
+            aggregate_total = 0
+            host_summaries: list[str] = []
+
+            for host, rows in mapped_status.items():
+                if len(rows) != 1:
+                    raise RuntimeError(
+                        f"Unexpected ns save status row count for host {host!r}: {rows!r}"
+                    )
+
+                row = rows[0]
+                try:
+                    completed = int(row["completed"])
+                    total = int(row["total"])
+                except (KeyError, ValueError) as exc:
+                    raise RuntimeError(
+                        f"Unexpected ns save status format for host {host!r}: {row!r}"
+                    ) from exc
+
+                current_status[host] = {
+                    "completed": completed,
+                    "total": total,
+                }
+                aggregate_completed += completed
+                aggregate_total += total
+                host_summaries.append(f"{host}: {completed}/{total}")
+
+                if completed != total:
+                    all_complete = False
+
+            last_status = current_status
+
+            progress.update(
+                task_id,
+                total=aggregate_total,
+                completed=aggregate_completed,
+                description=(
+                    "[green]Waiting for namespace save to complete... "
+                    f"({', '.join(host_summaries)})"
+                ),
+            )
+
+            if all_complete:
+                return last_status
+
+            time.sleep(poll_interval_seconds)
+
+    raise RuntimeError(
+        "Timed out waiting for minimega namespace save completion. "
+        f"Last status: {last_status}"
+    )
 
 def save_vm_state(
     experiment_name: str = "firewheel_experiment",
@@ -235,12 +338,21 @@ def save_vm_state(
 
     try:
         with console.status(
-            "[yellow]Calling minimega to save namespace...[/yellow]",
+            "[yellow]Calling minimega to start namespace save...[/yellow]",
             spinner="line",
         ):
             mm_api.mm.ns_save(name=experiment_name)
+
+        final_ns_save_status = wait_for_ns_save_completion(
+            mm_api=mm_api,
+            console=console,
+        )
+
         console.print("[green]Namespace saved successfully.[/green]")
-    except minimega.Error as exp:
+        console.print(
+            f"[green]Final ns save host status:[/green] [cyan]{final_ns_save_status}[/cyan]"
+        )
+    except (minimega.Error, RuntimeError) as exp:
         console.print(f"[error]Error saving namespace: {exp}[/error]")
         return 1
 
