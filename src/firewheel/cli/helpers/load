@@ -19,6 +19,7 @@ DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 import argparse
+import filecmp
 import json
 import os
 import re
@@ -62,6 +63,136 @@ def _rollback_guidance() -> None:
     )
 
 
+def _files_are_identical(source: Path, destination: Path) -> bool:
+    """Return whether two files are byte-for-byte identical.
+
+    Args:
+        source: Source file path.
+        destination: Destination file path.
+
+    Returns:
+        True if both files exist and have identical contents, otherwise False.
+    """
+    if not source.is_file() or not destination.is_file():
+        return False
+    return filecmp.cmp(source, destination, shallow=False)
+
+
+def _directories_are_identical(source: Path, destination: Path) -> bool:
+    """Return whether two directory trees are identical.
+
+    Args:
+        source: Source directory path.
+        destination: Destination directory path.
+
+    Returns:
+        True if the directory trees have identical structure and file contents,
+        otherwise False.
+    """
+    if not source.is_dir() or not destination.is_dir():
+        return False
+
+    comparison = filecmp.dircmp(source, destination)
+
+    if comparison.left_only or comparison.right_only or comparison.funny_files:
+        return False
+
+    _, mismatch, errors = filecmp.cmpfiles(
+        source,
+        destination,
+        comparison.common_files,
+        shallow=False,
+    )
+    if mismatch or errors:
+        return False
+
+    for common_dir in comparison.common_dirs:
+        if not _directories_are_identical(source / common_dir, destination / common_dir):
+            return False
+
+    return True
+
+
+def _copytree_if_needed(source: Path, destination: Path, force: bool) -> bool:
+    """Copy a directory tree only when needed.
+
+    If the destination exists and is identical to the source, no action is taken.
+
+    Args:
+        source: Source directory.
+        destination: Destination directory.
+        force: Whether differing existing content may be overwritten.
+
+    Returns:
+        True if content was copied or overwritten, False if skipped because the
+        destination already matched the source.
+
+    Raises:
+        FileExistsError: If destination exists with different contents and
+            ``force`` is False.
+        OSError: If copying or deleting fails.
+    """
+    if not destination.exists():
+        shutil.copytree(source, destination)
+        return True
+
+    if _directories_are_identical(source, destination):
+        return False
+
+    if not force:
+        raise FileExistsError(
+            f"Destination already exists with different contents: {destination}"
+        )
+
+    if destination.is_dir():
+        shutil.rmtree(destination)
+    else:
+        destination.unlink()
+
+    shutil.copytree(source, destination)
+    return True
+
+
+def _copyfile_if_needed(source: Path, destination: Path, force: bool) -> bool:
+    """Copy a file only when needed.
+
+    If the destination exists and is identical to the source, no action is taken.
+
+    Args:
+        source: Source file.
+        destination: Destination file.
+        force: Whether differing existing content may be overwritten.
+
+    Returns:
+        True if content was copied or overwritten, False if skipped because the
+        destination already matched the source.
+
+    Raises:
+        FileExistsError: If destination exists with different contents and
+            ``force`` is False.
+        OSError: If copying or deleting fails.
+    """
+    if not destination.exists():
+        shutil.copy2(source, destination)
+        return True
+
+    if _files_are_identical(source, destination):
+        return False
+
+    if not force:
+        raise FileExistsError(
+            f"Destination already exists with different contents: {destination}"
+        )
+
+    if destination.is_dir():
+        shutil.rmtree(destination)
+    else:
+        destination.unlink()
+
+    shutil.copy2(source, destination)
+    return True
+
+
 def _restore_vm_mapping(
     mapping_file: Path,
     vm_mapping: VMMapping,
@@ -74,11 +205,6 @@ def _restore_vm_mapping(
 
     Returns:
         Number of mapping entries restored.
-
-    Raises:
-        FileNotFoundError: If the mapping file is missing.
-        json.JSONDecodeError: If the mapping file is invalid JSON.
-        OSError: If the file cannot be read.
     """
     with mapping_file.open("r", encoding="utf-8") as f_handle:
         mapping = json.load(f_handle)
@@ -90,17 +216,11 @@ def _restore_vm_mapping(
 def _restore_experiment_time(experiment_time_path: Path) -> None:
     """Restore the experiment start time.
 
-    The restored start time is shifted relative to the current time using the
-    saved ``seconds_since_start`` value.
-
     Args:
         experiment_time_path: Path to saved experiment time JSON.
 
     Raises:
         ValueError: If the time file content is invalid.
-        FileNotFoundError: If the file is missing.
-        json.JSONDecodeError: If the file is invalid JSON.
-        OSError: If the file cannot be read.
     """
     with experiment_time_path.open("r", encoding="utf-8") as f_handle:
         time_obj = json.load(f_handle)
@@ -119,97 +239,75 @@ def _restore_experiment_files(
     exp_files: Path,
     destination: Path,
     force: bool,
-) -> None:
+) -> bool:
     """Restore VM state/HDD files into the saved experiment location.
 
     Args:
         exp_files: Source experiment directory from the backup.
         destination: Destination path in FileStore.
-        force: Whether to replace an existing destination directory.
+        force: Whether to replace differing existing content.
 
-    Raises:
-        FileExistsError: If destination exists and force is False.
-        OSError: If copy fails.
+    Returns:
+        True if files were copied, False if already identical.
     """
-    if destination.exists():
-        if not force:
-            raise FileExistsError(f"Destination already exists: {destination}")
-        shutil.rmtree(destination)
-
-    shutil.copytree(exp_files, destination)
+    return _copytree_if_needed(exp_files, destination, force=force)
 
 
 def _restore_schedule_files(
     schedule_dir: Path,
     schedule_db: ScheduleDb,
     force: bool,
-) -> int:
+) -> tuple[int, int]:
     """Restore schedule files into the schedule cache.
 
     Args:
         schedule_dir: Source schedule directory.
         schedule_db: ScheduleDb instance.
-        force: Whether existing schedule files may be overwritten.
+        force: Whether differing existing files may be overwritten.
 
     Returns:
-        Number of schedule files restored.
-
-    Raises:
-        FileExistsError: If a destination exists and force is False.
-        OSError: If copy fails.
+        Tuple of:
+            - number of schedule files processed
+            - number of schedule files actually copied
     """
-    restored_count = 0
+    processed_count = 0
+    copied_count = 0
     destination_root = Path(schedule_db.cache.cache)
 
     for file in schedule_dir.iterdir():
         if not file.is_file():
             continue
 
+        processed_count += 1
         destination = destination_root / file.name
-        if destination.exists() and not force:
-            raise FileExistsError(
-                f"Schedule destination already exists: {destination}"
-            )
+        if _copyfile_if_needed(file, destination, force=force):
+            copied_count += 1
 
-        shutil.copy2(file, destination)
-        restored_count += 1
-
-    return restored_count
+    return processed_count, copied_count
 
 
 def _restore_optional_cache(
     source_dir: Path | None,
     destination_dir: Path,
-    label: str,
     force: bool,
-) -> bool:
+) -> tuple[bool, bool]:
     """Restore an optional cache directory if present.
 
     Args:
         source_dir: Source directory from the backup. If None, nothing is done.
         destination_dir: Destination cache directory.
-        label: Human-readable label for error messages.
-        force: Whether to replace an existing destination directory.
+        force: Whether differing existing content may be overwritten.
 
     Returns:
-        True if the cache was restored, otherwise False.
-
-    Raises:
-        FileExistsError: If destination exists and force is False.
-        OSError: If restore fails.
+        Tuple of:
+            - whether the optional cache exists in the backup
+            - whether it was actually copied
     """
     if source_dir is None:
-        return False
+        return False, False
 
-    if destination_dir.exists():
-        if not force:
-            raise FileExistsError(
-                f"{label} destination already exists: {destination_dir}"
-            )
-        shutil.rmtree(destination_dir)
-
-    shutil.copytree(source_dir, destination_dir)
-    return True
+    copied = _copytree_if_needed(source_dir, destination_dir, force=force)
+    return True, copied
 
 
 def update_socket_path(
@@ -217,16 +315,7 @@ def update_socket_path(
     vm_name_to_mm_id: Mapping[str, str],
     mm_base: str,
 ) -> None:
-    """Update the socket path in a process configuration.
-
-    Args:
-        process_config: Parsed process configuration.
-        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
-        mm_base: Minimega base directory.
-
-    Raises:
-        KeyError: If required fields or mappings are missing.
-    """
+    """Update the socket path in a process configuration."""
     original_socket_path = process_config["path"]
     socket_filename = os.path.basename(original_socket_path)
     vm_name = process_config["vm_name"]
@@ -235,45 +324,19 @@ def update_socket_path(
 
 
 def _unescape_embedded_json(escaped_json: str) -> str:
-    """Convert embedded escaped JSON text into normal JSON text.
-
-    Args:
-        escaped_json: Escaped JSON string from the launch line.
-
-    Returns:
-        Unescaped JSON text.
-    """
+    """Convert embedded escaped JSON text into normal JSON text."""
     return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
 
 
 def _escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
-    """Escape JSON text for reinsertion into a launch command line.
-
-    Args:
-        json_text: Raw JSON string.
-        is_mesh_command: Whether the command is a mesh command.
-
-    Returns:
-        Escaped JSON string.
-    """
+    """Escape JSON text for reinsertion into a launch command line."""
     if is_mesh_command:
         return json_text.replace('"', r'\\\"')
     return json_text.replace('"', r'\"')
 
 
 def parse_launch_command_line(line: str) -> tuple[str, dict[str, Any]]:
-    """Parse a launch command line into prefix and JSON configuration.
-
-    Args:
-        line: Input command line.
-
-    Returns:
-        Tuple of command prefix and parsed process configuration.
-
-    Raises:
-        ValueError: If the line is not in the expected format.
-        json.JSONDecodeError: If the embedded JSON is invalid.
-    """
+    """Parse a launch command line into prefix and JSON configuration."""
     stripped_line = line.rstrip("\n")
     match = _JSON_LINE_PATTERN.match(stripped_line)
     if match is None:
@@ -290,16 +353,7 @@ def update_launch_command_line(
     vm_name_to_mm_id: Mapping[str, str],
     mm_base: str,
 ) -> str:
-    """Update the JSON path field inside a launch command line.
-
-    Args:
-        line: Input launch command line.
-        vm_name_to_mm_id: Mapping from VM name to new minimega ID.
-        mm_base: Minimega base directory.
-
-    Returns:
-        Updated launch command line.
-    """
+    """Update the JSON path field inside a launch command line."""
     prefix, process_config = parse_launch_command_line(line)
     update_socket_path(process_config, vm_name_to_mm_id, mm_base)
 
@@ -310,14 +364,7 @@ def update_launch_command_line(
 
 
 def iter_process_configs(lines: Iterable[str]) -> list[dict[str, Any]]:
-    """Extract process configurations from launch command lines.
-
-    Args:
-        lines: Iterable of launch command lines.
-
-    Returns:
-        Parsed process configurations.
-    """
+    """Extract process configurations from launch command lines."""
     process_configs: list[dict[str, Any]] = []
     for line in lines:
         if not line.strip():
@@ -331,18 +378,7 @@ def build_vm_name_to_mm_id_map(
     process_configs: Iterable[Mapping[str, Any]],
     mm_api: minimegaAPI,
 ) -> dict[str, str]:
-    """Build a VM name to minimega ID mapping from running VMs.
-
-    Args:
-        process_configs: Parsed process configurations.
-        mm_api: Connected minimega API instance.
-
-    Returns:
-        Mapping from VM name to minimega ID.
-
-    Raises:
-        RuntimeError: If a VM cannot be matched.
-    """
+    """Build a VM name to minimega ID mapping from running VMs."""
     running_vms = mm_api.mm_vms()
 
     by_uuid: dict[str, dict[str, str]] = {}
@@ -390,14 +426,7 @@ def rewrite_launch_cmds_file(
     vm_name_to_mm_id: Mapping[str, str],
     mm_base: str,
 ) -> None:
-    """Rewrite a launch command file with updated socket paths.
-
-    Args:
-        input_path: Source launch command file.
-        output_path: Destination launch command file.
-        vm_name_to_mm_id: Mapping from VM name to minimega ID.
-        mm_base: Minimega base directory.
-    """
+    """Rewrite a launch command file with updated socket paths."""
     with input_path.open("r", encoding="utf-8") as infile, output_path.open(
         "w", encoding="utf-8"
     ) as outfile:
@@ -419,16 +448,7 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
     output_path: Path,
     mm_api: minimegaAPI,
 ) -> dict[str, str]:
-    """Rewrite launch_cmds.mm using current minimega IDs.
-
-    Args:
-        input_path: Source launch_cmds.mm.
-        output_path: Output rewritten launch command file.
-        mm_api: Connected minimega API instance.
-
-    Returns:
-        Mapping from VM name to minimega ID.
-    """
+    """Rewrite launch_cmds.mm using current minimega IDs."""
     with input_path.open("r", encoding="utf-8") as infile:
         process_configs = iter_process_configs(infile)
 
@@ -448,16 +468,7 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
 
 
 def _run_minimega_script(script_path: Path, description: str) -> None:
-    """Run a minimega script.
-
-    Args:
-        script_path: Script file to pass to minimega.
-        description: Human-readable action description.
-
-    Raises:
-        subprocess.CalledProcessError: If minimega returns non-zero.
-        OSError: If the command cannot be launched.
-    """
+    """Run a minimega script."""
     minimega_bin_path = os.path.join(
         fw_config["minimega"]["install_dir"], "bin", "minimega"
     )
@@ -477,11 +488,7 @@ def _run_minimega_script(script_path: Path, description: str) -> None:
 
 
 def _print_validation_summary(layout: BackupLayout) -> None:
-    """Print a validated backup summary.
-
-    Args:
-        layout: Validated backup layout.
-    """
+    """Print a validated backup summary."""
     manifest = layout.manifest
 
     table = Table(title="Validated Backup Summary")
@@ -511,42 +518,49 @@ def _validate_destination_paths(
 ) -> None:
     """Validate restore destination paths before modifying the system.
 
+    Existing identical content is allowed and will be skipped during restore.
+    Only differing content requires ``--force``.
+
     Args:
         layout: Validated backup layout.
         saved_exp_path: Target saved experiment path.
         schedule_db: Schedule database handle.
         imagestore_cache: ImageStore cache path.
         vm_resource_cache: VmResourceStore cache path.
-        force: Whether overwriting existing content is allowed.
+        force: Whether overwriting existing differing content is allowed.
 
     Raises:
-        FileExistsError: If an existing destination conflicts and force is False.
+        FileExistsError: If an existing destination differs and force is False.
     """
     conflicts: list[str] = []
 
-    if saved_exp_path.exists() and not force:
-        conflicts.append(str(saved_exp_path))
+    if saved_exp_path.exists():
+        if not _directories_are_identical(layout.experiment_dir, saved_exp_path) and not force:
+            conflicts.append(str(saved_exp_path))
 
     schedule_cache_root = Path(schedule_db.cache.cache)
     for schedule_file in layout.schedules_dir.iterdir():
         if not schedule_file.is_file():
             continue
         dest = schedule_cache_root / schedule_file.name
-        if dest.exists() and not force:
-            conflicts.append(str(dest))
+        if dest.exists():
+            if not _files_are_identical(schedule_file, dest) and not force:
+                conflicts.append(str(dest))
 
-    if layout.imagestore_dir is not None and imagestore_cache.exists() and not force:
-        conflicts.append(str(imagestore_cache))
+    if layout.imagestore_dir is not None and imagestore_cache.exists():
+        if not _directories_are_identical(layout.imagestore_dir, imagestore_cache) and not force:
+            conflicts.append(str(imagestore_cache))
 
-    if layout.vm_resource_store_dir is not None and vm_resource_cache.exists() and not force:
-        conflicts.append(str(vm_resource_cache))
+    if layout.vm_resource_store_dir is not None and vm_resource_cache.exists():
+        if not _directories_are_identical(layout.vm_resource_store_dir, vm_resource_cache) and not force:
+            conflicts.append(str(vm_resource_cache))
 
     if conflicts:
         conflict_text = "\n".join(f"  - {item}" for item in conflicts)
         raise FileExistsError(
-            "Restore would overwrite existing paths:\n"
+            "Restore would overwrite existing paths with different contents:\n"
             f"{conflict_text}\n"
-            "Rerun with --force to overwrite."
+            "Rerun with --force to overwrite differing content."
         )
 
 
@@ -555,26 +569,7 @@ def _restore_from_layout(
     dry_run: bool,
     force: bool,
 ) -> int:
-    """Restore VM state from a validated backup layout.
-
-    Restore order:
-        1. validate
-        2. ensure destination paths are okay
-        3. restore files
-        4. restore VM mapping
-        5. restore schedules
-        6. launch VMs
-        7. restore/rewrite handler processes
-        8. restore experiment time
-
-    Args:
-        layout: Validated backup layout.
-        dry_run: Whether to validate only.
-        force: Whether to overwrite existing content.
-
-    Returns:
-        ``0`` on success, ``1`` on failure.
-    """
+    """Restore VM state from a validated backup layout."""
     _print_validation_summary(layout)
 
     try:
@@ -627,6 +622,7 @@ def _restore_from_layout(
                 "[green]Would restore VmResourceStore cache to:[/green] "
                 f"[cyan]{vm_resource_cache}[/cyan]"
             )
+        console.print("[green]Existing identical files/directories would be reused without overwrite.[/green]")
         console.print("[green]Would restore experiment time last.[/green]")
         return 0
 
@@ -634,43 +630,53 @@ def _restore_from_layout(
         "experiment_name": experiment_name,
         "saved_exp_path": str(saved_exp_path),
         "vm_mapping_entries": 0,
-        "schedule_files": 0,
-        "restored_imagestore": False,
-        "restored_vm_resource_cache": False,
+        "schedule_files_processed": 0,
+        "schedule_files_copied": 0,
+        "experiment_files_copied": False,
+        "experiment_files_reused": False,
+        "imagestore_present": False,
+        "imagestore_copied": False,
+        "vm_resource_cache_present": False,
+        "vm_resource_cache_copied": False,
         "started_vms": False,
         "started_vm_resource_handlers": False,
         "restored_experiment_time": False,
     }
 
     try:
-        _restore_experiment_files(
+        experiment_files_copied = _restore_experiment_files(
             exp_files=layout.experiment_dir,
             destination=saved_exp_path,
             force=force,
         )
+        summary["experiment_files_copied"] = experiment_files_copied
+        summary["experiment_files_reused"] = not experiment_files_copied
 
-        if layout.imagestore_dir is not None:
-            summary["restored_imagestore"] = _restore_optional_cache(
-                source_dir=layout.imagestore_dir,
-                destination_dir=imagestore_cache,
-                label="ImageStore cache",
-                force=force,
-            )
+        imagestore_present, imagestore_copied = _restore_optional_cache(
+            source_dir=layout.imagestore_dir,
+            destination_dir=imagestore_cache,
+            force=force,
+        )
+        summary["imagestore_present"] = imagestore_present
+        summary["imagestore_copied"] = imagestore_copied
 
-        if layout.vm_resource_store_dir is not None:
-            summary["restored_vm_resource_cache"] = _restore_optional_cache(
-                source_dir=layout.vm_resource_store_dir,
-                destination_dir=vm_resource_cache,
-                label="VmResourceStore cache",
-                force=force,
-            )
+        vm_resource_cache_present, vm_resource_cache_copied = _restore_optional_cache(
+            source_dir=layout.vm_resource_store_dir,
+            destination_dir=vm_resource_cache,
+            force=force,
+        )
+        summary["vm_resource_cache_present"] = vm_resource_cache_present
+        summary["vm_resource_cache_copied"] = vm_resource_cache_copied
 
         summary["vm_mapping_entries"] = _restore_vm_mapping(
             layout.vm_mapping_path,
             vm_mapping,
         )
 
-        summary["schedule_files"] = _restore_schedule_files(
+        (
+            summary["schedule_files_processed"],
+            summary["schedule_files_copied"],
+        ) = _restore_schedule_files(
             layout.schedules_dir,
             schedule_db,
             force=force,
@@ -711,12 +717,20 @@ def _restore_from_layout(
 
     table.add_row("Experiment", str(summary["experiment_name"]))
     table.add_row("Saved experiment path", str(summary["saved_exp_path"]))
+    table.add_row("Experiment files copied", str(summary["experiment_files_copied"]))
+    table.add_row("Experiment files reused", str(summary["experiment_files_reused"]))
     table.add_row("VM mapping entries restored", str(summary["vm_mapping_entries"]))
-    table.add_row("Schedule files restored", str(summary["schedule_files"]))
-    table.add_row("ImageStore cache restored", str(summary["restored_imagestore"]))
+    table.add_row("Schedule files processed", str(summary["schedule_files_processed"]))
+    table.add_row("Schedule files copied", str(summary["schedule_files_copied"]))
+    table.add_row("ImageStore cache present", str(summary["imagestore_present"]))
+    table.add_row("ImageStore cache copied", str(summary["imagestore_copied"]))
     table.add_row(
-        "VmResourceStore cache restored",
-        str(summary["restored_vm_resource_cache"]),
+        "VmResourceStore cache present",
+        str(summary["vm_resource_cache_present"]),
+    )
+    table.add_row(
+        "VmResourceStore cache copied",
+        str(summary["vm_resource_cache_copied"]),
     )
     table.add_row("VMs launched", str(summary["started_vms"]))
     table.add_row(
@@ -737,16 +751,7 @@ def load_vm_state(
     dry_run: bool = False,
     force: bool = False,
 ) -> int:
-    """Load VM state from a backup directory or supported archive.
-
-    Args:
-        source: Source directory or archive path.
-        dry_run: Whether to validate only without modifying the system.
-        force: Whether to overwrite existing restore destinations.
-
-    Returns:
-        ``0`` on success, ``1`` on failure.
-    """
+    """Load VM state from a backup directory or supported archive."""
     source_path = Path(source).resolve()
 
     if not source_path.exists():
@@ -818,7 +823,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite existing restore destinations if they already exist.",
+        help="Overwrite existing restore destinations only when contents differ.",
     )
     args = parser.parse_args()
     sys.exit(
