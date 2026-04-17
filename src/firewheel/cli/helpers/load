@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from rich.console import Console
-from rich.table import Table
 
 from firewheel.cli.utils import cli_output_theme
 from firewheel.config import config as fw_config
