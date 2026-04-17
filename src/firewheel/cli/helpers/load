@@ -80,6 +80,14 @@ def _print_reused(message: str) -> None:
     """
     console.print(f"[yellow]↺ {message}[/yellow]")
 
+def _print_error(message: str) -> None:
+    """Print an error message.
+
+    Args:
+        message: Message to display.
+    """
+    console.print(f"[red]✗ {message}[/red]")
+
 
 def _print_result_card(title: str, lines: list[tuple[str, str]]) -> None:
     """Print a concise result card.
@@ -671,7 +679,7 @@ def _restore_from_layout(
         image_store = ImageStore()
         vm_resource_store = VmResourceStore()
     except Exception as exc:
-        console.print(f"[red]✗ Failed to initialize restore dependencies: {exc}[/red]")
+        _print_error(f"Failed to initialize restore dependencies: {exc}")
         return 1
 
     experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
@@ -690,7 +698,7 @@ def _restore_from_layout(
         )
         _print_success("Restore destinations validated")
     except FileExistsError as exc:
-        console.print(f"[red]✗ {exc}[/red]")
+        _print_error(f"{exc}")
         return 1
 
     if dry_run:
@@ -850,7 +858,7 @@ def _restore_from_layout(
         _print_success("Restored experiment time")
 
     except Exception as exc:
-        console.print(f"[red]✗ Restore failed: {exc}[/red]")
+        _print_error(f"Restore failed: {exc}")
         _rollback_guidance()
         return 1
 
@@ -938,15 +946,13 @@ def load_vm_state(
     console.print(f"[cyan]Source:[/cyan] {source_path}")
 
     if not source_path.exists():
-        console.print(f"[red]✗ Path [cyan]{source_path}[/cyan] does not exist.[/red]")
+        _print_error(f"Path [cyan]{source_path}[/cyan] does not exist.")
         return 1
 
     if source_path.is_file():
         if not is_supported_archive(source_path):
-            console.print(
-                f"[red]✗ File [cyan]{source_path}[/cyan] is not a supported archive. "
-                f"Expected one of: .tar.gz, .tgz, .tar[/red]"
-            )
+            _print_error(f"File [cyan]{source_path}[/cyan] is not a supported archive. "
+                         "Expected one of: .tar.gz, .tgz, .tar")
             return 1
 
         try:
@@ -963,8 +969,8 @@ def load_vm_state(
 
                 extracted_dirs = [p for p in temp_path.iterdir() if p.is_dir()]
                 if len(extracted_dirs) != 1:
-                    console.print(
-                        "[red]✗ Archive must extract to exactly one top-level backup directory.[/red]"
+                    _print_error(
+                        "Archive must extract to exactly one top-level backup directory."
                     )
                     return 1
 
@@ -975,9 +981,7 @@ def load_vm_state(
                 return _restore_from_layout(layout, dry_run=dry_run, force=force)
 
         except Exception as exc:
-            console.print(
-                f"[red]✗ Failed to load archive [cyan]{source_path}[/cyan]: {exc}[/red]"
-            )
+            _print_error(f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
             return 1
 
     if source_path.is_dir():
@@ -986,14 +990,10 @@ def load_vm_state(
             layout = validate_backup_directory(source_path)
             return _restore_from_layout(layout, dry_run=dry_run, force=force)
         except Exception as exc:
-            console.print(
-                f"[red]✗ Invalid backup directory [cyan]{source_path}[/cyan]: {exc}[/red]"
-            )
+            _print_error(f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
             return 1
 
-    console.print(
-        f"[red]✗ Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.[/red]"
-    )
+    _print_error(f"Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.")
     return 1
 
 if __name__ == "__main__":
