@@ -934,7 +934,7 @@ def load_vm_state(
     """
     source_path = Path(source).resolve()
 
-    _print_phase_header("Phase 0: Read Backup Source")
+    _print_phase_header("Phase 1: Read Backup Source")
     console.print(f"[cyan]Source:[/cyan] {source_path}")
 
     if not source_path.exists():
@@ -971,7 +971,6 @@ def load_vm_state(
                 extracted_root = extracted_dirs[0]
                 console.print(f"[cyan]Extracted backup root:[/cyan] {extracted_root}")
 
-                _print_phase_header("Phase 1: Inspect Backup Layout")
                 layout = validate_backup_directory(extracted_root)
                 return _restore_from_layout(layout, dry_run=dry_run, force=force)
 
@@ -984,7 +983,6 @@ def load_vm_state(
     if source_path.is_dir():
         try:
             _print_success("Using existing backup directory")
-            _print_phase_header("Phase 1: Inspect Backup Layout")
             layout = validate_backup_directory(source_path)
             return _restore_from_layout(layout, dry_run=dry_run, force=force)
         except Exception as exc:
