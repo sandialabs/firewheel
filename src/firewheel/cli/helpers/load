@@ -54,6 +54,43 @@ console = Console(theme=cli_output_theme)
 
 _JSON_LINE_PATTERN = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
 
+def _print_phase_header(title: str) -> None:
+    """Print a restore phase header.
+
+    Args:
+        title: Phase title to display.
+    """
+    console.rule(f"[bold blue]{title}[/bold blue]")
+
+
+def _print_success(message: str) -> None:
+    """Print a success message.
+
+    Args:
+        message: Message to display.
+    """
+    console.print(f"[green]✓ {message}[/green]")
+
+
+def _print_reused(message: str) -> None:
+    """Print a reused/skipped message.
+
+    Args:
+        message: Message to display.
+    """
+    console.print(f"[yellow]↺ {message}[/yellow]")
+
+
+def _print_result_card(title: str, lines: list[tuple[str, str]]) -> None:
+    """Print a concise result card.
+
+    Args:
+        title: Card title.
+        lines: Sequence of key/value pairs to display.
+    """
+    console.print(f"[bold]{title}[/bold]")
+    for key, value in lines:
+        console.print(f"  [cyan]{key:<26}[/cyan] {value}")
 
 def _rollback_guidance() -> None:
     """Print rollback guidance for partial restore failures."""
@@ -466,9 +503,36 @@ def rebuild_launch_cmds_file_with_current_mm_ids(
 
     return vm_name_to_mm_id
 
+def _count_started_background_processes(output: str) -> int:
+    """Count started background processes from minimega output.
 
-def _run_minimega_script(script_path: Path, description: str) -> None:
-    """Run a minimega script."""
+    Args:
+        output: Captured minimega command output.
+
+    Returns:
+        Number of lines indicating a background process was started.
+    """
+    count = 0
+    for line in output.splitlines():
+        if "Started background process with id" in line:
+            count += 1
+    return count
+
+def _run_minimega_script(script_path: Path) -> tuple[int, str]:
+    """Run a minimega script and capture its output.
+
+    Args:
+        script_path: Path to the minimega script.
+
+    Returns:
+        Tuple of:
+            - return code
+            - combined stdout/stderr text
+
+    Raises:
+        subprocess.CalledProcessError: If minimega returns a non-zero status.
+        OSError: If the command cannot be launched.
+    """
     minimega_bin_path = os.path.join(
         fw_config["minimega"]["install_dir"], "bin", "minimega"
     )
@@ -482,31 +546,48 @@ def _run_minimega_script(script_path: Path, description: str) -> None:
             str(script_path),
         ],
         check=True,
+        capture_output=True,
+        text=True,
     )
 
-    console.print(f"[green]{description}: ret={result.returncode}.[/green]")
+    combined_output = ""
+    if result.stdout:
+        combined_output += result.stdout
+    if result.stderr:
+        if combined_output:
+            combined_output += "\n"
+        combined_output += result.stderr
 
+    return result.returncode, combined_output
 
 def _print_validation_summary(layout: BackupLayout) -> None:
-    """Print a validated backup summary."""
+    """Print a concise validated backup summary.
+
+    Args:
+        layout: Validated backup layout.
+    """
     manifest = layout.manifest
 
-    table = Table(title="Validated Backup Summary")
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="green")
-
-    table.add_row("Root directory", str(layout.root_dir))
-    table.add_row("Experiment name", str(manifest.get("experiment_name", layout.experiment_dir.name)))
-    table.add_row("Experiment dir", layout.experiment_dir.name)
-    table.add_row("Format version", str(manifest.get("format_version")))
-    table.add_row("Created at", str(manifest.get("created_at")))
-    table.add_row("Schedule count", str(manifest.get("schedule_count")))
-    table.add_row("Has launch_cmds.mm", str(layout.launch_cmds_path is not None))
-    table.add_row("Has ImageStore cache", str(layout.imagestore_dir is not None))
-    table.add_row("Has VmResourceStore cache", str(layout.vm_resource_store_dir is not None))
-
-    console.print(table)
-
+    _print_result_card(
+        "Validated Backup",
+        [
+            ("Root directory", str(layout.root_dir)),
+            (
+                "Experiment name",
+                str(manifest.get("experiment_name", layout.experiment_dir.name)),
+            ),
+            ("Experiment dir", layout.experiment_dir.name),
+            ("Format version", str(manifest.get("format_version"))),
+            ("Created at", str(manifest.get("created_at"))),
+            ("Schedule count", str(manifest.get("schedule_count"))),
+            ("Has launch_cmds.mm", str(layout.launch_cmds_path is not None)),
+            ("Has ImageStore cache", str(layout.imagestore_dir is not None)),
+            (
+                "Has VmResourceStore cache",
+                str(layout.vm_resource_store_dir is not None),
+            ),
+        ],
+    )
 
 def _validate_destination_paths(
     layout: BackupLayout,
@@ -569,8 +650,19 @@ def _restore_from_layout(
     dry_run: bool,
     force: bool,
 ) -> int:
-    """Restore VM state from a validated backup layout."""
+    """Restore VM state from a validated backup layout.
+
+    Args:
+        layout: Validated backup layout.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite differing existing content.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
+    _print_phase_header("Phase 2: Validate Backup")
     _print_validation_summary(layout)
+    _print_success("Backup validated")
 
     try:
         saved_exp = FileStore("saved")
@@ -579,7 +671,7 @@ def _restore_from_layout(
         image_store = ImageStore()
         vm_resource_store = VmResourceStore()
     except Exception as exc:
-        console.print(f"[red]Failed to initialize restore dependencies: {exc}[/red]")
+        console.print(f"[red]✗ Failed to initialize restore dependencies: {exc}[/red]")
         return 1
 
     experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
@@ -596,34 +688,40 @@ def _restore_from_layout(
             vm_resource_cache=vm_resource_cache,
             force=force,
         )
+        _print_success("Restore destinations validated")
     except FileExistsError as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"[red]✗ {exc}[/red]")
         return 1
 
     if dry_run:
-        console.rule("[bold yellow]Dry Run Summary[/bold yellow]")
-        console.print("[green]Backup validation succeeded.[/green]")
-        console.print(f"[green]Experiment:[/green] [cyan]{experiment_name}[/cyan]")
-        console.print(f"[green]Would restore saved experiment files to:[/green] [cyan]{saved_exp_path}[/cyan]")
-        console.print(f"[green]Would restore VM mapping from:[/green] [cyan]{layout.vm_mapping_path}[/cyan]")
-        console.print(f"[green]Would restore schedules from:[/green] [cyan]{layout.schedules_dir}[/cyan]")
-        console.print(f"[green]Would launch saved VMs via:[/green] [cyan]{layout.launch_mm_path}[/cyan]")
-        if layout.launch_cmds_path is not None:
-            console.print(
-                f"[green]Would rewrite and launch VM resource handlers from:[/green] "
-                f"[cyan]{layout.launch_cmds_path}[/cyan]"
-            )
-        if layout.imagestore_dir is not None:
-            console.print(
-                f"[green]Would restore ImageStore cache to:[/green] [cyan]{imagestore_cache}[/cyan]"
-            )
-        if layout.vm_resource_store_dir is not None:
-            console.print(
-                "[green]Would restore VmResourceStore cache to:[/green] "
-                f"[cyan]{vm_resource_cache}[/cyan]"
-            )
-        console.print("[green]Existing identical files/directories would be reused without overwrite.[/green]")
-        console.print("[green]Would restore experiment time last.[/green]")
+        _print_phase_header("Dry Run Summary")
+        _print_success("Dry run completed successfully")
+        _print_result_card(
+            "Planned Restore",
+            [
+                ("Experiment", experiment_name),
+                ("Saved VM files", str(saved_exp_path)),
+                ("VM mapping", str(layout.vm_mapping_path)),
+                ("Schedules", str(layout.schedules_dir)),
+                ("Launch VMs via", str(layout.launch_mm_path)),
+                (
+                    "Launch handlers via",
+                    str(layout.launch_cmds_path) if layout.launch_cmds_path else "Not present",
+                ),
+                (
+                    "ImageStore cache",
+                    str(imagestore_cache) if layout.imagestore_dir is not None else "Not present",
+                ),
+                (
+                    "VmResourceStore cache",
+                    str(vm_resource_cache)
+                    if layout.vm_resource_store_dir is not None
+                    else "Not present",
+                ),
+                ("Experiment time", "Would restore last"),
+            ],
+        )
+        _print_reused("Existing identical files/directories would be reused without overwrite")
         return 0
 
     summary: dict[str, Any] = {
@@ -639,11 +737,14 @@ def _restore_from_layout(
         "vm_resource_cache_present": False,
         "vm_resource_cache_copied": False,
         "started_vms": False,
+        "vm_processes_started": 0,
         "started_vm_resource_handlers": False,
         "restored_experiment_time": False,
     }
 
     try:
+        _print_phase_header("Phase 3: Restore Data")
+
         experiment_files_copied = _restore_experiment_files(
             exp_files=layout.experiment_dir,
             destination=saved_exp_path,
@@ -651,6 +752,10 @@ def _restore_from_layout(
         )
         summary["experiment_files_copied"] = experiment_files_copied
         summary["experiment_files_reused"] = not experiment_files_copied
+        if experiment_files_copied:
+            _print_success("Restored saved VM files")
+        else:
+            _print_reused("Reused existing saved VM files")
 
         imagestore_present, imagestore_copied = _restore_optional_cache(
             source_dir=layout.imagestore_dir,
@@ -659,6 +764,11 @@ def _restore_from_layout(
         )
         summary["imagestore_present"] = imagestore_present
         summary["imagestore_copied"] = imagestore_copied
+        if imagestore_present:
+            if imagestore_copied:
+                _print_success("Restored ImageStore cache")
+            else:
+                _print_reused("Reused existing ImageStore cache")
 
         vm_resource_cache_present, vm_resource_cache_copied = _restore_optional_cache(
             source_dir=layout.vm_resource_store_dir,
@@ -667,10 +777,18 @@ def _restore_from_layout(
         )
         summary["vm_resource_cache_present"] = vm_resource_cache_present
         summary["vm_resource_cache_copied"] = vm_resource_cache_copied
+        if vm_resource_cache_present:
+            if vm_resource_cache_copied:
+                _print_success("Restored VmResourceStore cache")
+            else:
+                _print_reused("Reused existing VmResourceStore cache")
 
         summary["vm_mapping_entries"] = _restore_vm_mapping(
             layout.vm_mapping_path,
             vm_mapping,
+        )
+        _print_success(
+            f"Restored VM mapping ({summary['vm_mapping_entries']} entries)"
         )
 
         (
@@ -681,10 +799,27 @@ def _restore_from_layout(
             schedule_db,
             force=force,
         )
+        if summary["schedule_files_copied"] == summary["schedule_files_processed"]:
+            _print_success(
+                f"Restored schedules ({summary['schedule_files_copied']} files)"
+            )
+        elif summary["schedule_files_copied"] == 0:
+            _print_reused(
+                f"Reused existing schedules ({summary['schedule_files_processed']} files)"
+            )
+        else:
+            _print_success(
+                "Restored schedules "
+                f"({summary['schedule_files_copied']} copied, "
+                f"{summary['schedule_files_processed'] - summary['schedule_files_copied']} reused)"
+            )
 
-        _run_minimega_script(saved_exp_path / "launch.mm", "Started saved VMs")
+        _print_phase_header("Phase 4: Launch VMs")
+        _, vm_launch_output = _run_minimega_script(saved_exp_path / "launch.mm")
         summary["started_vms"] = True
+        _print_success("Started saved VMs")
 
+        _print_phase_header("Phase 5: Launch VM Resource Handlers")
         if layout.launch_cmds_path is not None:
             mm_api = minimegaAPI()
             launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
@@ -693,75 +828,123 @@ def _restore_from_layout(
                 output_path=launch_cmd_updated_path,
                 mm_api=mm_api,
             )
-            console.print(
-                f"[green]Mapped VM names to minimega IDs:[/green] [cyan]{vm_name_to_mm_id}[/cyan]"
+            _print_success(
+                f"Rebuilt VM resource handler socket paths for {len(vm_name_to_mm_id)} VMs"
             )
-            _run_minimega_script(
-                launch_cmd_updated_path,
-                "Started VM Resource scripts",
+
+            _, handler_output = _run_minimega_script(launch_cmd_updated_path)
+            summary["vm_processes_started"] = _count_started_background_processes(
+                handler_output
             )
             summary["started_vm_resource_handlers"] = True
+            _print_success(
+                "Started VM resource handlers "
+                f"({summary['vm_processes_started']} processes launched)"
+            )
+        else:
+            _print_reused("No VM resource handler launch file present; skipping")
 
+        _print_phase_header("Phase 6: Finalize Restore")
         _restore_experiment_time(layout.experiment_time_path)
         summary["restored_experiment_time"] = True
+        _print_success("Restored experiment time")
 
     except Exception as exc:
-        console.print(f"[red]Restore failed: {exc}[/red]")
+        console.print(f"[red]✗ Restore failed: {exc}[/red]")
         _rollback_guidance()
         return 1
 
-    console.rule("[bold green]Load Summary[/bold green]")
-    table = Table(title="Restore Result")
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="green")
-
-    table.add_row("Experiment", str(summary["experiment_name"]))
-    table.add_row("Saved experiment path", str(summary["saved_exp_path"]))
-    table.add_row("Experiment files copied", str(summary["experiment_files_copied"]))
-    table.add_row("Experiment files reused", str(summary["experiment_files_reused"]))
-    table.add_row("VM mapping entries restored", str(summary["vm_mapping_entries"]))
-    table.add_row("Schedule files processed", str(summary["schedule_files_processed"]))
-    table.add_row("Schedule files copied", str(summary["schedule_files_copied"]))
-    table.add_row("ImageStore cache present", str(summary["imagestore_present"]))
-    table.add_row("ImageStore cache copied", str(summary["imagestore_copied"]))
-    table.add_row(
-        "VmResourceStore cache present",
-        str(summary["vm_resource_cache_present"]),
+    _print_phase_header("Restore Complete")
+    _print_success("Experiment restore completed successfully")
+    _print_result_card(
+        "Restore Result",
+        [
+            ("Experiment", str(summary["experiment_name"])),
+            ("Saved VM path", str(summary["saved_exp_path"])),
+            (
+                "Saved VM files",
+                "Copied" if summary["experiment_files_copied"] else "Reused",
+            ),
+            (
+                "VM mapping entries",
+                str(summary["vm_mapping_entries"]),
+            ),
+            (
+                "Schedules",
+                (
+                    f"{summary['schedule_files_copied']} copied / "
+                    f"{summary['schedule_files_processed'] - summary['schedule_files_copied']} reused"
+                ),
+            ),
+            (
+                "ImageStore cache",
+                (
+                    "Not present"
+                    if not summary["imagestore_present"]
+                    else ("Copied" if summary["imagestore_copied"] else "Reused")
+                ),
+            ),
+            (
+                "VmResourceStore cache",
+                (
+                    "Not present"
+                    if not summary["vm_resource_cache_present"]
+                    else (
+                        "Copied" if summary["vm_resource_cache_copied"] else "Reused"
+                    )
+                ),
+            ),
+            ("VMs launched", "Yes" if summary["started_vms"] else "No"),
+            (
+                "VM handlers launched",
+                (
+                    f"Yes ({summary['vm_processes_started']} processes)"
+                    if summary["started_vm_resource_handlers"]
+                    else "No"
+                ),
+            ),
+            (
+                "Experiment time",
+                "Restored" if summary["restored_experiment_time"] else "Not restored",
+            ),
+        ],
     )
-    table.add_row(
-        "VmResourceStore cache copied",
-        str(summary["vm_resource_cache_copied"]),
+    console.print(
+        "[yellow]Next step:[/yellow] "
+        "The restored experiment is paused by design. "
+        "Resume when ready with [cyan]firewheel vm resume --all[/cyan]."
     )
-    table.add_row("VMs launched", str(summary["started_vms"]))
-    table.add_row(
-        "VM resource handlers launched",
-        str(summary["started_vm_resource_handlers"]),
-    )
-    table.add_row(
-        "Experiment time restored",
-        str(summary["restored_experiment_time"]),
-    )
-
-    console.print(table)
     return 0
-
 
 def load_vm_state(
     source: str,
     dry_run: bool = False,
     force: bool = False,
 ) -> int:
-    """Load VM state from a backup directory or supported archive."""
+    """Load VM state from a backup directory or supported archive.
+
+    Args:
+        source: Source directory or archive path.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite existing restore destinations only when
+            contents differ.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
     source_path = Path(source).resolve()
 
+    _print_phase_header("Phase 0: Read Backup Source")
+    console.print(f"[cyan]Source:[/cyan] {source_path}")
+
     if not source_path.exists():
-        console.print(f"[red]Error: Path [cyan]{source_path}[/cyan] does not exist.[/red]")
+        console.print(f"[red]✗ Path [cyan]{source_path}[/cyan] does not exist.[/red]")
         return 1
 
     if source_path.is_file():
         if not is_supported_archive(source_path):
             console.print(
-                f"[red]Error: File [cyan]{source_path}[/cyan] is not a supported archive. "
+                f"[red]✗ File [cyan]{source_path}[/cyan] is not a supported archive. "
                 f"Expected one of: .tar.gz, .tgz, .tar[/red]"
             )
             return 1
@@ -769,41 +952,51 @@ def load_vm_state(
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
+
                 with console.status(
-                    "[yellow]Decompressing experiment archive...[/yellow]",
+                    "[yellow]Extracting experiment archive...[/yellow]",
                     spinner="line",
                 ):
                     extract_archive_safely(source_path, temp_path)
 
+                _print_success("Archive extracted safely")
+
                 extracted_dirs = [p for p in temp_path.iterdir() if p.is_dir()]
                 if len(extracted_dirs) != 1:
                     console.print(
-                        "[red]Archive must extract to exactly one top-level backup directory.[/red]"
+                        "[red]✗ Archive must extract to exactly one top-level backup directory.[/red]"
                     )
                     return 1
 
-                layout = validate_backup_directory(extracted_dirs[0])
+                extracted_root = extracted_dirs[0]
+                console.print(f"[cyan]Extracted backup root:[/cyan] {extracted_root}")
+
+                _print_phase_header("Phase 1: Inspect Backup Layout")
+                layout = validate_backup_directory(extracted_root)
                 return _restore_from_layout(layout, dry_run=dry_run, force=force)
 
         except Exception as exc:
-            console.print(f"[red]Failed to load archive [cyan]{source_path}[/cyan]: {exc}[/red]")
+            console.print(
+                f"[red]✗ Failed to load archive [cyan]{source_path}[/cyan]: {exc}[/red]"
+            )
             return 1
 
     if source_path.is_dir():
         try:
+            _print_success("Using existing backup directory")
+            _print_phase_header("Phase 1: Inspect Backup Layout")
             layout = validate_backup_directory(source_path)
             return _restore_from_layout(layout, dry_run=dry_run, force=force)
         except Exception as exc:
             console.print(
-                f"[red]Invalid backup directory [cyan]{source_path}[/cyan]: {exc}[/red]"
+                f"[red]✗ Invalid backup directory [cyan]{source_path}[/cyan]: {exc}[/red]"
             )
             return 1
 
     console.print(
-        f"[red]Error: Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.[/red]"
+        f"[red]✗ Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.[/red]"
     )
     return 1
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
