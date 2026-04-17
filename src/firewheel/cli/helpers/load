@@ -829,6 +829,3 @@ if __name__ == "__main__":
         )
     )
 DONE
-RUN Helpers ON control
-vm resume --all
-DONE

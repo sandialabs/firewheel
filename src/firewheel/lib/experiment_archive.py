@@ -7,6 +7,7 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from datetime import timezone, datetime
 
 
 MANIFEST_FILENAME = "manifest.json"
@@ -109,11 +110,10 @@ def build_manifest(
     Returns:
         Manifest dictionary.
     """
-    from datetime import UTC, datetime
 
     return {
         "format_version": FORMAT_VERSION,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_name": experiment_name,
         "experiment_dir_name": experiment_dir_name,
         "complete": complete,

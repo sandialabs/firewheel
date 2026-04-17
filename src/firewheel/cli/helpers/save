@@ -26,7 +26,7 @@ import math
 import pickle
 import shutil
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -230,7 +230,7 @@ def save_vm_state(
     try:
         experiment_time = check_time()
     except RuntimeError as exc:
-        console.print(f"[error]ERROR: saving namespace: {exc}[/error]")
+        console.print(f"[error]ERROR: {exc}[/error]")
         return 1
 
     try:
@@ -449,7 +449,7 @@ if __name__ == "__main__":
         prog="firewheel save",
     )
     default_experiment_name = (
-        f"firewheel_experiment_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+        f"firewheel_experiment_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     )
     parser.add_argument(
         "-n",
@@ -484,7 +484,4 @@ if __name__ == "__main__":
             archive=args.archive,
         )
     )
-DONE
-RUN Helpers ON control
-restart
 DONE
