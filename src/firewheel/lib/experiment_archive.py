@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import tarfile
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
-from datetime import timezone, datetime
+from pathlib import Path
+from datetime import datetime, timezone
+from dataclasses import dataclass
 from importlib.metadata import version
-from firewheel.lib.utilities import get_safe_tarfile_members
 
+from firewheel.lib.utilities import get_safe_tarfile_members
 
 MANIFEST_FILENAME = "manifest.json"
 VM_MAPPING_FILENAME = "vm_mapping.json"
@@ -127,7 +127,9 @@ def build_manifest(
             "schedules_dir": SCHEDULES_DIRNAME,
             "launch_cmds": LAUNCH_CMDS_FILENAME if has_launch_cmds else None,
             "imagestore_cache": IMAGESTORE_DIRNAME if has_imagestore_cache else None,
-            "vm_resource_cache": VMRESOURCESTORE_DIRNAME if has_vm_resource_cache else None,
+            "vm_resource_cache": VMRESOURCESTORE_DIRNAME
+            if has_vm_resource_cache
+            else None,
         },
         "schedule_count": schedule_count,
     }
@@ -150,8 +152,6 @@ def load_manifest(root_dir: Path) -> dict[str, Any]:
     manifest_path = root_dir / MANIFEST_FILENAME
     with manifest_path.open("r", encoding="utf-8") as f_handle:
         return json.load(f_handle)
-
-
 
 
 def extract_archive_safely(archive_path: Path, destination: Path) -> None:
@@ -250,7 +250,9 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
     if not schedules_dir.exists():
         raise FileNotFoundError(f"Missing required directory: {schedules_dir}")
     if not schedules_dir.is_dir():
-        raise NotADirectoryError(f"Expected directory but found otherwise: {schedules_dir}")
+        raise NotADirectoryError(
+            f"Expected directory but found otherwise: {schedules_dir}"
+        )
 
     experiment_dir = find_experiment_dir_by_launch_mm(root_dir)
     launch_mm_path = experiment_dir / "launch.mm"
@@ -272,7 +274,9 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
     imagestore_name = manifest.get("files", {}).get("imagestore_cache")
     imagestore_dir = root_dir / imagestore_name if imagestore_name else None
     if imagestore_dir is not None and not imagestore_dir.is_dir():
-        raise FileNotFoundError(f"Manifest references missing directory: {imagestore_dir}")
+        raise FileNotFoundError(
+            f"Manifest references missing directory: {imagestore_dir}"
+        )
 
     vm_resource_name = manifest.get("files", {}).get("vm_resource_cache")
     vm_resource_store_dir = root_dir / vm_resource_name if vm_resource_name else None

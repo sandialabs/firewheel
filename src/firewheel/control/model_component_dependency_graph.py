@@ -173,8 +173,7 @@ class ModelComponentDependencyGraph(DependencyGraph):
         """
         cycle_graphs = [self._build_cycle_graph(cycle) for cycle in self.get_cycles()]
         cycle_graph_outputs = [
-            self._format_cycle_graph_output(cycle_graph)
-            for cycle_graph in cycle_graphs
+            self._format_cycle_graph_output(cycle_graph) for cycle_graph in cycle_graphs
         ]
         all_cycle_graphs = "\n\n".join(cycle_graph_outputs)
 

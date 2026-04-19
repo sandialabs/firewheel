@@ -10,7 +10,6 @@ from functools import wraps as _wraps
 from rich.console import Console
 
 
-
 def unescape_embedded_json(escaped_json: str) -> str:
     """Convert embedded escaped JSON text into normal JSON text."""
     return escaped_json.replace(r"\\", "\\").replace(r"\"", '"')
@@ -19,8 +18,8 @@ def unescape_embedded_json(escaped_json: str) -> str:
 def escape_embedded_json(json_text: str, is_mesh_command: bool) -> str:
     """Escape JSON text for reinsertion into a launch command line."""
     if is_mesh_command:
-        return json_text.replace('"', r'\\\"')
-    return json_text.replace('"', r'\"')
+        return json_text.replace('"', r"\\\"")
+    return json_text.replace('"', r"\"")
 
 
 def files_are_identical(source: Path, destination: Path) -> bool:
@@ -67,7 +66,9 @@ def directories_are_identical(source: Path, destination: Path) -> bool:
         return False
 
     for common_dir in comparison.common_dirs:
-        if not _directories_are_identical(source / common_dir, destination / common_dir):
+        if not _directories_are_identical(
+            source / common_dir, destination / common_dir
+        ):
             return False
 
     return True
@@ -182,6 +183,7 @@ def print_reused(console, message: str) -> None:
     """
     console.print(f"[yellow]↺ {message}[/yellow]")
 
+
 def print_error(console, message: str) -> None:
     """Print an error message.
 
@@ -287,6 +289,7 @@ def get_safe_tarfile_members(
 
     return result
 
+
 def strtobool(val):
     """Convert a string representation of truth to true (1) or false (0).
     True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
@@ -374,7 +377,7 @@ def retry(num_tries, exceptions=None, base_delay=10, exp_factor=2):
         """
 
         @_wraps(func)
-        def f_retry(*args, **kwargs):  # noqa: DOC109
+        def f_retry(*args, **kwargs):
             """
             The retry loop which attempts the function ``num_tries`` times
             and will catch exceptions passed into exceptions, then sleep
