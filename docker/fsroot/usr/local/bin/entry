@@ -74,8 +74,8 @@ if tty -s; then
     if [ "$#" -eq 0 ]; then
 		while true;
 		do
-			tmux
-			read -p "Exit? (yes/no); " response
+			tmux attach 2>/dev/null || tmux
+			read -p "Exit and shutdown container? Your FIREWHEEL experiment will be destroyed (yes/no); " response
 			if [[ "$response" == "yes" || "$response" == "y" || $response == "Y" || "$response" == "Yes" ]];
 			then
 				break
