@@ -2,6 +2,7 @@ import random
 import shutil
 import filecmp
 import hashlib
+import tarfile
 import traceback
 from time import sleep
 from pathlib import Path
@@ -66,7 +67,7 @@ def directories_are_identical(source: Path, destination: Path) -> bool:
         return False
 
     for common_dir in comparison.common_dirs:
-        if not _directories_are_identical(
+        if not directories_are_identical(
             source / common_dir, destination / common_dir
         ):
             return False

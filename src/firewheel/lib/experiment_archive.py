@@ -135,7 +135,7 @@ def build_manifest(
     }
 
 
-def load_manifest(root_dir: Path) -> dict[str, Any]:
+def load_manifest(root_dir: Path) -> Any:
     """Load the manifest from a candidate backup root directory.
 
     Args:
@@ -169,7 +169,7 @@ def extract_archive_safely(archive_path: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "r:*") as archive:
         members = get_safe_tarfile_members(archive, destination)
-        archive.extractall(path=destination, members=members)
+        archive.extractall(path=destination, members=members)  # noqa: S202 members are pre-vetted for safety
 
 
 def find_experiment_dir_by_launch_mm(root_dir: Path) -> Path:

@@ -508,7 +508,7 @@ class minimegaAPI:  # noqa: N801
         result = subprocess.run(
             [
                 minimega_bin_path,
-                f"-base=self.mm_base",
+                f"-base={self.mm_base}",
                 "-e",
                 "read",
                 str(script_path),
