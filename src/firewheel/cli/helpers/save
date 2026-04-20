@@ -620,7 +620,7 @@ def save_vm_state(
     console.print(
         "[yellow]Next step:[/yellow] "
         "Restore this backup later with "
-        f"[cyan]firewheel load {next_source}[/cyan]."
+        f"[cyan]firewheel load {next_source}[/cyan]"
     )
 
     return 0
