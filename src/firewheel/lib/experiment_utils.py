@@ -9,6 +9,11 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from importlib.metadata import version
+import sys
+import math
+import pickle
+
+from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 from firewheel.lib.utilities import get_safe_tarfile_members
 
@@ -298,3 +303,29 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
         vm_resource_store_dir=vm_resource_store_dir,
         manifest=manifest,
     )
+
+
+def create_resume_schedule_entry(sched_db, con, vm_name):
+    """
+    Create a schedule entry for a RESUME event.
+
+    Args:
+        sched_db (ScheduleDb): A schedule database instance.
+        con (rich.console.Console): A console instance to use.
+        vm_name (str): The name of a VM for which the schedule was resumed.
+
+    Returns:
+        list: A list of :py:class:`ScheduleEntry` objects.
+    """
+    pickled_schedule = sched_db.get(vm_name)
+    if not pickled_schedule:
+        con.print(f"[b red]Unable to get schedule for VM: [cyan]{vm_name}")
+        sys.exit(1)
+    schedule = pickle.loads(pickled_schedule)
+
+    # ScheduleEntry will have been loaded prior to this point automatically.
+    sched_entry = ScheduleEntry(-math.inf)
+    entry = {"resume": True}
+    sched_entry.data.append(entry)
+    schedule.append(sched_entry)
+    return schedule
