@@ -115,7 +115,7 @@ def build_manifest(
 
     return {
         "format_version": FORMAT_VERSION,
-        "FIREWHEEL version": version("firewheel"),
+        "fw_version": version("firewheel"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_name": experiment_name,
         "experiment_dir_name": experiment_dir_name,

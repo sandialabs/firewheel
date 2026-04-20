@@ -328,7 +328,7 @@ def _print_validation_summary(layout: BackupLayout) -> None:
                 "Experiment name",
                 str(manifest.get("experiment_name", layout.experiment_dir.name)),
             ),
-            ("Experiment dir", layout.experiment_dir.name),
+            ("FIREWHEEL version", str(manifest.get("fw_version"))),
             ("Format version", str(manifest.get("format_version"))),
             ("Created at", str(manifest.get("created_at"))),
             ("Schedule count", str(manifest.get("schedule_count"))),
