@@ -98,7 +98,7 @@ def get_vm_count_not_ready(mapping=None, log=None):
         log (logging.Logger): An optional logger that can to output results.
 
     Returns:
-        str: Count of the number of VMs not in the "configured" or
+        str: Count of the number of VMs not in the "VMState.CONFIGURED" or
              "N/A" vm_resources state.
     """
     close = False

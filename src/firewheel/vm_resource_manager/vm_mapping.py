@@ -2,11 +2,37 @@
 Interface to the mapping between VMs, their current (vm resource) state, and other
 metadata.
 """
-
+from enum import Enum
 from firewheel.config import config
 from firewheel.lib.log import Log
 from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
 
+
+class VMState(str, Enum):
+    """
+    Valid virtual machine lifecycle states.
+
+    This enum defines the allowed values that may be reported to the
+    infrastructure through ``set_state()``. Each enum member uses a
+    string value so it can be passed directly to APIs, logging, and
+    comparisons without needing additional conversion.
+
+    States:
+        CONFIGURING:
+            The VM is currently being configured.
+
+        CONFIGURED:
+            The VM configuration has completed successfully. When all
+            VMs reach this state, the experiment start time may be set.
+
+        FAILED:
+            The VM failed during configuration or could not reach the
+            configured state.
+    """
+
+    CONFIGURING = "configuring"
+    CONFIGURED = "configured"
+    FAILED = "failed"
 
 class VMMapping:
     """
