@@ -475,6 +475,7 @@ def _restore_from_layout(
             ],
         )
         print_reused(console, "Existing identical files/directories would be reused without overwrite")
+        print_success(console, "No changes were made")
         return 0
 
     summary: dict[str, Any] = {
