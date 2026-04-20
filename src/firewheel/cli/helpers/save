@@ -66,6 +66,7 @@ from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
+
 def _print_save_summary(
     console: Console,
     experiment_name: str,
@@ -219,7 +220,7 @@ def prune_schedule_entries(
         raise RuntimeError(f"Schedule file not found at {schedule_path}: {exp}") from exp
     except json.JSONDecodeError as exp:
         print_error(console, f"Error decoding JSON from schedule file {schedule_path}: {exp}")
-        
+
         raise RuntimeError(
             f"Error decoding JSON from schedule file {schedule_path}: {exp}"
         ) from exp
@@ -407,7 +408,7 @@ def save_vm_state(
 
     try:
         saved_exp = FileStore("saved")
-    except OSError as exp:
+    except OSError:
         print_error(console, "FileStore connection failed.")
         return 1
 
