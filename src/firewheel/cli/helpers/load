@@ -687,7 +687,7 @@ def load_vm_state(
     """
     source_path = Path(source).resolve()
 
-    print_phase_header("Phase 1: Read Backup Source")
+    print_phase_header(console, "Phase 1: Read Backup Source")
     console.print(f"[cyan]Source:[/cyan] {source_path}")
 
     if not source_path.exists():
