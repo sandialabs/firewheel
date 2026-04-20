@@ -18,36 +18,44 @@ DONE
 
 RUN LocalPython ON control
 #!/usr/bin/env python
-import argparse
-import filecmp
-import json
 import os
 import re
-import shutil
-import subprocess
 import sys
+import json
+import argparse
 import tempfile
-from datetime import datetime, timedelta, timezone
+from typing import Any, Mapping, Iterable
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
 
 from firewheel.cli.utils import cli_output_theme
-from firewheel.config import config as fw_config
+from firewheel.lib.utilities import (
+    print_error,
+    print_reused,
+    print_success,
+    print_result_card,
+    copyfile_if_needed,
+    copytree_if_needed,
+    print_phase_header,
+    files_are_identical,
+    escape_embedded_json,
+    unescape_embedded_json,
+    directories_are_identical,
+)
+from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.control.image_store import ImageStore
 from firewheel.lib.experiment_archive import (
     BackupLayout,
-    extract_archive_safely,
     is_supported_archive,
+    extract_archive_safely,
     validate_backup_directory,
 )
-from firewheel.lib.minimega.api import minimegaAPI
-from firewheel.lib.utilities import unescape_embedded_json, escape_embedded_json, print_phase_header, print_result_card, print_error, print_reused, print_success, copyfile_if_needed, copytree_if_needed, directories_are_identical, files_are_identical
 from firewheel.lib.minimega.file_store import FileStore
-from firewheel.vm_resource_manager.experiment_start import ExperimentStart
-from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 console = Console(theme=cli_output_theme)
@@ -414,7 +422,7 @@ def _restore_from_layout(
         schedule_db = ScheduleDb()
         image_store = ImageStore()
         vm_resource_store = VmResourceStore()
-    except Exception as exc:
+    except OSError as exc:
         print_error(console, f"Failed to initialize restore dependencies: {exc}")
         return 1
 
@@ -560,7 +568,7 @@ def _restore_from_layout(
             )
         mm_api = minimegaAPI()
         print_phase_header(console, "Phase 4: Launch VMs")
-        _, vm_launch_output = mm_api.run_minimega_script(saved_exp_path / "launch.mm")
+        _, _vm_launch_output = mm_api.run_minimega_script(saved_exp_path / "launch.mm")
         summary["started_vms"] = True
         print_success(console, "Started saved VMs")
 
@@ -593,8 +601,8 @@ def _restore_from_layout(
         summary["restored_experiment_time"] = True
         print_success(console, "Restored experiment time")
 
-    except Exception as exc:
-        print_error(console, f"Restore failed: {exc}")
+    # This is reasonable to catch at this level to report any failure during the restore process
+    except Exception:  # noqa: BLE001
         _rollback_guidance()
         return 1
 
@@ -715,7 +723,7 @@ def load_vm_state(
                 layout = validate_backup_directory(extracted_root)
                 return _restore_from_layout(layout, dry_run=dry_run, force=force)
 
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             print_error(console, f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
             return 1
 
@@ -724,7 +732,7 @@ def load_vm_state(
             print_success(console, "Using existing backup directory")
             layout = validate_backup_directory(source_path)
             return _restore_from_layout(layout, dry_run=dry_run, force=force)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             print_error(console, f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
             return 1
 

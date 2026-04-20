@@ -67,9 +67,7 @@ def directories_are_identical(source: Path, destination: Path) -> bool:
         return False
 
     for common_dir in comparison.common_dirs:
-        if not directories_are_identical(
-            source / common_dir, destination / common_dir
-        ):
+        if not directories_are_identical(source / common_dir, destination / common_dir):
             return False
 
     return True
