@@ -630,7 +630,7 @@ def _restore_from_layout(
         res_schedules = resume_all_schedules(mm_api, schedule_db)
         print_success(f"Resumed VM Resource Handling for {res_schedules} VMs.")
 
-        
+
 
     # This is reasonable to catch at this level to report any failure during the restore process
     except Exception:  # noqa: BLE001
@@ -772,7 +772,7 @@ def load_vm_state(
 
 def resume_all_schedules(mm_api, schedule_db) -> int:
     """Create schedule entries to resume all VMs in the current experiment.
-    
+
     Arguments:
         mm_api: An instance of the minimegaAPI to interact with minimega.
         schedule_db: An instance of the ScheduleDb to store the resume schedules.
@@ -788,8 +788,8 @@ def resume_all_schedules(mm_api, schedule_db) -> int:
             {"server_name": name, "text": pickle.dumps(sched), "ip": None}
         )
     schedule_db.batch_put(schedules, True)
-    return len(schedules)    
-    
+    return len(schedules)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load VM state and schedule files from a backup directory or archive.",

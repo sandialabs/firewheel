@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+import sys
 import json
+import math
+import pickle
 import tarfile
 from typing import Any
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from importlib.metadata import version
-import sys
-import math
-import pickle
-
-from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 from firewheel.lib.utilities import get_safe_tarfile_members
+from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 MANIFEST_FILENAME = "manifest.json"
 VM_MAPPING_FILENAME = "vm_mapping.json"
