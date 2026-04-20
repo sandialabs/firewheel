@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import json
+import pickle
 import argparse
 import tempfile
 from typing import Any, Mapping, Iterable
@@ -46,11 +47,12 @@ from firewheel.lib.utilities import (
 )
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.control.image_store import ImageStore
-from firewheel.lib.experiment_archive import (
+from firewheel.lib.experiment_utils import (
     BackupLayout,
     is_supported_archive,
     extract_archive_safely,
     validate_backup_directory,
+    create_resume_schedule_entry,
 )
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
@@ -625,6 +627,10 @@ def _restore_from_layout(
         _restore_experiment_time(layout.experiment_time_path)
         summary["restored_experiment_time"] = True
         print_success(console, "Restored experiment time")
+        res_schedules = resume_all_schedules(mm_api, schedule_db)
+        print_success(f"Resumed VM Resource Handling for {res_schedules} VMs.")
+
+        
 
     # This is reasonable to catch at this level to report any failure during the restore process
     except Exception:  # noqa: BLE001
@@ -764,6 +770,26 @@ def load_vm_state(
     print_error(console, f"Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.")
     return 1
 
+def resume_all_schedules(mm_api, schedule_db) -> int:
+    """Create schedule entries to resume all VMs in the current experiment.
+    
+    Arguments:
+        mm_api: An instance of the minimegaAPI to interact with minimega.
+        schedule_db: An instance of the ScheduleDb to store the resume schedules.
+
+    Returns:
+        Number of VMs for which resume schedules were created.
+    """
+    schedules = []
+    mm_dict = mm_api.mm_vms()
+    for name in mm_dict:
+        sched = create_resume_schedule_entry(schedule_db, console, name)
+        schedules.append(
+            {"server_name": name, "text": pickle.dumps(sched), "ip": None}
+        )
+    schedule_db.batch_put(schedules, True)
+    return len(schedules)    
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load VM state and schedule files from a backup directory or archive.",

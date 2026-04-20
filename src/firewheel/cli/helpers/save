@@ -53,7 +53,7 @@ from firewheel.lib.utilities import (
 )
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.control.image_store import ImageStore
-from firewheel.lib.experiment_archive import (
+from firewheel.lib.experiment_utils import (
     SCHEDULES_DIRNAME,
     IMAGESTORE_DIRNAME,
     VMRESOURCESTORE_DIRNAME,
@@ -620,7 +620,8 @@ def save_vm_state(
     console.print(
         "[yellow]Next step:[/yellow] "
         "Restore this backup later with "
-        f"[cyan]firewheel load {next_source}[/cyan]"
+        f"[cyan]firewheel load {next_source}[/cyan]\n"
+        "or use [cyan]firewheel vm resume --all[/cyan] to resume the current experiment."
     )
 
     return 0
