@@ -28,7 +28,7 @@ from firewheel.lib.log import UTCLog
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.vm_resource_manager import api, utils
 from firewheel.control.repository_db import RepositoryDb
-from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
+from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_event import (
     ScheduleEvent,
@@ -338,7 +338,8 @@ class VMResourceHandler:
                         # the vm_resource
                         timer_target = (
                             self.run_vm_resource_host
-                            if schedule_entry.on_host else self.run_vm_resource
+                            if schedule_entry.on_host
+                            else self.run_vm_resource
                         )
                         thread = Timer(delay, timer_target, args=(schedule_entry,))
                         # Positive time vm_resources don't get held onto since
@@ -1428,7 +1429,7 @@ class VMResourceHandler:
          If the new state is ``VMState.CONFIGURED``, then check whether this
         VM is the last VM to be configured. If it is, set the experiment
         start time.
-        
+
         State transition rule(s):
         - Once a VM reaches ``VMState.CONFIGURED``, it may only transition
           to ``VMState.FAILED``. Attempts to move from ``configured`` back

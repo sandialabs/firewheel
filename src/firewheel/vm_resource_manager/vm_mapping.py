@@ -2,7 +2,9 @@
 Interface to the mapping between VMs, their current (vm resource) state, and other
 metadata.
 """
+
 from enum import Enum
+
 from firewheel.config import config
 from firewheel.lib.log import Log
 from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
@@ -33,6 +35,7 @@ class VMState(str, Enum):
     CONFIGURING = "configuring"
     CONFIGURED = "configured"
     FAILED = "failed"
+
 
 class VMMapping:
     """
