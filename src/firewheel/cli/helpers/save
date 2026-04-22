@@ -3,15 +3,54 @@ FIREWHEEL Team
 DONE
 
 DESCRIPTION
-This Helper saves the current state of all VMs in the VM mapping and schedule
-database after making a Minimega API call to "ns save". The saved information
-is written into a backup directory and can optionally be compressed into a
-single archive.
+Save the current state of a running FIREWHEEL experiment into a backup directory.
+This Helper captures the current minimega namespace state, VM mapping, experiment
+time metadata, schedule files, optional cache content, and VM Resource handler
+launch information. The backup is written to a directory in the current working
+directory and can optionally be archived into a single ``.tar`` file.
 
-**Usage:**  ``firewheel save [--name EXPERIMENT_NAME] [--complete] [--archive]``
+During save, FIREWHEEL waits for all minimega hosts to complete the namespace
+save operation before continuing. The saved schedule files are also modified so
+that completed entries are removed and a break is prepended, causing a restored
+experiment to come back in a paused state until resumed by the user.
 
-Example
-+++++++
+**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
+
+Arguments
++++++++++
+
+All arguments are optional.
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show a help message and exit.
+
+.. option:: -n, --name <NAME>
+
+    Name of the experiment to save. If not provided, a timestamped default name is
+    generated in the form ``firewheel_experiment_<UTC timestamp>``.
+
+.. option:: -c, --complete
+
+    Save all files from the experiment, including cached images and VM Resource
+    cache content.
+
+.. option:: -a, --archive
+
+    Archive the saved experiment directory as a single ``.tar`` file in addition to
+    leaving the backup directory on disk.
+
+Examples
+++++++++
+
+``firewheel save``
+
+``firewheel save --name my_experiment``
+
+``firewheel save --complete``
 
 ``firewheel save --name my_experiment --complete --archive``
 

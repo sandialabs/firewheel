@@ -3,16 +3,66 @@ FIREWHEEL Team
 DONE
 
 DESCRIPTION
-This Helper loads the state of all VMs from a FIREWHEEL backup directory or
-compressed archive. It restores the VM mapping, schedule files, optional cache
-content, saved VM files, and relaunches VM resource handler processes.
+Load a previously saved FIREWHEEL experiment from either a backup directory or a
+supported tar archive. This Helper validates the backup layout and metadata,
+ensures that no experiment is currently running, restores saved VM files,
+restores VM configuration state and schedules, restores optional cache content when present,
+launches the saved VMs, rebuilds and relaunches VM Resource handlers when needed,
+and restores experiment time metadata.
 
-**Usage:**  ``firewheel load SOURCE [--dry-run] [--force]``
+If restore destinations already exist and are identical to the backup content,
+they are reused automatically. If they differ, the Helper requires the
+:option:`load --force` option before overwriting them.
 
-Example
-+++++++
+Backups restored with this Helper come back in a paused state by design. Users
+should resume the experiment with :ref:`helper_vm_resume` when ready.
 
-``firewheel load /path/to/my_experiment_backup.tar --force``
+**Usage:**  ``firewheel load [-h] [--dry-run] [--force] source``
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show a help message and exit.
+
+.. option:: --dry-run
+
+    Validate the backup and restore targets without making any changes.
+
+.. option:: --force
+
+    Overwrite existing restore destinations only when their contents differ from
+    the backup.
+
+Positional Arguments
+^^^^^^^^^^^^^^^^^^^^
+
+.. option:: source
+
+    Path to the backup directory or supported archive file to restore.
+
+    Supported archive types are:
+
+    * ``.tar``
+    * ``.tar.gz``
+    * ``.tgz``
+
+Examples
+++++++++
+
+``firewheel load my_experiment_backup``
+
+``firewheel load my_experiment_backup.tar``
+
+``firewheel load my_experiment_backup --dry-run``
+
+``firewheel load my_experiment_backup --force``
+
+``firewheel load my_experiment_backup.tgz --force``
 
 DONE
 
