@@ -2,7 +2,7 @@ ansible: {}
 attribute_defaults: {}
 cli:
     cache_dir: fw_cli
-    root_dir: ""
+    root_dir: /tmp/firewheel
 cluster:
     compute: []
     control: []
@@ -13,9 +13,9 @@ discovery:
 grpc:
     cache_dir: fw_grpc
     db: prod
-    hostname: ""
+    hostname: localhost
     port: 50051
-    root_dir: ""
+    root_dir: /tmp/firewheel
     threads: 2
 logging:
     cli_log: cli.log
@@ -23,13 +23,13 @@ logging:
     firewheel_log: firewheel.log
     level: DEBUG
     minimega_log: minimega.log
-    root_dir: ""
+    root_dir: /tmp/firewheel
     vmr_log_dir: vm_resource_logs
 minimega:
     base_dir: /tmp/minimega
     control_bridge: mega_bridge
     degree: 1
-    experiment_interface: ""
+    experiment_interface: lo
     files_dir: /tmp/minimega/files
     install_dir: /opt/minimega
     namespace: firewheel
