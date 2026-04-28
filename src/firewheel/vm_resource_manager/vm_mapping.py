@@ -155,6 +155,7 @@ class VMMapping:
             raise ValueError("Must provide server_uuid")
 
         return self._deserialize_vm_mapping_state(vmm)
+
     def get_all(
         self, filter_time=None, filter_state=None, project_dict=None, length=False
     ):
@@ -202,7 +203,10 @@ class VMMapping:
                         continue
                 else:
                     filter_text = str(filter_state).lower()
-                    if filter_text not in state.value.lower() and filter_text not in state.name.lower():
+                    if (
+                        filter_text not in state.value.lower()
+                        and filter_text not in state.name.lower()
+                    ):
                         continue
 
             ret.append(vmm)

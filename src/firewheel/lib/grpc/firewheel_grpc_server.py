@@ -13,8 +13,8 @@ from google.protobuf.json_format import Parse
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
-from firewheel.vm_resource_manager.vm_mapping import VMState
 from firewheel.lib.grpc import firewheel_grpc_pb2, firewheel_grpc_pb2_grpc
+from firewheel.vm_resource_manager.vm_mapping import VMState
 
 
 class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
