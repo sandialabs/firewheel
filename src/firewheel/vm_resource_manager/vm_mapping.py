@@ -91,6 +91,45 @@ class VMMapping:
         """
         self.grpc_client.close()
 
+    def _serialize_vm_mapping_state(self, vmm):
+        """
+        Convert a VMState enum in a VM mapping into its string value for transport.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: A copy of the VM mapping with ``state`` converted to its
+            string value when needed.
+        """
+        serialized = dict(vmm)
+        if "state" in serialized and isinstance(serialized["state"], VMState):
+            serialized["state"] = serialized["state"].value
+        return serialized
+
+    def _deserialize_vm_mapping_state(self, vmm):
+        """
+        Convert a serialized VM mapping state string back into a VMState enum.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: The VM mapping with ``state`` converted to ``VMState`` when
+            present.
+        """
+        if not vmm or "state" not in vmm or vmm["state"] is None:
+            return vmm
+
+        deserialized = dict(vmm)
+        state = deserialized["state"]
+
+        if isinstance(state, VMState):
+            return deserialized
+
+        deserialized["state"] = VMState(state)
+        return deserialized
+
     def get(self, server_uuid=None):
         """
         Retrieve a single entry from the database. This can only retrieve
@@ -110,7 +149,8 @@ class VMMapping:
             vmm = self.grpc_client.get_vm_mapping_by_uuid(server_uuid)
         else:
             raise ValueError("Must provide server_uuid")
-        return vmm
+
+        return self._deserialize_vm_mapping_state(vmm)
 
     def get_all(
         self, filter_time=None, filter_state=None, project_dict=None, length=False
@@ -126,7 +166,7 @@ class VMMapping:
         Args:
             filter_time (int): Only return VM information when the current
                                relative time matches this value.
-            filter_state (str): Only return VM information when the current
+            filter_state (str | VMState): Only return VM information when the current
                                 vm resource state matches this value.
             project_dict (dict): Only return VM information from these keys.
             length (bool): Should the function return how many VMs are in the list
@@ -137,19 +177,24 @@ class VMMapping:
             dictionary is the same as would be returned for the VM if retrieved
             using `get()`. If length is `True`, returns the length of the list.
         """
-
         if not project_dict:
             project_dict = {"_id": 0}
 
         vmms = self.grpc_client.list_vm_mappings()
         ret = []
 
+        if filter_state is not None:
+            filter_state = VMState(filter_state)
+
         for vmm in vmms:
+            vmm = self._deserialize_vm_mapping_state(vmm)
+
             if filter_time and vmm["current_time"] != filter_time:
                 continue
-            if filter_state and filter_state not in vmm["state"]:
+            if filter_state is not None and vmm["state"] != filter_state:
                 continue
             ret.append(vmm)
+
         if length:
             return len(ret)
 
@@ -169,11 +214,14 @@ class VMMapping:
         Args:
             server_uuid (str): UUID of the VM.
             server_name (str): Hostname of the VM.
-            state (VMState): Vm Resource state the VM starts in. Defaults to :py:attr:`VMState.UNINITIALIZED`.
+            state (VMState | str): Vm Resource state the VM starts in.
+                Defaults to :py:attr:`VMState.UNINITIALIZED`.
             current_time (str): The current (relative) time for the VM.
                 Defaults to '', meaning the VM has not contacted the server yet.
             server_address (str): The `control_ip` of the host where the VM Resource is found.
         """
+        state = VMState(state)
+
         document = {
             "server_uuid": server_uuid,
             "server_name": server_name,
@@ -181,7 +229,7 @@ class VMMapping:
             "current_time": current_time,
             "control_ip": server_address,
         }
-        self.grpc_client.set_vm_mapping(document)
+        self.grpc_client.set_vm_mapping(self._serialize_vm_mapping_state(document))
 
     def set_vm_state_by_uuid(self, uuid, state):
         """
@@ -189,14 +237,17 @@ class VMMapping:
 
         Args:
             uuid (str): UUID of the VM.
-            state (VMState): The new state for the VM.
+            state (VMState | str): The new state for the VM.
 
         Returns:
             dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`.
         """
+        state = VMState(state)
         vmm = {"server_uuid": uuid, "state": state}
-        ret = self.grpc_client.set_vm_state_by_uuid(vmm)
-        return ret
+        ret = self.grpc_client.set_vm_state_by_uuid(
+            self._serialize_vm_mapping_state(vmm)
+        )
+        return self._deserialize_vm_mapping_state(ret)
 
     def set_vm_time_by_uuid(self, uuid, time):
         """
@@ -211,7 +262,7 @@ class VMMapping:
         """
         vmm = {"server_uuid": uuid, "current_time": time}
         ret = self.grpc_client.set_vm_time_by_uuid(vmm)
-        return ret
+        return self._deserialize_vm_mapping_state(ret)
 
     def get_count_vm_not_ready(self):
         """
@@ -266,7 +317,7 @@ class VMMapping:
         if "state" not in entry:
             new_entry["state"] = VMState.UNINITIALIZED
         else:
-            new_entry["state"] = entry["state"]
+            new_entry["state"] = VMState(entry["state"])
 
         if "current_time" not in entry:
             new_entry["current_time"] = ""
@@ -281,7 +332,7 @@ class VMMapping:
 
     def batch_put(self, server_list):
         """
-        Add a list of VM information  to the database as a batch update. Each
+        Add a list of VM information to the database as a batch update. Each
         entry in the list is a dictionary specifying the relevant information.
 
         Args:
@@ -300,7 +351,6 @@ class VMMapping:
                                 Only `server_uuid` and `server_name` fields are
                                 required for each entry in the list.
         """
-        # Avoid polluting the up-stream data structures.
         for entry in server_list:
             new_entry = self.prepare_put(entry)
             self.put(
