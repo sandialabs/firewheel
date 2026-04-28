@@ -99,7 +99,7 @@ def get_vm_count_not_ready(mapping=None, log=None):
 
     Returns:
         str: Count of the number of VMs not in the "VMState.CONFIGURED" or
-             "N/A" vm_resources state.
+             "VMState.NA" vm_resources state.
     """
     close = False
     if mapping is None:
