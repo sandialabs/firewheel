@@ -9,7 +9,7 @@ import pytest
 
 from firewheel.config import config
 from firewheel.vm_resource_manager import api
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
@@ -91,7 +91,7 @@ echo 'Hello, World!'
         )
         self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
         self.assertEqual(
-            result["state"], config["vm_resource_manager"]["default_state"]
+            result["state"], VMState.UNINITIALIZED
         )
 
     def test_add_vm_no_vm_resources(self):
@@ -154,7 +154,7 @@ echo 'Hello, World!'
         )
         self.assertEqual(
             states[self.vmmapping_entries[0]["server_name"]],
-            config["vm_resource_manager"]["default_state"],
+            VMState.UNINITIALIZED,
         )
 
     def test_get_vm_states_with_filter(self):

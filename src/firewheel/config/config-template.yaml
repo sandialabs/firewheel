@@ -50,5 +50,4 @@ test:
     vm_resource_store_test_database: testVmResourceDB
     vmmapping_test_database: testVmMappingDB
 vm_resource_manager:
-    default_state: uninitialized
     experiment_start_buffer_sec: 60

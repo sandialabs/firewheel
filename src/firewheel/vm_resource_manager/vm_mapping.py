@@ -20,6 +20,9 @@ class VMState(str, Enum):
     comparisons without needing additional conversion.
 
     States:
+        UNINITIALIZED:
+            The VM has not yet contacted the server or been set to any state.
+    
         CONFIGURING:
             The VM is currently being configured.
 
@@ -30,11 +33,16 @@ class VMState(str, Enum):
         FAILED:
             The VM failed during configuration or could not reach the
             configured state.
-    """
 
+        TESTING:
+            The VM is currently running tests. This is a user-defined state that may be used
+            as desired, but it is not used by the VRM system itself.
+    """
+    UNINITIALIZED = "uninitialized"
     CONFIGURING = "configuring"
     CONFIGURED = "configured"
     FAILED = "failed"
+    TESTING = "testing"
 
 
 class VMMapping:
@@ -150,7 +158,7 @@ class VMMapping:
         self,
         server_uuid,
         server_name,
-        state=config["vm_resource_manager"]["default_state"],
+        state=VMState.UNINITIALIZED,
         current_time="",
         server_address="",
     ):
@@ -160,13 +168,10 @@ class VMMapping:
         Args:
             server_uuid (str): UUID of the VM.
             server_name (str): Hostname of the VM.
-            state (str): Vm Resource state the VM starts in. Defaults to the
-                         configured default state (located in the FIREWHEEL configuration).
+            state (VMState): Vm Resource state the VM starts in. Defaults to :py:attr:`VMState.UNINITIALIZED`.
             current_time (str): The current (relative) time for the VM.
-                                Defaults to '', meaning the VM has not contacted the
-                                server yet.
-            server_address (str): The `control_ip` of the host where the VM Resource
-                                  is found.
+                Defaults to '', meaning the VM has not contacted the server yet.
+            server_address (str): The `control_ip` of the host where the VM Resource is found.
         """
         document = {
             "server_uuid": server_uuid,
@@ -183,7 +188,7 @@ class VMMapping:
 
         Args:
             uuid (str): UUID of the VM.
-            state (str): The new state for the VM.
+            state (VMState): The new state for the VM.
 
         Returns:
             dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`.
@@ -258,7 +263,7 @@ class VMMapping:
         }
 
         if "state" not in entry:
-            new_entry["state"] = config["vm_resource_manager"]["default_state"]
+            new_entry["state"] = VMState.UNINITIALIZED
         else:
             new_entry["state"] = entry["state"]
 
