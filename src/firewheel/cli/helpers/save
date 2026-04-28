@@ -1,0 +1,710 @@
+AUTHOR
+FIREWHEEL Team
+DONE
+
+DESCRIPTION
+Save the current state of a running FIREWHEEL experiment into a backup directory.
+This Helper captures the current minimega namespace state, VM mapping, experiment
+time metadata, schedule files, optional cache content, and VM Resource handler
+launch information. The backup is written to a directory in the current working
+directory and can optionally be archived into a single ``.tar`` file.
+
+During save, FIREWHEEL waits for all minimega hosts to complete the namespace
+save operation before continuing. The saved schedule files are also modified so
+that completed entries are removed and a break is prepended, causing a restored
+experiment to come back in a paused state until resumed by the user.
+
+**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
+
+Arguments
++++++++++
+
+All arguments are optional.
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show a help message and exit.
+
+.. option:: -n, --name <NAME>
+
+    Name of the experiment to save. If not provided, a timestamped default name is
+    generated in the form ``firewheel_experiment_<UTC timestamp>``.
+
+.. option:: -c, --complete
+
+    Save all files from the experiment, including cached images and VM Resource
+    cache content.
+
+.. option:: -a, --archive
+
+    Archive the saved experiment directory as a single ``.tar`` file in addition to
+    leaving the backup directory on disk.
+
+Examples
+++++++++
+
+``firewheel save``
+
+``firewheel save --name my_experiment``
+
+``firewheel save --complete``
+
+``firewheel save --name my_experiment --complete --archive``
+
+DONE
+
+RUN LocalPython ON control
+#!/usr/bin/env python
+import sys
+import json
+import math
+import time
+import base64
+import pickle
+import shutil
+import argparse
+from typing import Any
+from pathlib import Path
+from datetime import datetime, timezone
+
+import minimega
+from rich.console import Console
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TextColumn,
+    MofNCompleteColumn,
+    TimeRemainingColumn,
+)
+
+import firewheel.vm_resource_manager.api as vm_resource_api
+from firewheel.config import config
+from firewheel.cli.utils import cli_output_theme
+from firewheel.lib.utilities import (
+    print_error,
+    print_reused,
+    print_success,
+    print_result_card,
+    print_phase_header,
+)
+from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.control.image_store import ImageStore
+from firewheel.lib.experiment_utils import (
+    SCHEDULES_DIRNAME,
+    IMAGESTORE_DIRNAME,
+    VMRESOURCESTORE_DIRNAME,
+    build_manifest,
+    write_manifest,
+)
+from firewheel.lib.minimega.file_store import FileStore
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+
+
+def _print_save_summary(
+    console: Console,
+    experiment_name: str,
+    output_dir: Path,
+    schedule_count: int,
+    launch_cmds_included: bool,
+    imagestore_included: bool,
+    vm_resource_cache_included: bool,
+    archive_path: Path | None,
+) -> None:
+    """Print a concise save result card.
+
+    Args:
+        console: Console used for output.
+        experiment_name: Saved experiment name.
+        output_dir: Backup directory path.
+        schedule_count: Number of saved schedule files.
+        launch_cmds_included: Whether launch_cmds.mm was included.
+        imagestore_included: Whether ImageStore cache was included.
+        vm_resource_cache_included: Whether VmResourceStore cache was included.
+        archive_path: Optional archive path if one was created.
+    """
+    print_result_card(
+        console,
+        "Saved Backup",
+        [
+            ("Experiment name", experiment_name),
+            ("Backup directory", str(output_dir)),
+            ("Schedule files", str(schedule_count)),
+            (
+                "launch_cmds.mm",
+                "Included" if launch_cmds_included else "Not included",
+            ),
+            (
+                "ImageStore cache",
+                "Included" if imagestore_included else "Not included",
+            ),
+            (
+                "VmResourceStore cache",
+                "Included" if vm_resource_cache_included else "Not included",
+            ),
+            (
+                "Archive",
+                str(archive_path) if archive_path is not None else "Not created",
+            ),
+        ],
+    )
+
+def create_break_schedule_entry(start_time: int | float) -> ScheduleEntry:
+    """Create a break schedule entry.
+
+    A break event is represented as a ``ScheduleEntry`` with a pause event of
+    infinite duration.
+
+    Args:
+        start_time: Time at which the break should begin. Must be negative
+            infinity, 0, or any positive value. A value of 0 is converted to
+            ``sys.float_info.min`` to match FIREWHEEL behavior.
+
+    Returns:
+        A schedule entry containing an indefinite pause event.
+
+    Raises:
+        ValueError: If ``start_time`` is a negative finite value.
+    """
+    if start_time < 0 and not math.isinf(start_time):
+        raise ValueError(
+            "Valid start times for pause and break only include negative "
+            "infinity or greater than or equal to 0."
+        )
+
+    normalized_start_time: int | float = start_time
+    if start_time == 0:
+        normalized_start_time = sys.float_info.min
+
+    break_entry = ScheduleEntry(normalized_start_time)
+    break_entry.add_pause(math.inf)
+    return break_entry
+
+
+def prepend_break_to_schedule(
+    schedule_entries: list[ScheduleEntry],
+    start_time: int | float,
+) -> list[ScheduleEntry]:
+    """Prepend a break entry to a list of schedule entries.
+
+    Args:
+        schedule_entries: Existing schedule entries.
+        start_time: Time at which the break should begin.
+
+    Returns:
+        A new schedule list beginning with a break entry.
+    """
+    break_entry = create_break_schedule_entry(start_time)
+    return [break_entry, *schedule_entries]
+
+
+def check_time() -> dict[str, str | int]:
+    """Collect experiment time metadata.
+
+    Returns:
+        Dictionary containing the original experiment start time and the current
+        elapsed seconds since experiment start.
+
+    Raises:
+        RuntimeError: If the experiment has no start time.
+    """
+    experiment_time = vm_resource_api.get_experiment_start_time()
+
+    if not experiment_time:
+        raise RuntimeError("Experiment must have a start time prior to saving!")
+
+    seconds_since_start = vm_resource_api.get_experiment_time_since_start()
+    if seconds_since_start:
+        seconds_since_start = int(seconds_since_start)
+    else:
+        seconds_since_start = 0
+
+    return {
+        "start_time": experiment_time.isoformat(),
+        "seconds_since_start": seconds_since_start,
+    }
+
+
+def prune_schedule_entries(
+    seconds_since_start: int,
+    schedule_path: Path,
+    output_location: Path,
+    console: Console,
+) -> None:
+    """Prune completed schedule entries and prepend a break event.
+
+    Args:
+        seconds_since_start: Number of seconds since the experiment started.
+        schedule_path: Path to the source schedule file.
+        output_location: Path where the updated schedule file will be written.
+        console: Console object used for output.
+
+    Raises:
+        RuntimeError: If the schedule file cannot be read, decoded, parsed,
+            or written.
+    """
+    schedule_obj: dict[str, Any]
+    try:
+        with schedule_path.open("r", encoding="utf8") as f_name:
+            schedule_obj = json.load(f_name)
+            decoded_text = base64.b64decode(schedule_obj["text"])
+            schedule_obj["text"] = decoded_text
+    except FileNotFoundError as exp:
+        print_error(console, f"Schedule file not found at {schedule_path}: {exp}")
+        raise RuntimeError(f"Schedule file not found at {schedule_path}: {exp}") from exp
+    except json.JSONDecodeError as exp:
+        print_error(console, f"Error decoding JSON from schedule file {schedule_path}: {exp}")
+
+        raise RuntimeError(
+            f"Error decoding JSON from schedule file {schedule_path}: {exp}"
+        ) from exp
+
+    try:
+        cur_schedule: list[ScheduleEntry] = pickle.loads(schedule_obj["text"])
+    except pickle.UnpicklingError as exp:
+        print_error(console, f"Error loading schedule file {schedule_path}: {exp}")
+        raise RuntimeError(f"Error loading schedule file {schedule_path}: {exp}") from exp
+
+    updated_schedule = [
+        entry for entry in cur_schedule if entry.start_time > seconds_since_start
+    ]
+    updated_schedule = prepend_break_to_schedule(updated_schedule, start_time=0)
+
+    updated_schedule_obj = {
+        "text": base64.b64encode(pickle.dumps(updated_schedule)).decode("UTF-8"),
+        "server_name": schedule_obj["server_name"],
+        "ip": schedule_obj["ip"],
+    }
+
+    try:
+        with output_location.open("w", encoding="utf8") as f_name:
+            json.dump(updated_schedule_obj, f_name)
+    except OSError as exp:
+        print_error(console, f"Error writing updated schedule file to {output_location}: {exp}")
+        raise RuntimeError(
+            f"Error writing updated schedule file to {output_location}: {exp}"
+        ) from exp
+
+def wait_for_ns_save_completion(
+    mm_api: minimegaAPI,
+    console: Console,
+    timeout_seconds: int = 600,
+    poll_interval_seconds: float = 1.0,
+) -> dict[str, dict[str, int]]:
+    """Wait for minimega namespace save completion across all hosts.
+
+    After ``ns_save(name=...)`` is issued, minimega continues saving
+    asynchronously. This function polls ``ns_save()`` with no arguments until
+    every reported host has ``completed == total``.
+
+    Args:
+        mm_api: Connected minimega API instance.
+        console: Console used to render progress output.
+        timeout_seconds: Maximum time to wait for completion.
+        poll_interval_seconds: Delay between polling attempts.
+
+    Returns:
+        Mapping keyed by host name containing integer ``completed`` and ``total``
+        values for the final successful poll.
+
+    Raises:
+        RuntimeError: If the status output is malformed or save does not
+            complete before the timeout.
+        minimega.Error: If minimega returns an error while polling.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    last_status: dict[str, dict[str, int]] = {}
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task(
+            "[green]Waiting for namespace save to complete...",
+            total=None,
+        )
+
+        while time.monotonic() < deadline:
+            raw_status = mm_api.mm.ns_save()
+            mapped_status = mm_api.mmr_map(raw_status)
+
+            if not mapped_status:
+                raise RuntimeError("minimega ns save status returned no host data")
+
+            all_complete = True
+            current_status: dict[str, dict[str, int]] = {}
+            aggregate_completed = 0
+            aggregate_total = 0
+            host_summaries: list[str] = []
+
+            for host, rows in mapped_status.items():
+                if len(rows) != 1:
+                    raise RuntimeError(
+                        f"Unexpected ns save status row count for host {host!r}: {rows!r}"
+                    )
+
+                row = rows[0]
+                try:
+                    completed = int(row["completed"])
+                    total = int(row["total"])
+                except (KeyError, ValueError) as exc:
+                    raise RuntimeError(
+                        f"Unexpected ns save status format for host {host!r}: {row!r}"
+                    ) from exc
+
+                current_status[host] = {
+                    "completed": completed,
+                    "total": total,
+                }
+                aggregate_completed += completed
+                aggregate_total += total
+                host_summaries.append(f"{host}: {completed}/{total}")
+
+                if completed != total:
+                    all_complete = False
+
+            last_status = current_status
+
+            progress.update(
+                task_id,
+                total=aggregate_total,
+                completed=aggregate_completed,
+                description=(
+                    "[green]Waiting for namespace save to complete... "
+                    f"({', '.join(host_summaries)})"
+                ),
+            )
+
+            if all_complete:
+                return last_status
+
+            time.sleep(poll_interval_seconds)
+
+    raise RuntimeError(
+        "Timed out waiting for minimega namespace save completion. "
+        f"Last status: {last_status}"
+    )
+
+def save_vm_state(
+    experiment_name: str = "firewheel_experiment",
+    complete: bool = False,
+    archive: bool = False,
+) -> int:
+    """Save the current VM state and schedule data.
+
+    This function saves the current experiment state into a directory named
+    ``<experiment_name>_backup`` in the current working directory. If
+    ``archive`` is True, that directory is additionally compressed into a
+    ``.tar`` archive.
+
+    Args:
+        experiment_name: The name of the experiment to save.
+        complete: If True, save all files from the experiment, including cached
+            images and VM resources.
+        archive: If True, archive the saved output directory as a ``.tar`` file.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+
+    Raises:
+        RuntimeError: If the FileStore connection fails.
+    """
+    console = Console(theme=cli_output_theme)
+    mm_api = minimegaAPI()
+
+    try:
+        experiment_time = check_time()
+    except RuntimeError as exc:
+        print_error(console, f"{exc}")
+        return 1
+
+    print_phase_header(console, "Phase 1: Save Namespace")
+    try:
+        with console.status(
+            "[yellow]Calling minimega to start namespace save...[/yellow]",
+            spinner="line",
+        ):
+            mm_api.mm.ns_save(name=experiment_name)
+
+        _final_ns_save_status = wait_for_ns_save_completion(
+            mm_api=mm_api,
+            console=console,
+        )
+
+        print_success(console, "Namespace saved successfully")
+        print_success(console, "Final ns save host status recorded")
+    except (minimega.Error, RuntimeError) as exp:
+        print_error(console, f"Error saving namespace: {exp}")
+        return 1
+
+    try:
+        saved_exp = FileStore("saved")
+    except OSError:
+        print_error(console, "FileStore connection failed.")
+        return 1
+
+    exp_files = Path(saved_exp.get_file_path(experiment_name))
+    vm_mapping = VMMapping()
+    schedule_db = ScheduleDb()
+
+    mapping = vm_mapping.get_all()
+    files = schedule_db.cache.list_distinct_contents()
+    schedule_db_paths = [Path(schedule_db.cache.get_path(file)) for file in files]
+
+    output_dir = Path.cwd() / f"{experiment_name}_backup"
+    if output_dir.exists():
+        print_error(
+            console,
+            f"Output directory [cyan]{output_dir}[/cyan] already exists.",
+        )
+        console.print(
+            "[yellow]Choose a different --name or remove the existing directory.[/yellow]"
+        )
+        return 1
+
+    try:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        print_error(
+            console,
+            f"Could not create output directory [cyan]{output_dir}[/cyan]: {exc}",
+        )
+        return 1
+
+    launch_cmds_included = False
+    imagestore_included = False
+    vm_resource_cache_included = False
+
+    print_phase_header(console, "Phase 2: Collect Restore Data")
+
+    try:
+        if exp_files.exists():
+            with console.status(
+                "[yellow]Copying VM State/HDD files...[/yellow]",
+                spinner="line",
+            ):
+                shutil.copytree(exp_files, output_dir / exp_files.name)
+            print_success(console, "Copied VM State/HDD files")
+        else:
+            print_reused(console, "No VM State/HDD files were present to copy")
+    except OSError as exc:
+        print_error(
+            console,
+            f"Error copying VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}",
+        )
+        return 1
+
+    mapping_file = output_dir / "vm_mapping.json"
+    try:
+        with mapping_file.open("w", encoding="utf-8") as f_handle:
+            json.dump(mapping, f_handle)
+        print_success(console, "Saved VM mapping")
+    except OSError as exc:
+        print_error(console, f"Error saving VM mapping states to file: {exc}")
+        return 1
+
+    time_file = output_dir / "experiment_time.json"
+    try:
+        with time_file.open("w", encoding="utf-8") as f_handle:
+            json.dump(experiment_time, f_handle)
+        print_success(console, "Saved experiment time")
+    except OSError as exc:
+        print_error(console, f"Error saving experiment time to file: {exc}")
+        return 1
+
+    schedule_dir = output_dir / SCHEDULES_DIRNAME
+    schedule_dir.mkdir(parents=True, exist_ok=True)
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task(
+            "[green]Copying schedule files...",
+            total=len(schedule_db_paths),
+        )
+
+        for file in schedule_db_paths:
+            try:
+                prune_schedule_entries(
+                    experiment_time["seconds_since_start"],
+                    file,
+                    schedule_dir / file.name,
+                    console,
+                )
+            except RuntimeError as exc:
+                print_error(console, f"{exc}")
+                return 1
+            progress.update(task, advance=1)
+
+    print_success(console, f"Pruned and saved schedule files ({len(schedule_db_paths)})")
+
+    if complete:
+        image_store = ImageStore()
+        img_files = Path(image_store.cache)
+        try:
+            if img_files.exists():
+                with console.status(
+                    "[yellow]Copying ImageStore cache...[/yellow]",
+                    spinner="line",
+                ):
+                    shutil.copytree(img_files, output_dir / IMAGESTORE_DIRNAME)
+                imagestore_included = True
+                print_success(console, "Copied ImageStore cache")
+            else:
+                print_reused(console, "No ImageStore cache was present to copy")
+        except OSError as exc:
+            print_error(
+                console,
+                f"Error copying ImageStore cache [cyan]{img_files}[/cyan]: {exc}",
+            )
+            return 1
+
+        vmr_store = VmResourceStore()
+        vmr_files = Path(vmr_store.cache)
+        try:
+            if vmr_files.exists():
+                with console.status(
+                    "[yellow]Copying VM Resource cache...[/yellow]",
+                    spinner="line",
+                ):
+                    shutil.copytree(vmr_files, output_dir / VMRESOURCESTORE_DIRNAME)
+                vm_resource_cache_included = True
+                print_success(console, "Copied VmResourceStore cache")
+            else:
+                print_reused(console, "No VmResourceStore cache was present to copy")
+        except OSError as exc:
+            print_error(
+                console,
+                f"Error copying VM Resource cache [cyan]{vmr_files}[/cyan]: {exc}",
+            )
+            return 1
+
+    vmr_launch_cmds = Path(config["logging"]["root_dir"]) / "launch_cmds.mm"
+    if vmr_launch_cmds.exists():
+        try:
+            shutil.copy(vmr_launch_cmds, output_dir)
+            launch_cmds_included = True
+            print_success(console, "Copied VM resource handler launch file")
+        except OSError as exc:
+            print_error(
+                console,
+                f"Error copying launch_cmds.mm from [cyan]{vmr_launch_cmds}[/cyan]: {exc}",
+            )
+            return 1
+    else:
+        print_reused(console, "No VM resource handler launch file present; skipping")
+
+    manifest = build_manifest(
+        experiment_name=experiment_name,
+        complete=complete,
+        archived=archive,
+        experiment_dir_name=exp_files.name,
+        has_launch_cmds=launch_cmds_included,
+        has_imagestore_cache=imagestore_included,
+        has_vm_resource_cache=vm_resource_cache_included,
+        schedule_count=len(schedule_db_paths),
+    )
+
+    try:
+        write_manifest(output_dir, manifest)
+        print_success(console, "Wrote manifest metadata")
+    except OSError as exc:
+        print_error(console, f"Error writing manifest: {exc}")
+        return 1
+
+    archive_path: Path | None = None
+    if archive:
+        print_phase_header(console, "Phase 3: Archive Backup")
+        archive_base = Path.cwd() / f"{experiment_name}_backup"
+        try:
+            with console.status("[yellow]Creating archive...[/yellow]", spinner="line"):
+                shutil.make_archive(
+                    str(archive_base),
+                    "tar",
+                    root_dir=output_dir.parent,
+                    base_dir=output_dir.name,
+                )
+            archive_path = Path(f"{archive_base}.tar")
+            print_success(console, "Created archive successfully")
+        except OSError as exc:
+            print_error(console, f"Error compressing output directory: {exc}")
+            return 1
+
+    print_phase_header(console, "Save Complete")
+    print_success(console, "Experiment save completed successfully")
+    _print_save_summary(
+        console=console,
+        experiment_name=experiment_name,
+        output_dir=output_dir,
+        schedule_count=len(schedule_db_paths),
+        launch_cmds_included=launch_cmds_included,
+        imagestore_included=imagestore_included,
+        vm_resource_cache_included=vm_resource_cache_included,
+        archive_path=archive_path,
+    )
+
+    next_source = archive_path if archive_path is not None else output_dir
+    console.print(
+        "[yellow]Next step:[/yellow] "
+        "Restore this backup later with "
+        f"[cyan]firewheel load {next_source}[/cyan]\n"
+        "or use [cyan]firewheel vm resume --all[/cyan] to resume the current experiment."
+    )
+
+    return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Save VM state and schedule files.",
+        prog="firewheel save",
+    )
+    default_experiment_name = (
+        f"firewheel_experiment_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    )
+    parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        default=default_experiment_name,
+        help=(
+            "Name of the experiment to save. "
+            f'Default: "{default_experiment_name}".'
+        ),
+    )
+    parser.add_argument(
+        "-c",
+        "--complete",
+        action="store_true",
+        help=(
+            "If provided, save all files from the experiment, including cached "
+            "images and VM resources."
+        ),
+    )
+    parser.add_argument(
+        "-a",
+        "--archive",
+        action="store_true",
+        help="If provided, archive the saved experiment directory as a .tar file.",
+    )
+    args = parser.parse_args()
+    sys.exit(
+        save_vm_state(
+            experiment_name=args.name,
+            complete=args.complete,
+            archive=args.archive,
+        )
+    )
+DONE

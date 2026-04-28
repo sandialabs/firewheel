@@ -1,0 +1,871 @@
+AUTHOR
+FIREWHEEL Team
+DONE
+
+DESCRIPTION
+Load a previously saved FIREWHEEL experiment from either a backup directory or a
+supported tar archive. This Helper validates the backup layout and metadata,
+ensures that no experiment is currently running, restores saved VM files,
+restores VM configuration state and schedules, restores optional cache content when present,
+launches the saved VMs, rebuilds and relaunches VM Resource handlers when needed,
+and restores experiment time metadata.
+
+If restore destinations already exist and are identical to the backup content,
+they are reused automatically. If they differ, the Helper requires the
+:option:`load --force` option before overwriting them.
+
+Backups restored with this Helper come back in a paused state by design. Users
+should resume the experiment with :ref:`helper_vm_resume` when ready.
+
+**Usage:**  ``firewheel load [-h] [--dry-run] [--force] source``
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show a help message and exit.
+
+.. option:: --dry-run
+
+    Validate the backup and restore targets without making any changes.
+
+.. option:: --force
+
+    Overwrite existing restore destinations only when their contents differ from
+    the backup.
+
+Positional Arguments
+^^^^^^^^^^^^^^^^^^^^
+
+.. option:: source
+
+    Path to the backup directory or supported archive file to restore.
+
+    Supported archive types are:
+
+    * ``.tar``
+    * ``.tar.gz``
+    * ``.tgz``
+
+Examples
+++++++++
+
+``firewheel load my_experiment_backup``
+
+``firewheel load my_experiment_backup.tar``
+
+``firewheel load my_experiment_backup --dry-run``
+
+``firewheel load my_experiment_backup --force``
+
+``firewheel load my_experiment_backup.tgz --force``
+
+DONE
+
+RUN LocalPython ON control
+#!/usr/bin/env python
+import os
+import re
+import sys
+import json
+import pickle
+import argparse
+import tempfile
+from typing import Any, Mapping, Iterable
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+
+from rich.console import Console
+
+from firewheel.cli.utils import cli_output_theme
+from firewheel.lib.utilities import (
+    print_error,
+    print_reused,
+    print_success,
+    print_result_card,
+    copyfile_if_needed,
+    copytree_if_needed,
+    print_phase_header,
+    files_are_identical,
+    escape_embedded_json,
+    unescape_embedded_json,
+    directories_are_identical,
+)
+from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.control.image_store import ImageStore
+from firewheel.lib.experiment_utils import (
+    BackupLayout,
+    is_supported_archive,
+    extract_archive_safely,
+    validate_backup_directory,
+    create_resume_schedule_entry,
+)
+from firewheel.lib.minimega.file_store import FileStore
+from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.experiment_start import ExperimentStart
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+
+console = Console(theme=cli_output_theme)
+
+def _rollback_guidance() -> None:
+    """Print rollback guidance for partial restore failures."""
+    console.print(
+        "[yellow]Restore may be partially applied. Recommended recovery: "
+        "[bold]run firewheel restart hard and try again[/bold].[/yellow]"
+    )
+
+def _restore_vm_mapping(
+    mapping_file: Path,
+    vm_mapping: VMMapping,
+) -> int:
+    """Restore VM mapping state from a JSON file.
+
+    Args:
+        mapping_file: Path to VM mapping JSON.
+        vm_mapping: VM mapping database handle.
+
+    Returns:
+        Number of mapping entries restored.
+    """
+    with mapping_file.open("r", encoding="utf-8") as f_handle:
+        mapping = json.load(f_handle)
+
+    vm_mapping.batch_put(mapping)
+    return len(mapping)
+
+
+def _restore_experiment_time(experiment_time_path: Path) -> None:
+    """Restore the experiment start time.
+
+    Args:
+        experiment_time_path: Path to saved experiment time JSON.
+
+    Raises:
+        ValueError: If the time file content is invalid.
+    """
+    with experiment_time_path.open("r", encoding="utf-8") as f_handle:
+        time_obj = json.load(f_handle)
+
+    if "seconds_since_start" not in time_obj:
+        raise ValueError(f"Missing 'seconds_since_start' key in {experiment_time_path}")
+
+    seconds_since_start = int(time_obj["seconds_since_start"])
+    new_start_time = datetime.now(timezone.utc) - timedelta(seconds=seconds_since_start)
+
+    start = ExperimentStart()
+    start.add_start_time(new_start_time)
+
+
+def _restore_schedule_files(
+    schedule_dir: Path,
+    schedule_db: ScheduleDb,
+    force: bool,
+) -> tuple[int, int]:
+    """Restore schedule files into the schedule cache.
+
+    Args:
+        schedule_dir: Source schedule directory.
+        schedule_db: ScheduleDb instance.
+        force: Whether differing existing files may be overwritten.
+
+    Returns:
+        Tuple of:
+            - number of schedule files processed
+            - number of schedule files actually copied
+    """
+    processed_count = 0
+    copied_count = 0
+    destination_root = Path(schedule_db.cache.cache)
+
+    for file in schedule_dir.iterdir():
+        if not file.is_file():
+            continue
+
+        processed_count += 1
+        destination = destination_root / file.name
+        if copyfile_if_needed(file, destination, force=force):
+            copied_count += 1
+
+    return processed_count, copied_count
+
+
+def _restore_optional_cache(
+    source_dir: Path | None,
+    destination_dir: Path,
+    force: bool,
+) -> tuple[bool, bool]:
+    """Restore an optional cache directory if present.
+
+    Args:
+        source_dir: Source directory from the backup. If None, nothing is done.
+        destination_dir: Destination cache directory.
+        force: Whether differing existing content may be overwritten.
+
+    Returns:
+        Tuple of:
+            - whether the optional cache exists in the backup
+            - whether it was actually copied
+    """
+    if source_dir is None:
+        return False, False
+
+    copied = copytree_if_needed(source_dir, destination_dir, force=force)
+    return True, copied
+
+def _check_no_existing_experiment() -> None:
+    """Ensure there is not already a running FIREWHEEL experiment.
+
+    Raises:
+        RuntimeError: If an existing FIREWHEEL experiment appears to be running.
+    """
+    mm_api = minimegaAPI()
+
+    error_message = ("There is already a FIREWHEEL experiment running. Please run "
+                    "[cyan]firewheel restart[/cyan] prior to restoring.")
+
+    if mm_api.mm_vms():
+        raise RuntimeError(error_message)
+
+    experiment_start = ExperimentStart()
+    if experiment_start.get_launch_time() is not None:
+        raise RuntimeError(error_message)
+
+def update_socket_path(
+    process_config: dict[str, Any],
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> None:
+    """Update the socket path in a process configuration."""
+    original_socket_path = process_config["path"]
+    socket_filename = os.path.basename(original_socket_path)
+    vm_name = process_config["vm_name"]
+    mm_id = vm_name_to_mm_id[vm_name]
+    process_config["path"] = os.path.join(mm_base, mm_id, socket_filename)
+
+def parse_launch_command_line(line: str) -> tuple[str, dict[str, Any]]:
+    """Parse a launch command line into prefix and JSON configuration."""
+    stripped_line = line.rstrip("\n")
+    json_line_pattern = re.compile(r"^(.* )'((?:\\.|[^'])*)'$")
+    match = json_line_pattern.match(stripped_line)
+    if match is None:
+        raise ValueError(f"Could not parse launch command line: {line!r}")
+
+    prefix, escaped_json = match.groups()
+    json_text = unescape_embedded_json(escaped_json)
+    process_config = json.loads(json_text)
+    return prefix, process_config
+
+
+def update_launch_command_line(
+    line: str,
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> str:
+    """Update the JSON path field inside a launch command line."""
+    prefix, process_config = parse_launch_command_line(line)
+    update_socket_path(process_config, vm_name_to_mm_id, mm_base)
+
+    new_json_text = json.dumps(process_config, separators=(",", ":"))
+    is_mesh_command = prefix.startswith("mesh send ")
+    new_escaped_json = escape_embedded_json(new_json_text, is_mesh_command)
+    return f"{prefix}'{new_escaped_json}'"
+
+
+def iter_process_configs(lines: Iterable[str]) -> list[dict[str, Any]]:
+    """Extract process configurations from launch command lines."""
+    process_configs: list[dict[str, Any]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        _, process_config = parse_launch_command_line(line)
+        process_configs.append(process_config)
+    return process_configs
+
+
+def build_vm_name_to_mm_id_map(
+    process_configs: Iterable[Mapping[str, Any]],
+    mm_api: minimegaAPI,
+) -> dict[str, str]:
+    """Build a VM name to minimega ID mapping from running VMs."""
+    running_vms = mm_api.mm_vms()
+
+    by_uuid: dict[str, dict[str, str]] = {}
+    by_name: dict[str, dict[str, str]] = {}
+
+    for vm_name, vm_info in running_vms.items():
+        by_name[vm_name] = vm_info
+        vm_uuid = vm_info.get("uuid")
+        if vm_uuid:
+            by_uuid[vm_uuid] = vm_info
+
+    vm_name_to_mm_id: dict[str, str] = {}
+
+    for process_config in process_configs:
+        expected_vm_name = str(process_config["vm_name"])
+        expected_vm_uuid = process_config.get("vm_uuid")
+
+        matched_vm: dict[str, str] | None = None
+        if isinstance(expected_vm_uuid, str) and expected_vm_uuid:
+            matched_vm = by_uuid.get(expected_vm_uuid)
+
+        if matched_vm is None:
+            matched_vm = by_name.get(expected_vm_name)
+
+        if matched_vm is None:
+            raise RuntimeError(
+                "Could not match launched VM from process config "
+                f"vm_name={expected_vm_name!r}, vm_uuid={expected_vm_uuid!r}"
+            )
+
+        mm_id = matched_vm.get("id")
+        if not isinstance(mm_id, str) or not mm_id:
+            raise RuntimeError(
+                f"Matched VM for {expected_vm_name!r} is missing a valid minimega ID"
+            )
+
+        vm_name_to_mm_id[expected_vm_name] = mm_id
+
+    return vm_name_to_mm_id
+
+
+def rewrite_launch_cmds_file(
+    input_path: Path,
+    output_path: Path,
+    vm_name_to_mm_id: Mapping[str, str],
+    mm_base: str,
+) -> None:
+    """Rewrite a launch command file with updated socket paths."""
+    with input_path.open("r", encoding="utf-8") as infile, output_path.open(
+        "w", encoding="utf-8"
+    ) as outfile:
+        for line in infile:
+            if not line.strip():
+                outfile.write(line)
+                continue
+
+            updated_line = update_launch_command_line(
+                line=line,
+                vm_name_to_mm_id=vm_name_to_mm_id,
+                mm_base=mm_base,
+            )
+            outfile.write(updated_line + "\n")
+
+
+def rebuild_launch_cmds_file_with_current_mm_ids(
+    input_path: Path,
+    output_path: Path,
+    mm_api: minimegaAPI,
+) -> dict[str, str]:
+    """Rewrite launch_cmds.mm using current minimega IDs."""
+    with input_path.open("r", encoding="utf-8") as infile:
+        process_configs = iter_process_configs(infile)
+
+    vm_name_to_mm_id = build_vm_name_to_mm_id_map(
+        process_configs=process_configs,
+        mm_api=mm_api,
+    )
+
+    rewrite_launch_cmds_file(
+        input_path=input_path,
+        output_path=output_path,
+        vm_name_to_mm_id=vm_name_to_mm_id,
+        mm_base=mm_api.mm_base,
+    )
+
+    return vm_name_to_mm_id
+
+
+def _print_validation_summary(layout: BackupLayout) -> None:
+    """Print a concise validated backup summary.
+
+    Args:
+        layout: Validated backup layout.
+    """
+    manifest = layout.manifest
+
+    print_result_card(
+        console,
+        "Validated Backup",
+        [
+            ("Root directory", str(layout.root_dir)),
+            (
+                "Experiment name",
+                str(manifest.get("experiment_name", layout.experiment_dir.name)),
+            ),
+            ("FIREWHEEL version", str(manifest.get("fw_version"))),
+            ("Format version", str(manifest.get("format_version"))),
+            ("Created at", str(manifest.get("created_at"))),
+            ("Schedule count", str(manifest.get("schedule_count"))),
+            ("Has launch_cmds.mm", str(layout.launch_cmds_path is not None)),
+            ("Has ImageStore cache", str(layout.imagestore_dir is not None)),
+            (
+                "Has VmResourceStore cache",
+                str(layout.vm_resource_store_dir is not None),
+            ),
+        ],
+    )
+
+def _validate_destination_paths(
+    layout: BackupLayout,
+    saved_exp_path: Path,
+    schedule_db: ScheduleDb,
+    imagestore_cache: Path,
+    vm_resource_cache: Path,
+    force: bool,
+) -> None:
+    """Validate restore destination paths before modifying the system.
+
+    Existing identical content is allowed and will be skipped during restore.
+    Only differing content requires ``--force``.
+
+    Args:
+        layout: Validated backup layout.
+        saved_exp_path: Target saved experiment path.
+        schedule_db: Schedule database handle.
+        imagestore_cache: ImageStore cache path.
+        vm_resource_cache: VmResourceStore cache path.
+        force: Whether overwriting existing differing content is allowed.
+
+    Raises:
+        FileExistsError: If an existing destination differs and force is False.
+    """
+    conflicts: list[str] = []
+
+    if saved_exp_path.exists():
+        if not directories_are_identical(layout.experiment_dir, saved_exp_path) and not force:
+            conflicts.append(str(saved_exp_path))
+
+    schedule_cache_root = Path(schedule_db.cache.cache)
+    for schedule_file in layout.schedules_dir.iterdir():
+        if not schedule_file.is_file():
+            continue
+        dest = schedule_cache_root / schedule_file.name
+        if dest.exists():
+            if not files_are_identical(schedule_file, dest) and not force:
+                conflicts.append(str(dest))
+
+    if layout.imagestore_dir is not None and imagestore_cache.exists():
+        if not directories_are_identical(layout.imagestore_dir, imagestore_cache) and not force:
+            conflicts.append(str(imagestore_cache))
+
+    if layout.vm_resource_store_dir is not None and vm_resource_cache.exists():
+        if not directories_are_identical(layout.vm_resource_store_dir, vm_resource_cache) and not force:
+            conflicts.append(str(vm_resource_cache))
+
+    if conflicts:
+        conflict_text = "\n".join(f"  - {item}" for item in conflicts)
+        raise FileExistsError(
+            "Restore would overwrite existing paths with different contents:\n"
+            f"{conflict_text}\n"
+            "Rerun with --force to overwrite differing content."
+        )
+
+
+def _restore_from_layout(
+    layout: BackupLayout,
+    dry_run: bool,
+    force: bool,
+) -> int:
+    """Restore VM state from a validated backup layout.
+
+    Args:
+        layout: Validated backup layout.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite differing existing content.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
+    print_phase_header(console, "Phase 2: Validate Backup")
+    _print_validation_summary(layout)
+    print_success(console, "Backup validated")
+
+    try:
+        _check_no_existing_experiment()
+        print_success(console, "No active FIREWHEEL experiment is running")
+    except RuntimeError as exc:
+        print_error(console, str(exc))
+        return 1
+
+    try:
+        saved_exp = FileStore("saved")
+        vm_mapping = VMMapping()
+        schedule_db = ScheduleDb()
+        image_store = ImageStore()
+        vm_resource_store = VmResourceStore()
+    except OSError as exc:
+        print_error(console, f"Failed to initialize restore dependencies: {exc}")
+        return 1
+
+    experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
+    saved_exp_path = Path(saved_exp.get_file_path(layout.experiment_dir.name))
+    imagestore_cache = Path(image_store.cache)
+    vm_resource_cache = Path(vm_resource_store.cache)
+
+    try:
+        _validate_destination_paths(
+            layout=layout,
+            saved_exp_path=saved_exp_path,
+            schedule_db=schedule_db,
+            imagestore_cache=imagestore_cache,
+            vm_resource_cache=vm_resource_cache,
+            force=force,
+        )
+        print_success(console, "Restore destinations validated")
+    except FileExistsError as exc:
+        print_error(console, f"{exc}")
+        return 1
+
+    if dry_run:
+        print_phase_header(console, "Dry Run Summary")
+        print_success(console, "Dry run completed successfully")
+        print_result_card(
+            console,
+            "Planned Restore",
+            [
+                ("Experiment", experiment_name),
+                ("Saved VM files", str(saved_exp_path)),
+                ("VM mapping", str(layout.vm_mapping_path)),
+                ("Schedules", str(layout.schedules_dir)),
+                ("Launch VMs via", str(layout.launch_mm_path)),
+                (
+                    "Launch handlers via",
+                    str(layout.launch_cmds_path) if layout.launch_cmds_path else "Not present",
+                ),
+                (
+                    "ImageStore cache",
+                    str(imagestore_cache) if layout.imagestore_dir is not None else "Not present",
+                ),
+                (
+                    "VmResourceStore cache",
+                    str(vm_resource_cache)
+                    if layout.vm_resource_store_dir is not None
+                    else "Not present",
+                ),
+                ("Experiment time", "Would restore last"),
+            ],
+        )
+        print_reused(console, "Existing identical files/directories would be reused without overwrite")
+        print_success(console, "No changes were made")
+        return 0
+
+    summary: dict[str, Any] = {
+        "experiment_name": experiment_name,
+        "saved_exp_path": str(saved_exp_path),
+        "vm_mapping_entries": 0,
+        "schedule_files_processed": 0,
+        "schedule_files_copied": 0,
+        "experiment_files_copied": False,
+        "experiment_files_reused": False,
+        "imagestore_present": False,
+        "imagestore_copied": False,
+        "vm_resource_cache_present": False,
+        "vm_resource_cache_copied": False,
+        "started_vms": False,
+        "vm_processes_started": 0,
+        "started_vm_resource_handlers": False,
+        "restored_experiment_time": False,
+    }
+
+    try:
+        print_phase_header(console, "Phase 3: Restore Data")
+
+        experiment_files_copied = copytree_if_needed(
+            source=layout.experiment_dir,
+            destination=saved_exp_path,
+            force=force,
+        )
+        summary["experiment_files_copied"] = experiment_files_copied
+        summary["experiment_files_reused"] = not experiment_files_copied
+        if experiment_files_copied:
+            print_success(console, "Restored saved VM files")
+        else:
+            print_reused(console, "Reused existing saved VM files")
+
+        imagestore_present, imagestore_copied = _restore_optional_cache(
+            source_dir=layout.imagestore_dir,
+            destination_dir=imagestore_cache,
+            force=force,
+        )
+        summary["imagestore_present"] = imagestore_present
+        summary["imagestore_copied"] = imagestore_copied
+        if imagestore_present:
+            if imagestore_copied:
+                print_success(console, "Restored ImageStore cache")
+            else:
+                print_reused(console, "Reused existing ImageStore cache")
+
+        vm_resource_cache_present, vm_resource_cache_copied = _restore_optional_cache(
+            source_dir=layout.vm_resource_store_dir,
+            destination_dir=vm_resource_cache,
+            force=force,
+        )
+        summary["vm_resource_cache_present"] = vm_resource_cache_present
+        summary["vm_resource_cache_copied"] = vm_resource_cache_copied
+        if vm_resource_cache_present:
+            if vm_resource_cache_copied:
+                print_success(console, "Restored VmResourceStore cache")
+            else:
+                print_reused(console, "Reused existing VmResourceStore cache")
+
+        summary["vm_mapping_entries"] = _restore_vm_mapping(
+            layout.vm_mapping_path,
+            vm_mapping,
+        )
+        print_success(console,
+            f"Restored VM mapping ({summary['vm_mapping_entries']} entries)"
+        )
+
+        (
+            summary["schedule_files_processed"],
+            summary["schedule_files_copied"],
+        ) = _restore_schedule_files(
+            layout.schedules_dir,
+            schedule_db,
+            force=force,
+        )
+        if summary["schedule_files_copied"] == summary["schedule_files_processed"]:
+            print_success(console,
+                f"Restored schedules ({summary['schedule_files_copied']} files)"
+            )
+        elif summary["schedule_files_copied"] == 0:
+            print_reused(console,
+                f"Reused existing schedules ({summary['schedule_files_processed']} files)"
+            )
+        else:
+            print_success(console,
+                "Restored schedules "
+                f"({summary['schedule_files_copied']} copied, "
+                f"{summary['schedule_files_processed'] - summary['schedule_files_copied']} reused)"
+            )
+        mm_api = minimegaAPI()
+        print_phase_header(console, "Phase 4: Launch VMs")
+        _, _vm_launch_output = mm_api.run_minimega_script(saved_exp_path / "launch.mm")
+        summary["started_vms"] = True
+        print_success(console, "Started saved VMs")
+
+        print_phase_header(console, "Phase 5: Launch VM Resource Handlers")
+        if layout.launch_cmds_path is not None:
+            launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
+            vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
+                input_path=layout.launch_cmds_path,
+                output_path=launch_cmd_updated_path,
+                mm_api=mm_api,
+            )
+            print_success(console,
+                f"Rebuilt VM resource handler socket paths for {len(vm_name_to_mm_id)} VMs"
+            )
+
+            _, handler_output = mm_api.run_minimega_script(launch_cmd_updated_path)
+            summary["vm_processes_started"] = mm_api.count_started_background_processes(
+                handler_output
+            )
+            summary["started_vm_resource_handlers"] = True
+            print_success(console,
+                "Started VM resource handlers "
+                f"({summary['vm_processes_started']} processes launched)"
+            )
+        else:
+            print_reused(console, "No VM resource handler launch file present; skipping")
+
+        print_phase_header(console, "Phase 6: Finalize Restore")
+        _restore_experiment_time(layout.experiment_time_path)
+        summary["restored_experiment_time"] = True
+        print_success(console, "Restored experiment time")
+        res_schedules = resume_all_schedules(mm_api, schedule_db)
+        print_success(f"Resumed VM Resource Handling for {res_schedules} VMs.")
+
+
+
+    # This is reasonable to catch at this level to report any failure during the restore process
+    except Exception:  # noqa: BLE001
+        _rollback_guidance()
+        return 1
+
+    print_phase_header(console, "Restore Complete")
+    print_success(console, "Experiment restore completed successfully")
+    print_result_card(
+        console,
+        "Restore Result",
+        [
+            ("Experiment", str(summary["experiment_name"])),
+            ("Saved VM path", str(summary["saved_exp_path"])),
+            (
+                "Saved VM files",
+                "Copied" if summary["experiment_files_copied"] else "Reused",
+            ),
+            (
+                "VM mapping entries",
+                str(summary["vm_mapping_entries"]),
+            ),
+            (
+                "Schedules",
+                (
+                    f"{summary['schedule_files_copied']} copied / "
+                    f"{summary['schedule_files_processed'] - summary['schedule_files_copied']} reused"
+                ),
+            ),
+            (
+                "ImageStore cache",
+                (
+                    "Not present"
+                    if not summary["imagestore_present"]
+                    else ("Copied" if summary["imagestore_copied"] else "Reused")
+                ),
+            ),
+            (
+                "VmResourceStore cache",
+                (
+                    "Not present"
+                    if not summary["vm_resource_cache_present"]
+                    else (
+                        "Copied" if summary["vm_resource_cache_copied"] else "Reused"
+                    )
+                ),
+            ),
+            ("VMs launched", "Yes" if summary["started_vms"] else "No"),
+            (
+                "VM handlers launched",
+                (
+                    f"Yes ({summary['vm_processes_started']} processes)"
+                    if summary["started_vm_resource_handlers"]
+                    else "No"
+                ),
+            ),
+            (
+                "Experiment time",
+                "Restored" if summary["restored_experiment_time"] else "Not restored",
+            ),
+        ],
+    )
+    console.print(
+        "[yellow]Next step:[/yellow] "
+        "The restored experiment is paused by design. "
+        "Resume when ready with [cyan]firewheel vm resume --all[/cyan]."
+    )
+    return 0
+
+def load_vm_state(
+    source: str,
+    dry_run: bool = False,
+    force: bool = False,
+) -> int:
+    """Load VM state from a backup directory or supported archive.
+
+    Args:
+        source: Source directory or archive path.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite existing restore destinations only when
+            contents differ.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
+    source_path = Path(source).resolve()
+
+    print_phase_header(console, "Phase 1: Read Backup Source")
+    console.print(f"[cyan]Source:[/cyan] {source_path}")
+
+    if not source_path.exists():
+        print_error(console, f"Path [cyan]{source_path}[/cyan] does not exist.")
+        return 1
+
+    if source_path.is_file():
+        if not is_supported_archive(source_path):
+            print_error(console, f"File [cyan]{source_path}[/cyan] is not a supported archive. "
+                         "Expected one of: .tar.gz, .tgz, .tar")
+            return 1
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+
+                with console.status(
+                    "[yellow]Extracting experiment archive...[/yellow]",
+                    spinner="line",
+                ):
+                    extract_archive_safely(source_path, temp_path)
+
+                print_success(console, "Archive extracted safely")
+
+                extracted_dirs = [p for p in temp_path.iterdir() if p.is_dir()]
+                if len(extracted_dirs) != 1:
+                    print_error(console, "Archive must extract to exactly one top-level backup directory.")
+                    return 1
+
+                extracted_root = extracted_dirs[0]
+                console.print(f"[cyan]Extracted backup root:[/cyan] {extracted_root}")
+
+                layout = validate_backup_directory(extracted_root)
+                return _restore_from_layout(layout, dry_run=dry_run, force=force)
+
+        except (OSError, ValueError) as exc:
+            print_error(console, f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
+            return 1
+
+    if source_path.is_dir():
+        try:
+            print_success(console, "Using existing backup directory")
+            layout = validate_backup_directory(source_path)
+            return _restore_from_layout(layout, dry_run=dry_run, force=force)
+        except (OSError, ValueError) as exc:
+            print_error(console, f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
+            return 1
+
+    print_error(console, f"Path [cyan]{source_path}[/cyan] is neither a regular file nor a directory.")
+    return 1
+
+def resume_all_schedules(mm_api, schedule_db) -> int:
+    """Create schedule entries to resume all VMs in the current experiment.
+
+    Arguments:
+        mm_api: An instance of the minimegaAPI to interact with minimega.
+        schedule_db: An instance of the ScheduleDb to store the resume schedules.
+
+    Returns:
+        Number of VMs for which resume schedules were created.
+    """
+    schedules = []
+    mm_dict = mm_api.mm_vms()
+    for name in mm_dict:
+        sched = create_resume_schedule_entry(schedule_db, console, name)
+        schedules.append(
+            {"server_name": name, "text": pickle.dumps(sched), "ip": None}
+        )
+    schedule_db.batch_put(schedules, True)
+    return len(schedules)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Load VM state and schedule files from a backup directory or archive.",
+        prog="firewheel load",
+    )
+    parser.add_argument(
+        "source",
+        type=str,
+        help="Path to the backup archive or extracted backup directory.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the backup and restore targets without making changes.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing restore destinations only when contents differ.",
+    )
+    args = parser.parse_args()
+    sys.exit(
+        load_vm_state(
+            source=args.source,
+            dry_run=args.dry_run,
+            force=args.force,
+        )
+    )
+DONE

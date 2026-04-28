@@ -342,7 +342,8 @@ class VMResourceHandler:
                         # the vm_resource
                         timer_target = (
                             self.run_vm_resource_host
-                            if schedule_entry.on_host else self.run_vm_resource
+                            if schedule_entry.on_host
+                            else self.run_vm_resource
                         )
                         thread = Timer(delay, timer_target, args=(schedule_entry,))
                         # Positive time vm_resources don't get held onto since

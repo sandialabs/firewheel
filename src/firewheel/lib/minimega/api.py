@@ -470,3 +470,60 @@ class minimegaAPI:  # noqa: N801
         """
         host = self.get_hosts(host_key=platform.node())
         return host["cpucommit"] / host["cpus"]
+
+    def count_started_background_processes(self, output: str) -> int:
+        """Count started background processes from minimega output.
+
+        Args:
+            output: Captured minimega command output.
+
+        Returns:
+            Number of lines indicating a background process was started.
+        """
+        count = 0
+        for line in output.splitlines():
+            if "Started background process with id" in line:
+                count += 1
+        return count
+
+    def run_minimega_script(self, script_path: Path) -> tuple[int, str]:
+        """Run a minimega script and capture its output.
+
+        Args:
+            script_path: Path to the minimega script.
+
+        Returns:
+            Tuple of:
+                - return code
+                - combined stdout/stderr text
+
+        Raises:
+            subprocess.CalledProcessError: If minimega returns a non-zero status.
+            OSError: If the command cannot be launched.
+        """
+        minimega_bin_path = os.path.join(
+            config["minimega"]["install_dir"], "bin", "minimega"
+        )
+
+        result = subprocess.run(
+            [
+                minimega_bin_path,
+                f"-base={self.mm_base}",
+                "-e",
+                "read",
+                str(script_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        combined_output = ""
+        if result.stdout:
+            combined_output += result.stdout
+        if result.stderr:
+            if combined_output:
+                combined_output += "\n"
+            combined_output += result.stderr
+
+        return result.returncode, combined_output

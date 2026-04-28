@@ -3,9 +3,9 @@ FIREWHEEL Team
 DONE
 DESCRIPTION
 
-Submit a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event to a set of VMs within an experiment. This can be applied to a set of
-VMs or to all VMs within the experiment. This is primarily used for resuming VMs which have
-created a *break* within the VM resource schedule. For more information see :ref:`vm-resource-schedule`.
+This helper has two primary functions: 1) to submit a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event to a set of VMs within an experiment, and 2) to resume the specified set of VMs which are in the `PAUSED` state.
+These actions can be applied to a set of VMs or to all VMs within the experiment. This is primarily used for resuming VMs which have
+created a *break* within the VM resource schedule (for more information see :ref:`vm-resource-schedule`) and for resuming an experiment after a :ref:`helper_save` event.
 
 **Usage:**  ``firewheel vm resume [-h] (-a | vm_name [vm_name ...])``
 
@@ -21,14 +21,14 @@ Named Arguments
 
 .. option:: -a, --all
 
-    Send a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event for all VMs in the experiment.
+    Start all paused VMs and send a :py:attr:`RESUME <firewheel.vm_resource_manager.schedule_event.ScheduleEventType.RESUME>` event to all VMs in the experiment.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
 .. option:: <vm_name>
 
-    The hostname of the VM within the experiment whose schedule should resume.
+    The hostname of the VM within the experiment that should be resumed.
 
 
 Example
@@ -52,35 +52,9 @@ import argparse
 from rich.console import Console
 
 from firewheel.lib.minimega.api import minimegaAPI
+from firewheel.lib.experiment_utils import create_resume_schedule_entry
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
-
-
-def handle_schedule_entry(sched_db, con, vm_name):
-    """
-    Create a schedule entry for a RESUME event.
-
-    Args:
-        sched_db (ScheduleDb): A schedule database instance.
-        con (rich.console.Console): A console instance to use.
-        vm_name (str): The name of a VM for which the schedule was resumed.
-
-    Returns:
-        list: A list of :py:class:`ScheduleEntry` objects.
-    """
-    pickled_schedule = sched_db.get(vm_name)
-    if not pickled_schedule:
-        con.print(f"[b red]Unable to get schedule for VM: [cyan]{name}")
-        sys.exit(1)
-    schedule = pickle.loads(pickled_schedule)
-
-    # ScheduleEntry will have been loaded prior to this point automatically.
-    sched_entry = ScheduleEntry(-math.inf)
-    entry = {"resume": True}
-    sched_entry.data.append(entry)
-    schedule.append(sched_entry)
-    return schedule
-
 
 if __name__ == "__main__":
     # Set the arguments
@@ -117,20 +91,28 @@ if __name__ == "__main__":
         for name in args.vm_name:
             try:
                 valid = mm_dict[name]
-                sched = handle_schedule_entry(schedule_db, console, name)
+                sched = create_resume_schedule_entry(schedule_db, console, name)
                 schedules.append(
                     {"server_name": name, "text": pickle.dumps(sched), "ip": None}
                 )
             except KeyError:
                 console.print(f"[b red]ERROR: VM `[cyan]{name}[/cyan]` does not exist!")
                 sys.exit(1)
+        # Now check if any of the VMs are in a paused state and need to be resumed
+        not_paused = []
+        for name in args.vm_name:
+            vm_info = mm_dict[name]
+            if vm_info["state"] == "PAUSED":
+                not_paused.append(name)
+        if not_paused:
+            mm_api.mm.vm_start(",".join(not_paused))
     else:
         for name in mm_dict:
-            sched = handle_schedule_entry(schedule_db, console, name)
+            sched = create_resume_schedule_entry(schedule_db, console, name)
             schedules.append(
                 {"server_name": name, "text": pickle.dumps(sched), "ip": None}
             )
-
+        mm_api.mm.vm_start("all")
     schedule_db.batch_put(schedules, True)
     console.print(f"[b green]Resumed VM Resource Handling for {len(schedules)} VMs.")
 DONE
