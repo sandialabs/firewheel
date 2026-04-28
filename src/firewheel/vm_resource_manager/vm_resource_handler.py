@@ -298,7 +298,11 @@ class VMResourceHandler:
                         if not schedule_entry.on_host:
                             kwargs["queue"] = reboot_queue
 
-                        thread = Thread(target=self.run_vm_resource, kwargs=kwargs)
+                        thread_target = (
+                            self.run_vm_resource_host
+                            if schedule_entry.on_host else self.run_vm_resource
+                        )
+                        thread = Thread(target=thread_target, kwargs=kwargs)
 
                         # Keep track of negative time vm_resource threads
                         threads.append(thread)
