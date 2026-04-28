@@ -1441,11 +1441,7 @@ class VMResourceHandler:
           to ``configuring`` are ignored.
 
         Args:
-            state: Desired state of the VM as either a ``VMState`` or a
-                valid string.
-
-        Raises:
-            ValueError: If ``state`` is not a valid ``VMState`` value.
+            state: Desired state of the VM as a ``VMState``.
         """
         current_state = VMState(self.state) if self.state is not None else None
 
