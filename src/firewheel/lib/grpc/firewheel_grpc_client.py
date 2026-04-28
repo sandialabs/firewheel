@@ -6,6 +6,7 @@ from google.protobuf.timestamp_pb2 import Timestamp  # pylint: disable=no-name-i
 from firewheel.config import config
 from firewheel.lib.log import Log
 from firewheel.lib.grpc import firewheel_grpc_pb2, firewheel_grpc_pb2_grpc
+from firewheel.vm_resource_manager.vm_mapping import VMState
 from firewheel.lib.grpc.firewheel_grpc_resources import msg_to_dict
 
 
@@ -205,6 +206,47 @@ class FirewheelGrpcClient:
         response = msg_to_dict(response)
         return response
 
+    def _serialize_vm_mapping_state(self, vmm):
+        """
+        Convert a VMState enum in a VM mapping into its string value for transport.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: A copy of the VM mapping with ``state`` converted to its
+            string value when needed.
+        """
+        serialized = dict(vmm)
+        if "state" in serialized and isinstance(serialized["state"], VMState):
+            serialized["state"] = serialized["state"].value
+        return serialized
+
+    def _deserialize_vm_mapping_state(self, vmm):
+        """
+        Convert a serialized VM mapping state string back into a VMState enum.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: The VM mapping with ``state`` converted to ``VMState`` when
+            present.
+
+        Raises:
+            ValueError: If the ``state`` value is not a valid ``VMState``.
+        """
+        if not vmm or "state" not in vmm or vmm["state"] is None:
+            return vmm
+
+        state = vmm["state"]
+
+        if isinstance(state, VMState):
+            return vmm
+
+        vmm["state"] = VMState(state)
+        return vmm
+
     def destroy_all_vm_mappings(self):
         """
         Requests to destroy all `vm_mappings`.
@@ -223,12 +265,14 @@ class FirewheelGrpcClient:
         Requests to list all `vm_mappings`.
 
         Returns:
-            (list) Dictionary representations of `firewheel_grpc_pb2.VMMapping`.
+            list: Dictionary representations of `firewheel_grpc_pb2.VMMapping`
+            with ``state`` converted to ``VMState``.
         """
         req = firewheel_grpc_pb2.ListVMMappingsRequest(db=self.db)
 
         vm_mappings = self.stub.ListVMMappings(req)
         vm_mappings = [msg_to_dict(vmm) for vmm in vm_mappings]
+        vm_mappings = [self._deserialize_vm_mapping_state(vmm) for vmm in vm_mappings]
         return vm_mappings
 
     def set_vm_mapping(self, vmm):
@@ -239,28 +283,32 @@ class FirewheelGrpcClient:
             vmm (dict): Dictionary representation of vm_mapping.
 
         Returns:
-            (dict) Dictionary representation `firewheel_grpc_pb2.VMMapping`.
+            dict: Dictionary representation of `firewheel_grpc_pb2.VMMapping`
+            with ``state`` converted to ``VMState``.
         """
+        serialized = self._serialize_vm_mapping_state(vmm)
+
         mapping = firewheel_grpc_pb2.VMMapping(
-            server_uuid=vmm["server_uuid"],
-            server_name=vmm["server_name"],
-            control_ip=vmm["control_ip"],
-            state=vmm["state"],
-            current_time=vmm["current_time"],
+            server_uuid=serialized["server_uuid"],
+            server_name=serialized["server_name"],
+            control_ip=serialized["control_ip"],
+            state=serialized["state"],
+            current_time=serialized["current_time"],
             db=self.db,
         )
         resp = self.stub.SetVMMapping(mapping)
-        return msg_to_dict(resp)
+        return self._deserialize_vm_mapping_state(msg_to_dict(resp))
 
     def get_vm_mapping_by_uuid(self, vm_uuid):
         """
         Requests to get the vm_mapping corresponding to a given uuid.
 
         Args:
-            vm_uuid (str): vm uuid to search on.
+            vm_uuid (str): VM uuid to search on.
 
         Returns:
-            (dict) Dictionary representation `firewheel_grpc_pb2.VMMapping`.
+            dict: Dictionary representation of `firewheel_grpc_pb2.VMMapping`
+            with ``state`` converted to ``VMState``.
         """
         try:
             mapping = firewheel_grpc_pb2.VMMappingUUID(server_uuid=vm_uuid, db=self.db)
@@ -270,7 +318,7 @@ class FirewheelGrpcClient:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
                 self.log.exception(exp)
             return None
-        return ret
+        return self._deserialize_vm_mapping_state(ret)
 
     def destroy_vm_mapping_by_uuid(self, vm_uuid):
         """
