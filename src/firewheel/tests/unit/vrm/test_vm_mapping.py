@@ -322,7 +322,7 @@ class VMMappingTestCase(unittest.TestCase):
         self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], str(new_state))
+        self.assertEqual(found["state"], new_state)
 
     def test_set_vm_state_by_uuid_none(self):
         new_state = None
