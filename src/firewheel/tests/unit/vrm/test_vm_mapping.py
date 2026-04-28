@@ -25,7 +25,7 @@ class VMMappingTestCase(unittest.TestCase):
                 "server_name": "2",
                 "control_ip": "3",
                 "server_uuid": "12345",
-                "state": "test",
+                "state": "testing",
                 "current_time": "0",
             },
         ]
@@ -336,10 +336,8 @@ class VMMappingTestCase(unittest.TestCase):
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
         self.assertEqual(found["state"], VMState.UNINITIALIZED)
 
-        self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
-
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], None)
+        with self.assertRaises(ValueError):
+            self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
     def test_set_vm_time_by_uuid(self):
         new_time = "404"

@@ -5,7 +5,7 @@ functions should be callable with only information available from experiment
 """
 
 from firewheel.config import config
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
@@ -32,9 +32,9 @@ def add_vm(
         log (logging.Logger): An optional logger that can to output results.
     """
     if use_vm_manager:
-        state = config["vm_resource_manager"]["default_state"]
+        state = VMState.UNINITIALIZED
     else:
-        state = "N/A"
+         state = VMState.NA
 
     close = False
     if mapping is None:

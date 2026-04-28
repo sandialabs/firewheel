@@ -13,6 +13,7 @@ from google.protobuf.json_format import Parse
 
 from firewheel.config import Config
 from firewheel.lib.log import Log
+from firewheel.vm_resource_manager.vm_mapping import VMState
 from firewheel.lib.grpc import firewheel_grpc_pb2, firewheel_grpc_pb2_grpc
 
 
@@ -118,7 +119,7 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
         self.dbs[db_name] = {}
         self.dbs[db_name] = {"vm_mappings": {}}
         self.dbs[db_name]["not_ready_vmms"] = set()
-        self.dbs[db_name]["ready_states"] = {"N/A", "configured"}
+        self.dbs[db_name]["ready_states"] = {VMState.NA.value, VMState.CONFIGURED.value}
         self.dbs[db_name]["experiment_start_times"] = []
         self.dbs[db_name]["experiment_launch_time"] = None
 

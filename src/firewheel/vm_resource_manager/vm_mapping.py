@@ -23,6 +23,9 @@ class VMState(str, Enum):
         UNINITIALIZED:
             The VM has not yet contacted the server or been set to any state.
 
+        NA:
+            The VM Resource Manager is not used for this VM.
+
         CONFIGURING:
             The VM is currently being configured.
 
@@ -40,6 +43,7 @@ class VMState(str, Enum):
     """
 
     UNINITIALIZED = "uninitialized"
+    NA = "n/a"
     CONFIGURING = "configuring"
     CONFIGURED = "configured"
     FAILED = "failed"
@@ -151,7 +155,6 @@ class VMMapping:
             raise ValueError("Must provide server_uuid")
 
         return self._deserialize_vm_mapping_state(vmm)
-
     def get_all(
         self, filter_time=None, filter_state=None, project_dict=None, length=False
     ):
@@ -167,7 +170,9 @@ class VMMapping:
             filter_time (int): Only return VM information when the current
                                relative time matches this value.
             filter_state (str | VMState): Only return VM information when the current
-                                vm resource state matches this value.
+                               vm resource state matches this value. If a string is
+                               provided, substring matching is used against the
+                               serialized enum value.
             project_dict (dict): Only return VM information from these keys.
             length (bool): Should the function return how many VMs are in the list
                            or should it return the list itself.
@@ -183,16 +188,23 @@ class VMMapping:
         vmms = self.grpc_client.list_vm_mappings()
         ret = []
 
-        if filter_state is not None:
-            filter_state = VMState(filter_state)
-
         for vmm in vmms:
             vmm = self._deserialize_vm_mapping_state(vmm)
 
             if filter_time and vmm["current_time"] != filter_time:
                 continue
-            if filter_state is not None and vmm["state"] != filter_state:
-                continue
+
+            if filter_state is not None:
+                state = vmm["state"]
+
+                if isinstance(filter_state, VMState):
+                    if state != filter_state:
+                        continue
+                else:
+                    filter_text = str(filter_state).lower()
+                    if filter_text not in state.value.lower() and filter_text not in state.name.lower():
+                        continue
+
             ret.append(vmm)
 
         if length:

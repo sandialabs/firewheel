@@ -23,7 +23,7 @@ class APITestCase(unittest.TestCase):
             {
                 "server_name": "2",
                 "control_ip": "3",
-                "state": "test",
+                "state": "testing",
                 "current_time": "0",
                 "server_uuid": "4321",
             },
@@ -113,7 +113,7 @@ echo 'Hello, World!'
             result["server_name"], self.vmmapping_entries[0]["server_name"]
         )
         self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
-        self.assertEqual(result["state"], "N/A")
+        self.assertEqual(result["state"], VMState.NA)
 
     def test_get_vm_times(self):
         self.vmmapping.batch_put(self.vmmapping_entries)
