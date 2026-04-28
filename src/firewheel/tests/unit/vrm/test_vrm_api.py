@@ -9,7 +9,7 @@ import pytest
 
 from firewheel.config import config
 from firewheel.vm_resource_manager import api
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
@@ -23,7 +23,7 @@ class APITestCase(unittest.TestCase):
             {
                 "server_name": "2",
                 "control_ip": "3",
-                "state": "test",
+                "state": "testing",
                 "current_time": "0",
                 "server_uuid": "4321",
             },
@@ -91,7 +91,7 @@ echo 'Hello, World!'
         )
         self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
         self.assertEqual(
-            result["state"], config["vm_resource_manager"]["default_state"]
+            result["state"], VMState.UNINITIALIZED
         )
 
     def test_add_vm_no_vm_resources(self):
@@ -113,7 +113,7 @@ echo 'Hello, World!'
             result["server_name"], self.vmmapping_entries[0]["server_name"]
         )
         self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
-        self.assertEqual(result["state"], "N/A")
+        self.assertEqual(result["state"], VMState.NA)
 
     def test_get_vm_times(self):
         self.vmmapping.batch_put(self.vmmapping_entries)
@@ -154,7 +154,7 @@ echo 'Hello, World!'
         )
         self.assertEqual(
             states[self.vmmapping_entries[0]["server_name"]],
-            config["vm_resource_manager"]["default_state"],
+            VMState.UNINITIALIZED,
         )
 
     def test_get_vm_states_with_filter(self):
