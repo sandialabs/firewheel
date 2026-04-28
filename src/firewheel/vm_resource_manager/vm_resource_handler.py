@@ -1441,7 +1441,7 @@ class VMResourceHandler:
           to ``configuring`` are ignored.
 
         Args:
-            state: Desired state of the VM as a ``VMState``.
+            state (VMState): Desired state of the VM.
         """
         current_state = VMState(self.state) if self.state is not None else None
 
@@ -1466,6 +1466,7 @@ class VMResourceHandler:
         except RuntimeError as exp:
             self.log.error("Error setting VM state. Can not set state to: %s", state)
             self.log.exception(exp)
+            return
 
         # Check to see if the experiment start time can be set
         if state == VMState.CONFIGURED:
