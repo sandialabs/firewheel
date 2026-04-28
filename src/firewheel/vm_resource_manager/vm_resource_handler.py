@@ -300,7 +300,8 @@ class VMResourceHandler:
 
                         thread_target = (
                             self.run_vm_resource_host
-                            if schedule_entry.on_host else self.run_vm_resource
+                            if schedule_entry.on_host
+                            else self.run_vm_resource
                         )
                         thread = Thread(target=thread_target, kwargs=kwargs)
 

@@ -22,7 +22,7 @@ class VMState(str, Enum):
     States:
         UNINITIALIZED:
             The VM has not yet contacted the server or been set to any state.
-    
+
         CONFIGURING:
             The VM is currently being configured.
 
@@ -38,6 +38,7 @@ class VMState(str, Enum):
             The VM is currently running tests. This is a user-defined state that may be used
             as desired, but it is not used by the VRM system itself.
     """
+
     UNINITIALIZED = "uninitialized"
     CONFIGURING = "configuring"
     CONFIGURED = "configured"
