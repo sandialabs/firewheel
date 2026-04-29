@@ -23,7 +23,7 @@ class APITestCase(unittest.TestCase):
             {
                 "server_name": "2",
                 "control_ip": "3",
-                "state": "testing",
+                "state": VMState.TESTING,
                 "current_time": "0",
                 "server_uuid": "4321",
             },
