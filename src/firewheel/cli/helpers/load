@@ -14,10 +14,12 @@ If restore destinations already exist and are identical to the backup content,
 they are reused automatically. If they differ, the Helper requires the
 :option:`load --force` option before overwriting them.
 
-Backups restored with this Helper come back in a paused state by design. Users
-should resume the experiment with :ref:`helper_vm_resume` when ready.
+Backups restored with this Helper are automatically resumed design.
+This default behavior can be changed with the ``paused`` flag which will start the experiment
+with the VMs in a `PAUSED` state and the VM Resource Handlers in a `break` state.
+Users can then resume the experiment with :ref:`helper_vm_resume` when ready.
 
-**Usage:**  ``firewheel load [-h] [--dry-run] [--force] source``
+**Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] source``
 
 Arguments
 +++++++++
@@ -37,6 +39,12 @@ Named Arguments
 
     Overwrite existing restore destinations only when their contents differ from
     the backup.
+
+.. option:: -p, --paused
+
+    Restore the experiment in a PAUSED state, enabling fine-grained control over resuming
+    VM execution.
+
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
@@ -62,7 +70,7 @@ Examples
 
 ``firewheel load my_experiment_backup --force``
 
-``firewheel load my_experiment_backup.tgz --force``
+``firewheel load my_experiment_backup.tgz --paused``
 
 DONE
 
@@ -116,7 +124,7 @@ def _rollback_guidance() -> None:
     """Print rollback guidance for partial restore failures."""
     console.print(
         "[yellow]Restore may be partially applied. Recommended recovery: "
-        "[bold]run firewheel restart hard and try again[/bold].[/yellow]"
+        "[bold]run [cyan]firewheel restart hard[/cyan] and try again[/bold].[/yellow]"
     )
 
 def _restore_vm_mapping(
@@ -470,6 +478,7 @@ def _restore_from_layout(
     layout: BackupLayout,
     dry_run: bool,
     force: bool,
+    paused: bool,
 ) -> int:
     """Restore VM state from a validated backup layout.
 
@@ -477,6 +486,7 @@ def _restore_from_layout(
         layout: Validated backup layout.
         dry_run: Whether to validate only without modifying the system.
         force: Whether to overwrite differing existing content.
+        paused: Whether to keep the VMs (and VMR Schedule) in a paused/break state after starting them.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -677,13 +687,17 @@ def _restore_from_layout(
         _restore_experiment_time(layout.experiment_time_path)
         summary["restored_experiment_time"] = True
         print_success(console, "Restored experiment time")
-        res_schedules = resume_all_schedules(mm_api, schedule_db)
-        print_success(f"Resumed VM Resource Handling for {res_schedules} VMs.")
+
+        if paused:
+            print_reused(console, f"All VMs and VM Resource Schedules will remain in a PAUSED state.")
+        else:
+            res_schedules = resume_all_schedules(mm_api, schedule_db)
+            print_success(console, f"Resumed VM Resource Handling for {res_schedules} VMs.")
 
 
 
     # This is reasonable to catch at this level to report any failure during the restore process
-    except Exception:  # noqa: BLE001
+    except Exception as exp:  # noqa: BLE001
         _rollback_guidance()
         return 1
 
@@ -743,17 +757,19 @@ def _restore_from_layout(
             ),
         ],
     )
-    console.print(
-        "[yellow]Next step:[/yellow] "
-        "The restored experiment is paused by design. "
-        "Resume when ready with [cyan]firewheel vm resume --all[/cyan]."
-    )
+    if paused:
+        console.print(
+            "[yellow]Next step:[/yellow] "
+            "The restored experiment is paused per user request. "
+            "Resume when ready with:\n    [cyan]firewheel vm resume --all[/cyan]"
+        )
     return 0
 
 def load_vm_state(
     source: str,
     dry_run: bool = False,
     force: bool = False,
+    paused: bool = False,
 ) -> int:
     """Load VM state from a backup directory or supported archive.
 
@@ -762,6 +778,7 @@ def load_vm_state(
         dry_run: Whether to validate only without modifying the system.
         force: Whether to overwrite existing restore destinations only when
             contents differ.
+        paused: Whether to keep the VMs (and VMR Schedule) in a paused/break state after starting them.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -802,7 +819,7 @@ def load_vm_state(
                 console.print(f"[cyan]Extracted backup root:[/cyan] {extracted_root}")
 
                 layout = validate_backup_directory(extracted_root)
-                return _restore_from_layout(layout, dry_run=dry_run, force=force)
+                return _restore_from_layout(layout, dry_run=dry_run, force=force, paused=paused)
 
         except (OSError, ValueError) as exc:
             print_error(console, f"Failed to load archive [cyan]{source_path}[/cyan]: {exc}")
@@ -812,7 +829,7 @@ def load_vm_state(
         try:
             print_success(console, "Using existing backup directory")
             layout = validate_backup_directory(source_path)
-            return _restore_from_layout(layout, dry_run=dry_run, force=force)
+            return _restore_from_layout(layout, dry_run=dry_run, force=force, paused=paused)
         except (OSError, ValueError) as exc:
             print_error(console, f"Invalid backup directory [cyan]{source_path}[/cyan]: {exc}")
             return 1
@@ -860,12 +877,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Overwrite existing restore destinations only when contents differ.",
     )
+    parser.add_argument(
+        "-p", "--paused",
+        action="store_true",
+        help="Restore the experiment in a PAUSED state, enabling fine-grained control over resuming VM execution.",
+    )
     args = parser.parse_args()
     sys.exit(
         load_vm_state(
             source=args.source,
             dry_run=args.dry_run,
             force=args.force,
+            paused=args.paused,
         )
     )
 DONE
