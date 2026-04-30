@@ -23,7 +23,7 @@ the experiment continues running immediately after restore completes. If you wan
 to inspect the restored environment before allowing schedules to continue, use
 :option:`load --paused` to restore the experiment in a paused state. In that
 case, VM execution remains paused and VM Resource handlers remain at a break
-until users manually resume the experiment with :ref:`helper_vm_resume`.
+until users manually resume the experiment with :ref:`firewheel vm resume --all<helper_vm_resume>`.
 
 A typical backup accepted by this Helper looks similar to:
 
@@ -40,7 +40,7 @@ A typical backup accepted by this Helper looks similar to:
     ├── imagestore_cache/
     └── vm_resource_cache/
 
-This same content may also be provided as a supported tar archive.
+This same content may also be provided as a supported tar archive (i.e. ``.tar``, ``.tar.gz``, ``.tgz``).
 
 **Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] source``
 
@@ -95,10 +95,6 @@ Examples
 
 ``firewheel load my_experiment_backup.tgz --paused``
 
-If the experiment is restored with :option:`load --paused`, resume it when ready
-with:
-
-``firewheel vm resume --all``
 DONE
 
 RUN LocalPython ON control
