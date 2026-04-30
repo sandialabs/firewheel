@@ -144,27 +144,27 @@ utils/paths.py
 New Model Component Templates
 -----------------------------
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/tasks.yml.j2
+.. literalinclude:: ../../../../src/firewheel/control/utils/templates/tasks.yml.j2
     :language: yaml
     :caption: A template for installing extra model component dependencies with Ansible.
     :name: install_ansible_tasks_template
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/vars.yml.j2
+.. literalinclude:: ../../../../src/firewheel/control/utils/templates/vars.yml.j2
     :language: yaml
     :caption: A template for installing extra model component dependencies with Ansible.
     :name: install_ansible_vars_template
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/model_component_objects.py.template
+.. literalinclude:: ../../../../src/firewheel/control/utils/templates/model_component_objects.py.template
     :language: python
     :caption: The template for a new model component ``model_component_objects.py`` file.
     :name: model_component_objects_template
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/plugin.py.template
+.. literalinclude:: ../../../../src/firewheel/control/utils/templates/plugin.py.template
     :language: python
     :caption: The template for a new model component ``plugin.py`` file.
     :name: plugin_template
 
-.. literalinclude:: ../../../src/firewheel/control/utils/templates/README.rst.template
+.. literalinclude:: ../../../../src/firewheel/control/utils/templates/README.rst.template
     :language: rst
     :caption: The template for a new model component README.rst file.
     :name: readme_template
