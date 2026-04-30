@@ -185,19 +185,19 @@ For example:
 .. code-block:: bash
 
     $ firewheel save --name router_tree_saved_state
-    ──────────────────────────────────────────────────────────────────────────────────────── Phase 1: Save Namespace ─────────────────────────────────────────────────────────────────────────────────────────
-    Waiting for namespace save to complete... (firewheel-node: 12/12) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12/12 0:00:00
+    ────────────────────────────────────── Phase 1: Save Namespace ──────────────────────────────────────
+    Waiting for namespace save to complete... (fw-node: 12/12) ━━━━━━━━━━━━━━━━━━━ 12/12 0:00:00
     ✓ Namespace saved successfully
     ✓ Final ns save host status recorded
-    ───────────────────────────────────────────────────────────────────────────────────── Phase 2: Collect Restore Data ──────────────────────────────────────────────────────────────────────────────────────
+    ────────────────────────────────── Phase 2: Collect Restore Data ───────────────────────────────────
     ✓ Copied VM State/HDD files
     ✓ Saved VM mapping
     ✓ Saved experiment time
-    Copying schedule files... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12/12 0:00:00
+    Copying schedule files... ━━━━━━━━━━━━━━━━━━━ 12/12 0:00:00
     ✓ Pruned and saved schedule files (12)
     ✓ Copied VM resource handler launch file
     ✓ Wrote manifest metadata
-    ───────────────────────────────────────────────────────────────────────────────────────────── Save Complete ──────────────────────────────────────────────────────────────────────────────────────────────
+    ────────────────────────────────────────── Save Complete ───────────────────────────────────────────
     ✓ Experiment save completed successfully
     Saved Backup
     Experiment name            router_tree_saved_state
@@ -309,10 +309,10 @@ If you saved a directory, run:
 .. code-block:: bash
 
     $ firewheel load router_tree_saved_state_backup --dry-run
-    ────────────────────────────────────────────────────────────────────────────────────── Phase 1: Read Backup Source ───────────────────────────────────────────────────────────────────────────────────────
+    ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
     Source: /home/firewheel/router_tree_saved_state_backup
     ✓ Using existing backup directory
-    ──────────────────────────────────────────────────────────────────────────────────────── Phase 2: Validate Backup ────────────────────────────────────────────────────────────────────────────────────────
+    ───────────────────────────────────── Phase 2: Validate Backup ─────────────────────────────────────
     Validated Backup
     Root directory             /home/firewheel/router_tree_saved_state_backup
     Experiment name            router_tree_saved_state
@@ -326,7 +326,7 @@ If you saved a directory, run:
     ✓ Backup validated
     ✓ No active FIREWHEEL experiment is running
     ✓ Restore destinations validated
-    ──────────────────────────────────────────────────────────────────────────────────────────── Dry Run Summary ─────────────────────────────────────────────────────────────────────────────────────────────
+    ───────────────────────────────────────── Dry Run Summary ──────────────────────────────────────────
     ✓ Dry run completed successfully
     Planned Restore
     Experiment                 router_tree_saved_state
@@ -357,10 +357,10 @@ If you saved a directory:
 .. code-block:: bash
 
     $ firewheel load router_tree_saved_state_backup
-    ────────────────────────────────────────────────────────────────────────────────────── Phase 1: Read Backup Source ───────────────────────────────────────────────────────────────────────────────────────
+    ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
     Source: /home/firewheel/router_tree_saved_state_backup
     ✓ Using existing backup directory
-    ──────────────────────────────────────────────────────────────────────────────────────── Phase 2: Validate Backup ────────────────────────────────────────────────────────────────────────────────────────
+    ───────────────────────────────────── Phase 2: Validate Backup ─────────────────────────────────────
     Validated Backup
     Root directory             /home/firewheel/router_tree_saved_state_backup
     Experiment name            router_tree_saved_state
@@ -374,19 +374,19 @@ If you saved a directory:
     ✓ Backup validated
     ✓ No active FIREWHEEL experiment is running
     ✓ Restore destinations validated
-    ───────────────────────────────────────────────────────────────────────────────────────── Phase 3: Restore Data ──────────────────────────────────────────────────────────────────────────────────────────
+    ────────────────────────────────────── Phase 3: Restore Data ───────────────────────────────────────
     ↺ Reused existing saved VM files
     ✓ Restored VM mapping (12 entries)
     ✓ Restored schedules (12 files)
-    ────────────────────────────────────────────────────────────────────────────────────────── Phase 4: Launch VMs ───────────────────────────────────────────────────────────────────────────────────────────
+    ─────────────────────────────────────── Phase 4: Launch VMs ────────────────────────────────────────
     ✓ Started saved VMs
-    ────────────────────────────────────────────────────────────────────────────────── Phase 5: Launch VM Resource Handlers ──────────────────────────────────────────────────────────────────────────────────
+    ─────────────────────────────── Phase 5: Launch VM Resource Handlers ───────────────────────────────
     ✓ Rebuilt VM resource handler socket paths for 12 VMs
     ✓ Started VM resource handlers (12 processes launched)
-    ─────────────────────────────────────────────────────────────────────────────────────── Phase 6: Finalize Restore ────────────────────────────────────────────────────────────────────────────────────────
+    ──────────────────────────────────── Phase 6: Finalize Restore ─────────────────────────────────────
     ✓ Restored experiment time
     ✓ Resumed VM Resource Handling for 12 VMs.
-    ──────────────────────────────────────────────────────────────────────────────────────────── Restore Complete ────────────────────────────────────────────────────────────────────────────────────────────
+    ───────────────────────────────────────── Restore Complete ─────────────────────────────────────────
     ✓ Experiment restore completed successfully
     Restore Result
     Experiment                 router_tree_saved_state
