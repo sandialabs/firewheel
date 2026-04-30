@@ -72,7 +72,16 @@ source /fwpy/bin/activate
 
 if tty -s; then
     if [ "$#" -eq 0 ]; then
-        tmux
+		while true;
+		do
+			tmux attach 2>/dev/null || tmux
+			read -p "Exit and shutdown container? Your FIREWHEEL experiment will be destroyed (yes/no); " response
+			if [[ "$response" == "yes" || "$response" == "y" || $response == "Y" || "$response" == "Yes" ]];
+			then
+				break
+			fi
+		done
+
     else
         # If a command was passed to the container, execute it
         "$@"
