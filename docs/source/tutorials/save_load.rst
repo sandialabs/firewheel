@@ -21,8 +21,9 @@ By the end of this tutorial, you will have demonstrated that FIREWHEEL can resto
 an experiment back to a known saved point rather than forcing you to rebuild and
 reconfigure everything manually.
 
+*************
 Prerequisites
-=============
+*************
 
 Before starting, ensure that:
 
@@ -38,15 +39,16 @@ environment:
 
     $ firewheel restart
 
+****************
 What You Will Do
-================
+****************
 
 In this tutorial, you will first create and save a known-good checkpoint of a
 running experiment. After saving, the current experiment is paused, which gives
 you a natural point to either stop or resume and continue working from that
 state.
 
-The first diagram below shows that save workflow.
+The first diagram below shows that :ref:`helper_save` workflow.
 
 .. graphviz::
 
@@ -76,7 +78,7 @@ The first diagram below shows that save workflow.
    }
 
 Later in the tutorial, you will restore that saved checkpoint. By default, the
-load Helper automatically resumes the restored experiment, though you can also
+:ref:`helper_load` Helper automatically resumes the restored experiment, though you can also
 request that it come back paused for inspection before manually resuming it.
 
 The second diagram below shows that restore workflow.
@@ -148,9 +150,7 @@ Connecting to a VM and Making a Change
 
 Now connect to one of the Ubuntu VMs.
 For this tutorial, we will use ``host.root.net``.
-
 You can connect using miniweb or VNC as described in :ref:`router-tree-miniweb`.
-
 Once logged in, create a marker file that will be easy to verify later:
 
 .. code-block:: bash
@@ -228,27 +228,20 @@ If you want to include the backing images and VM resources cache content, use:
 
     $ firewheel save --name router_tree_saved_state --complete --archive
 
-At this point, FIREWHEEL has saved the current experiment state, including the VM
-state in which the marker file exists.
+At this point, FIREWHEEL has saved the entire experiment state.
 
 ******************************
 Introducing an Unwanted Change
 ******************************
 
 At this point, you have saved a known-good checkpoint of the experiment.
-As part of the save process, the experiment is paused so that you can either
-preserve that saved state and stop working, or intentionally continue working
-from the current experiment as a new "fork" of that state.
-
+As part of the save process, the experiment is paused so that you can either preserve that saved state and stop working, or intentionally continue working from the current experiment as a new "fork" of that state.
 In practice, after saving, you now have two choices:
 
 #. Reset the testbed and later restore the saved checkpoint with :ref:`helper_load`.
 #. Resume the currently running experiment and continue making additional changes.
 
-For this tutorial, we will choose the second option so that we can intentionally
-move the running experiment away from the saved state and later prove that
-:ref:`helper_load` restores the earlier checkpoint.
-
+For this tutorial, we will choose the second option so that we can intentionally move the running experiment away from the saved state and later prove that :ref:`helper_load` restores the earlier checkpoint.
 Resume the experiment with:
 
 .. code-block:: bash
@@ -275,7 +268,6 @@ Verify that the original saved marker is gone and the unwanted marker exists:
     $ ls *marker.txt
 
 At this point, the running experiment no longer matches the saved checkpoint.
-
 This is exactly the kind of situation where save/load is useful: you made
 additional changes after saving, decided you do not want to keep them, and now
 want to return the experiment to the previously saved state.
@@ -287,9 +279,7 @@ want to return the experiment to the previously saved state.
 Resetting the Testbed
 *********************
 
-Before using :ref:`helper_load`, the testbed must not already be running another
-FIREWHEEL experiment.
-
+Before using :ref:`helper_load`, the testbed must not already be running another FIREWHEEL experiment.
 Reset the environment:
 
 .. code-block:: bash
@@ -300,10 +290,8 @@ Reset the environment:
 Loading the Saved State
 ***********************
 
-Now that the running experiment has diverged from the saved checkpoint, reset the
-testbed if you have not already done so, then validate the backup before
-performing the actual restore.
-
+Now that the testbed is cleared, we want to load our previously saved state.
+First we will validate the backup before performing the actual restore.
 If you saved a directory, run:
 
 .. code-block:: bash
@@ -341,17 +329,11 @@ If you saved a directory, run:
     ↺ Existing identical files/directories would be reused without overwrite
     ✓ No changes were made
 
-This dry run checks that:
-
-* the backup layout and manifest are valid,
-* the restore targets are acceptable,
-* and the restore would be able to proceed without making any changes.
-
-This step is especially useful when working with older backups or when restoring
-into an environment where files may already exist.
+This dry run gives you a chance to confirm that the restore is likely to work before FIREWHEEL makes any changes to the testbed.
+In particular, it checks that the backup layout and manifest are valid, that the restore targets are suitable, and that the restore could proceed successfully in the current environment.
+This is especially helpful when working with an older backup or when restoring into an environment where some files may already exist.
 
 After confirming that the dry run succeeds, perform the actual restore.
-
 If you saved a directory:
 
 .. code-block:: bash
@@ -403,13 +385,13 @@ If you saved a directory:
 
 .. note::
 
-    When using ``firewheel load --paused``, resume the experiment manually when ready:
+    When using ``firewheel load --paused``, resume the experiment manually when ready with:
 
-.. code-block:: bash
+    .. code-block:: bash
 
-    $ firewheel vm resume --all
+        $ firewheel vm resume --all
 
-The load Helper validates the backup, restores the saved VM files and metadata,
+The :ref:`helper_load` Helper validates the backup, restores the saved VM files and metadata,
 relaunches the experiment, restores schedules, and rebuilds VM Resource handler
 socket paths if necessary.
 
@@ -417,9 +399,7 @@ socket paths if necessary.
 Verifying the Restored State
 ****************************
 
-Once the restored experiment is running, reconnect to ``host.root.net`` and
-check the marker files.
-
+Once the restored experiment is running, reconnect to ``host.root.net`` and check the marker files.
 First, verify that the saved marker file has been restored:
 
 .. code-block:: bash
@@ -439,22 +419,7 @@ Next, verify that the later unwanted change is gone:
     $ ls bad_marker.txt
 
 This file should no longer exist.
-
-This confirms that the experiment was successfully restored to the previously
-saved checkpoint rather than preserving the later unwanted change.
-
-A screenshot showing the restored marker file could be placed below.
+This confirms that the experiment was successfully restored to the previously saved checkpoint rather than preserving the later unwanted change.
 
 .. image:: images/save_load_marker_restored.png
    :alt: Restored marker file inside the VM
-
-*******************
-Using Other Options
-*******************
-
-Complete Saves
-==============
-
-If you want a more self-contained backup, especially when moving data between
-systems, use ``--complete`` during save so that optional cache content
-is included.
