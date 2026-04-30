@@ -4,20 +4,43 @@ DONE
 
 DESCRIPTION
 Load a previously saved FIREWHEEL experiment from either a backup directory or a
-supported tar archive. This Helper validates the backup layout and metadata,
-ensures that no experiment is currently running, restores saved VM files,
-restores VM configuration state and schedules, restores optional cache content when present,
-launches the saved VMs, rebuilds and relaunches VM Resource handlers when needed,
-and restores experiment time metadata.
+supported tar archive. In most cases, users will point this Helper at a backup
+directory or archive that was previously created by :ref:`helper_save`, often in
+the present working directory from which the save was performed.
+
+This Helper validates the backup layout and metadata, ensures that no experiment
+is currently running, restores saved VM files, restores VM configuration state
+and schedules, restores optional cache content when present, launches the saved
+VMs, rebuilds and relaunches VM Resource handlers when needed, and restores
+experiment time metadata.
 
 If restore destinations already exist and are identical to the backup content,
 they are reused automatically. If they differ, the Helper requires the
 :option:`load --force` option before overwriting them.
 
-Backups restored with this Helper are automatically resumed design.
-This default behavior can be changed with the ``paused`` flag which will start the experiment
-with the VMs in a `PAUSED` state and the VM Resource Handlers in a `break` state.
-Users can then resume the experiment with :ref:`helper_vm_resume` when ready.
+By default, backups restored with this Helper are automatically resumed so that
+the experiment continues running immediately after restore completes. If you want
+to inspect the restored environment before allowing schedules to continue, use
+:option:`load --paused` to restore the experiment in a paused state. In that
+case, VM execution remains paused and VM Resource handlers remain at a break
+until users manually resume the experiment with :ref:`helper_vm_resume`.
+
+A typical backup accepted by this Helper looks similar to:
+
+.. code-block:: text
+
+    <experiment_name>_backup/
+    ├── manifest.json
+    ├── vm_mapping.json
+    ├── experiment_time.json
+    ├── schedules/
+    ├── launch_cmds.mm
+    ├── <experiment_name>/
+    │   └── launch.mm
+    ├── imagestore_cache/
+    └── vm_resource_cache/
+
+This same content may also be provided as a supported tar archive.
 
 **Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] source``
 
@@ -42,9 +65,9 @@ Named Arguments
 
 .. option:: -p, --paused
 
-    Restore the experiment in a PAUSED state, enabling fine-grained control over resuming
-    VM execution.
-
+    Restore the experiment in a paused state rather than automatically resuming
+    it. This is useful when you want to inspect the restored environment before
+    allowing schedules to continue.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
@@ -72,6 +95,10 @@ Examples
 
 ``firewheel load my_experiment_backup.tgz --paused``
 
+If the experiment is restored with :option:`load --paused`, resume it when ready
+with:
+
+``firewheel vm resume --all``
 DONE
 
 RUN LocalPython ON control

@@ -6,13 +6,45 @@ DESCRIPTION
 Save the current state of a running FIREWHEEL experiment into a backup directory.
 This Helper captures the current minimega namespace state, VM mapping, experiment
 time metadata, schedule files, optional cache content, and VM Resource handler
-launch information. The backup is written to a directory in the current working
-directory and can optionally be archived into a single ``.tar`` file.
+launch information. The backup is written into the **present working directory**
+and can optionally be archived into a single ``.tar`` file.
 
 During save, FIREWHEEL waits for all minimega hosts to complete the namespace
 save operation before continuing. The saved schedule files are also modified so
-that completed entries are removed and a break is prepended, causing a restored
-experiment to come back in a paused state until resumed by the user.
+that completed entries are removed and a break is prepended, ensuring that a
+restored experiment can be resumed in a controlled manner.
+
+When the save completes, the current experiment is paused. At that point, users
+can either:
+
+* resume the current experiment with :ref:`firewheel vm resume --all<helper_vm_resume>` to continue working
+  from that saved checkpoint, or
+* reset the testbed with :ref:`firewheel restart<helper_restart>` and later restore the saved
+  backup with :ref:`helper_load`.
+
+A typical saved backup directory looks similar to:
+
+.. code-block:: text
+
+    <present working directory>/
+    └── <experiment_name>_backup/
+        ├── manifest.json
+        ├── vm_mapping.json
+        ├── experiment_time.json
+        ├── schedules/
+        ├── launch_cmds.mm
+        ├── <experiment_name>/
+        │   └── launch.mm
+        ├── imagestore_cache/
+        └── vm_resource_cache/
+
+Not all files or directories are present in every backup. For example,
+``launch_cmds.mm`` is only included when VM Resource handler launch information
+exists, and ``imagestore_cache`` / ``vm_resource_cache`` are only included when
+:option:`save --complete` is used.
+
+If :option:`save --archive` is used, a ``.tar`` archive is also created in the
+present working directory alongside the backup directory.
 
 **Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
 
@@ -53,7 +85,6 @@ Examples
 ``firewheel save --complete``
 
 ``firewheel save --name my_experiment --complete --archive``
-
 DONE
 
 RUN LocalPython ON control
