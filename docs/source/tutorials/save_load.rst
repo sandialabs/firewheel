@@ -21,9 +21,8 @@ By the end of this tutorial, you will have demonstrated that FIREWHEEL can resto
 an experiment back to a known saved point rather than forcing you to rebuild and
 reconfigure everything manually.
 
-*************
 Prerequisites
-*************
+=============
 
 Before starting, ensure that:
 
@@ -39,40 +38,22 @@ environment:
 
     $ firewheel restart
 
-************************
 What You Will Do
-************************
+================
 
-In this tutorial, you will follow the same basic workflow that many users will
-use when preserving and later restoring an experiment.
+In this tutorial, you will first create and save a known-good checkpoint of a
+running experiment. After saving, the current experiment is paused, which gives
+you a natural point to either stop or resume and continue working from that
+state.
 
-First, you will start with a running FIREWHEEL experiment.
-Next, you will use the :ref:`helper_save` Helper to capture its current state
-into a backup directory.
-If desired, that backup can also be archived into a single ``.tar`` file.
-After saving, the current experiment automatically continues running, which lets
-you keep working from that point if you want to explore an alternate path or
-make additional changes.
-
-Later, you will use the :ref:`helper_load` Helper to restore the experiment from
-either the backup directory or the archive.
-By default, the restored experiment is automatically resumed so that schedules
-continue without requiring additional user action.
-If you prefer to inspect the restored environment before allowing schedules to
-proceed, you can instead restore with the ``--paused`` option and then resume
-manually with :ref:`helper_vm_resume`.
-
-The following diagram shows the overall process you will walk through in this
-tutorial.
-
-The following diagram summarizes this workflow.
+The first diagram below shows that save workflow.
 
 .. graphviz::
 
-   digraph save_load_workflow {
+   digraph save_workflow {
        rankdir=LR;
        labelloc="t";
-       label="FIREWHEEL Save and Load Workflow";
+       label="FIREWHEEL Save Workflow";
        fontsize=18;
 
        node [shape=box, style="rounded,filled", fillcolor="#EAF2F8", color="#4A6FA5", fontname="Helvetica"];
@@ -81,24 +62,52 @@ The following diagram summarizes this workflow.
        running [label="Running\nExperiment"];
        modify [label="Make and Verify\nVM Change"];
        save [label="Save State\nfirewheel save"];
-       continue [label="Experiment Continues\nAutomatically"];
-       disturb [label="Introduce\nUnwanted Change"];
-       load [label="Restore State\nfirewheel load"];
-       resumed [label="Restored Experiment\nAutomatically Resumed"];
-       paused [label="Optional Paused Restore\nfirewheel load --paused"];
-       verify [label="Verify Saved State\nWas Restored"];
-       manual_resume [label="Manual Resume\nfirewheel vm resume --all"];
+       backup [label="Backup Directory\n(and optional .tar)"];
+       paused [label="Experiment Paused\nAfter Save"];
+       resume [label="Manual Resume\nfirewheel vm resume --all"];
+       continue [label="Continue Working\nfrom Saved Checkpoint"];
 
        running -> modify;
        modify -> save;
-       save -> continue;
-       continue -> disturb;
-       disturb -> load;
+       save -> backup;
+       save -> paused;
+       paused -> resume;
+       resume -> continue;
+   }
+
+Later in the tutorial, you will restore that saved checkpoint. By default, the
+load Helper automatically resumes the restored experiment, though you can also
+request that it come back paused for inspection before manually resuming it.
+
+The second diagram below shows that restore workflow.
+
+.. graphviz::
+
+   digraph load_workflow {
+       rankdir=LR;
+       labelloc="t";
+       label="FIREWHEEL Load Workflow";
+       fontsize=18;
+
+       node [shape=box, style="rounded,filled", fillcolor="#EAF2F8", color="#4A6FA5", fontname="Helvetica"];
+       edge [color="#4A6FA5", penwidth=1.5];
+
+       backup [label="Saved Backup\nDirectory or Archive"];
+       dryrun [label="Optional Validation\nfirewheel load --dry-run"];
+       load [label="Restore State\nfirewheel load"];
+       resumed [label="Restored Experiment\nAutomatically Resumed"];
+       paused [label="Optional Paused Restore\nfirewheel load --paused"];
+       resume [label="Manual Resume\nfirewheel vm resume --all"];
+       verify [label="Verify Saved State\nWas Restored"];
+
+       backup -> dryrun [style=dashed, label="optional"];
+       backup -> load;
+       dryrun -> load;
        load -> resumed;
        load -> paused [style=dashed, label="optional"];
        resumed -> verify;
-       paused -> manual_resume;
-       manual_resume -> verify;
+       paused -> resume;
+       resume -> verify;
    }
 
 ************************
@@ -222,9 +231,9 @@ If you want to include the backing images and VM resources cache content, use:
 At this point, FIREWHEEL has saved the current experiment state, including the VM
 state in which the marker file exists.
 
-****************************************
+******************************
 Introducing an Unwanted Change
-****************************************
+******************************
 
 At this point, you have saved a known-good checkpoint of the experiment.
 As part of the save process, the experiment is paused so that you can either
@@ -274,9 +283,9 @@ want to return the experiment to the previously saved state.
 .. image:: images/bad_marker_created.png
    :alt: A bad file marker created inside the VM
 
-****************************************
+*********************
 Resetting the Testbed
-****************************************
+*********************
 
 Before using :ref:`helper_load`, the testbed must not already be running another
 FIREWHEEL experiment.
@@ -392,7 +401,9 @@ If you saved a directory:
     Experiment time            Restored
 
 
-When using ``firewheel load --paused``, resume the experiment manually when ready:
+.. note::
+
+    When using ``firewheel load --paused``, resume the experiment manually when ready:
 
 .. code-block:: bash
 
