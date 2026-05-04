@@ -1,7 +1,7 @@
 import unittest
 
 from firewheel.config import config
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 
 
 class VMMappingTestCase(unittest.TestCase):
@@ -25,7 +25,7 @@ class VMMappingTestCase(unittest.TestCase):
                 "server_name": "2",
                 "control_ip": "3",
                 "server_uuid": "12345",
-                "state": "test",
+                "state": VMState.TESTING,
                 "current_time": "0",
             },
         ]
@@ -140,7 +140,7 @@ class VMMappingTestCase(unittest.TestCase):
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
             server_address=self.entries[1]["control_ip"],
-            state="configuring",
+            state=VMState.CONFIGURING,
             current_time=self.entries[1]["current_time"],
         )
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
@@ -149,7 +149,7 @@ class VMMappingTestCase(unittest.TestCase):
             "control_ip": self.entries[1]["control_ip"],
             "server_uuid": self.entries[1]["server_uuid"],
             "server_name": self.entries[1]["server_name"],
-            "state": "configuring",
+            "state": VMState.CONFIGURING,
             "current_time": self.entries[1]["current_time"],
         }
         self.assertEqual(found, expected)
@@ -193,7 +193,7 @@ class VMMappingTestCase(unittest.TestCase):
                 "control_ip": self.entries[0]["control_ip"],
                 "server_uuid": self.entries[0]["server_uuid"],
                 "server_name": self.entries[0]["server_name"],
-                "state": config["vm_resource_manager"]["default_state"],
+                "state": VMState.UNINITIALIZED,
                 "current_time": "",
             }
         )
@@ -218,7 +218,7 @@ class VMMappingTestCase(unittest.TestCase):
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
             server_address=self.entries[1]["control_ip"],
-            state="configuring",
+            state=VMState.CONFIGURING,
             current_time=self.entries[1]["current_time"],
         )
 
@@ -244,7 +244,7 @@ class VMMappingTestCase(unittest.TestCase):
         self.vmmapping.put(
             "42",
             "decoy",
-            state=config["vm_resource_manager"]["default_state"],
+            state=VMState.UNINITIALIZED,
             current_time="0",
         )
 
@@ -270,7 +270,7 @@ class VMMappingTestCase(unittest.TestCase):
         )
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], config["vm_resource_manager"]["default_state"])
+        self.assertEqual(found["state"], VMState.UNINITIALIZED)
 
     def test_is_vm_state_default_custom(self):
         """
@@ -278,7 +278,7 @@ class VMMappingTestCase(unittest.TestCase):
         The default vm_resources state is determined in config, and
         defaults to "uninitialized".
         """
-        new_state = "testing"
+        new_state = VMState.TESTING
         self.vmmapping.put(
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
@@ -291,7 +291,7 @@ class VMMappingTestCase(unittest.TestCase):
         self.assertEqual(found["state"], new_state)
 
     def test_set_vm_state_by_uuid(self):
-        new_state = "testing"
+        new_state = VMState.TESTING
         self.vmmapping.put(
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
@@ -300,7 +300,7 @@ class VMMappingTestCase(unittest.TestCase):
         )
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], config["vm_resource_manager"]["default_state"])
+        self.assertEqual(found["state"], VMState.UNINITIALIZED)
 
         self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
@@ -308,7 +308,7 @@ class VMMappingTestCase(unittest.TestCase):
         self.assertEqual(found["state"], new_state)
 
     def test_set_vm_state_by_uuid_int(self):
-        new_state = 1234
+        new_state = VMState.TESTING
         self.vmmapping.put(
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
@@ -317,12 +317,12 @@ class VMMappingTestCase(unittest.TestCase):
         )
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], config["vm_resource_manager"]["default_state"])
+        self.assertEqual(found["state"], VMState.UNINITIALIZED)
 
         self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], str(new_state))
+        self.assertEqual(found["state"], new_state)
 
     def test_set_vm_state_by_uuid_none(self):
         new_state = None
@@ -334,12 +334,10 @@ class VMMappingTestCase(unittest.TestCase):
         )
 
         found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], config["vm_resource_manager"]["default_state"])
+        self.assertEqual(found["state"], VMState.UNINITIALIZED)
 
-        self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
-
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], None)
+        with self.assertRaises(ValueError):
+            self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
     def test_set_vm_time_by_uuid(self):
         new_time = "404"
@@ -410,7 +408,7 @@ class VMMappingTestCase(unittest.TestCase):
         self.assertEqual(found["current_time"], new_time)
 
     def test_get_count_vm_not_ready(self):
-        new_state = "configured"
+        new_state = VMState.CONFIGURED
         self.vmmapping.put(
             self.entries[1]["server_uuid"],
             self.entries[1]["server_name"],
