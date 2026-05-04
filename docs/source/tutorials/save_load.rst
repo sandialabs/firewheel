@@ -130,7 +130,7 @@ Once the experiment is running, verify that the VMs are up:
 .. code-block:: bash
 
     $ firewheel vm mix
-                                            VM Mix                                     
+                                            VM Mix
     ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
     ┃ VM Image                          ┃ Power State ┃ VM Resource State ┃ Count ┃
     ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
