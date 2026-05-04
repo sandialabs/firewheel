@@ -143,8 +143,16 @@ from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 console = Console(theme=cli_output_theme)
 
-def _rollback_guidance() -> None:
-    """Print rollback guidance for partial restore failures."""
+def _rollback_guidance(exc: Exception | None = None) -> None:
+    """Print rollback guidance for partial restore failures.
+
+    Args:
+        exc: The exception which caused this guidance to be displayed.
+    """
+    if exc is not None:
+        console.print(f"[error]Error: {exc}[/error]")
+        console.print_exception()
+
     console.print(
         "[yellow]Restore may be partially applied. Recommended recovery: "
         "[bold]run [cyan]firewheel restart hard[/cyan] and try again[/bold].[/yellow]"
@@ -720,8 +728,8 @@ def _restore_from_layout(
 
 
     # This is reasonable to catch at this level to report any failure during the restore process
-    except Exception as exp:  # noqa: BLE001
-        _rollback_guidance()
+    except Exception as exc:  # noqa: BLE001
+        _rollback_guidance(exc)
         return 1
 
     print_phase_header(console, "Restore Complete")
