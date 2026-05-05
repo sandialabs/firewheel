@@ -28,7 +28,7 @@ from firewheel.lib.log import UTCLog
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.vm_resource_manager import api, utils
 from firewheel.control.repository_db import RepositoryDb
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_event import (
     ScheduleEvent,
@@ -163,7 +163,7 @@ class VMResourceHandler:
         connected = self.connect_to_driver()
 
         if connected:
-            self.set_state("configuring")
+            self.set_state(VMState.CONFIGURING)
         else:
             sys.exit(1)
 
@@ -256,7 +256,7 @@ class VMResourceHandler:
                     # need to pass the global barrier
                     self.log.debug("PROCESSING NO SCHEDULE EVENT")
                     self.current_time = 0
-                    self.set_state("configured")
+                    self.set_state(VMState.CONFIGURED)
 
                 elif event.get_type() == ScheduleEventType.NEW_ITEM:
                     self.log.debug("PROCESSING NEW ITEM EVENT")
@@ -278,7 +278,7 @@ class VMResourceHandler:
                             # (e.g. push file) where we don't want the VM resource
                             # handler to exit on failure
                             if not schedule_entry.ignore_failure:
-                                self.set_state("FAILED")
+                                self.set_state(VMState.FAILED)
                                 sys.exit(1)
 
                     if not schedule_entry.executable:
@@ -1115,7 +1115,7 @@ class VMResourceHandler:
             if self.current_time < 0 and self.current_time > self.initial_time:
                 self.current_time = 0
                 self.set_current_time(self.current_time)
-                self.set_state("configured")
+                self.set_state(VMState.CONFIGURED)
 
             self.log.debug("Event queue is empty, WAITING")
             self.condition.wait()
@@ -1158,7 +1158,7 @@ class VMResourceHandler:
                 self.prior_q.put((start_time, event))
 
                 # All negative time vm_resources have been handled
-                self.set_state("configured")
+                self.set_state(VMState.CONFIGURED)
                 self.current_time = 0
                 self.set_current_time(self.current_time)
 
@@ -1428,19 +1428,35 @@ class VMResourceHandler:
             return issubclass(obj, AbstractDriver) and not inspect.isabstract(obj)
         return False
 
-    def set_state(self, state):
+    def set_state(self, state: VMState):
         """
         Tell the infrastructure the state of the VM.
-        If the state is 'configured', then check to see
-        if this VM is the last VM to be configured. If it
-        is the last VM to be configured, then set the
-        experiment start time.
+         If the new state is ``VMState.CONFIGURED``, then check whether this
+        VM is the last VM to be configured. If it is, set the experiment
+        start time.
+
+        State transition rule(s):
+        - Once a VM reaches ``VMState.CONFIGURED``, it may only transition
+          to ``VMState.FAILED``. Attempts to move from ``configured`` back
+          to ``configuring`` are ignored.
 
         Args:
-            state (str): State of the VM
+            state (VMState): Desired state of the VM.
         """
-        if self.state == state:
+        current_state = VMState(self.state) if self.state is not None else None
+
+        if current_state == state:
             return
+
+        # Once configured, the VM may only transition to failed.
+        if current_state == VMState.CONFIGURED and state != VMState.FAILED:
+            self.log.warning(
+                "Ignoring invalid VM state transition from %s to %s",
+                current_state.value,
+                state.value,
+            )
+            return
+
         try:
             self.log.debug("SETTING STATE: %s", state)
             utils.set_vm_state(
@@ -1450,9 +1466,10 @@ class VMResourceHandler:
         except RuntimeError as exp:
             self.log.error("Error setting VM state. Can not set state to: %s", state)
             self.log.exception(exp)
+            return
 
         # Check to see if the experiment start time can be set
-        if state == "configured":
+        if state == VMState.CONFIGURED:
             if self.experiment_start_time:
                 return
             not_ready_count = utils.get_vm_count_not_ready(
