@@ -13,7 +13,7 @@ FIREWHEEL
 
 .. readme-inclusion-marker
 
-FIREWHEEL is an experiment orchestration tool that assists a user in building and controlling, repeatable experiments of distributed network systems at any scale.
+FIREWHEEL is an experiment orchestration tool that assists a user in building and controlling repeatable experiments of distributed network systems at any scale.
 
 FIREWHEEL was developed as part of Sandia National Laboratories `Emulytics <https://www.sandia.gov/emulytics>`_ program.
 With FIREWHEEL, users can easily construct modular parts of a cyber system, called *Model Components*.
