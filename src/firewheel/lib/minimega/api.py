@@ -475,10 +475,10 @@ class minimegaAPI:  # noqa: N801
         """Count started background processes from minimega output.
 
         Args:
-            output: Captured minimega command output.
+            output (str): Captured minimega command output.
 
         Returns:
-            Number of lines indicating a background process was started.
+            int: Number of lines indicating a background process was started.
         """
         count = 0
         for line in output.splitlines():
@@ -490,10 +490,10 @@ class minimegaAPI:  # noqa: N801
         """Run a minimega script and capture its output.
 
         Args:
-            script_path: Path to the minimega script.
+            script_path (Path): Path to the minimega script.
 
         Returns:
-            Tuple of:
+            tuple[int, str]:
                 - return code
                 - combined stdout/stderr text
 
@@ -505,18 +505,21 @@ class minimegaAPI:  # noqa: N801
             config["minimega"]["install_dir"], "bin", "minimega"
         )
 
-        result = subprocess.run(
-            [
-                minimega_bin_path,
-                f"-base={self.mm_base}",
-                "-e",
-                "read",
-                str(script_path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    minimega_bin_path,
+                    f"-base={self.mm_base}",
+                    "-e",
+                    "read",
+                    str(script_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (subprocess.CalledProcessError, OSError) as exc:
+            raise exc
 
         combined_output = ""
         if result.stdout:

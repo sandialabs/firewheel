@@ -61,10 +61,10 @@ def is_supported_archive(path: Path) -> bool:
     """Return whether the path appears to be a supported tar archive.
 
     Args:
-        path: Path to test.
+        path (Path): Path to test.
 
     Returns:
-        True if the path ends with a supported tar archive suffix.
+        bool: True if the path ends with a supported tar archive suffix.
     """
     return path.name.endswith((".tar.gz", ".tgz", ".tar"))
 
@@ -76,14 +76,11 @@ def write_manifest(
     """Write a backup manifest into the output directory.
 
     Args:
-        output_dir: Root output directory for the saved backup.
-        manifest: Manifest content.
+        output_dir (Path): Root output directory for the saved backup.
+        manifest (dict[str, Any]): Manifest content.
 
     Returns:
-        Path to the manifest file.
-
-    Raises:
-        OSError: If the manifest cannot be written.
+        Path: A path to the manifest file.
     """
     manifest_path = output_dir / MANIFEST_FILENAME
     with manifest_path.open("w", encoding="utf-8") as f_handle:
@@ -104,17 +101,17 @@ def build_manifest(
     """Build a manifest dictionary for a FIREWHEEL backup.
 
     Args:
-        experiment_name: Logical experiment name.
-        complete: Whether the save included optional caches.
-        archived: Whether the caller requested archive creation.
-        experiment_dir_name: Name of the saved experiment directory.
-        has_launch_cmds: Whether launch_cmds.mm is included.
-        has_imagestore_cache: Whether the ImageStore cache is included.
-        has_vm_resource_cache: Whether the VmResourceStore cache is included.
-        schedule_count: Number of schedule files included.
+        experiment_name (str): Logical experiment name.
+        complete (bool): Whether the save included optional caches.
+        archived (bool): Whether the caller requested archive creation.
+        experiment_dir_name (str): Name of the saved experiment directory.
+        has_launch_cmds (bool): Whether launch_cmds.mm is included.
+        has_imagestore_cache (bool): Whether the ImageStore cache is included.
+        has_vm_resource_cache (bool): Whether the VmResourceStore cache is included.
+        schedule_count (int): Number of schedule files included.
 
     Returns:
-        Manifest dictionary.
+        dict[str, Any]: Manifest dictionary.
     """
 
     return {
@@ -139,51 +136,54 @@ def build_manifest(
     }
 
 
-def load_manifest(root_dir: Path) -> Any:
+def load_manifest(root_dir: Path) -> dict[str, Any]:
     """Load the manifest from a candidate backup root directory.
 
     Args:
-        root_dir: Backup root directory.
+        root_dir (Path): Backup root directory.
 
     Returns:
-        Parsed manifest dictionary.
+        dict[str, Any]: Parsed manifest dictionary.
 
     Raises:
-        FileNotFoundError: If the manifest is missing.
-        json.JSONDecodeError: If the manifest is invalid JSON.
         OSError: If the manifest cannot be read.
     """
     manifest_path = root_dir / MANIFEST_FILENAME
-    with manifest_path.open("r", encoding="utf-8") as f_handle:
-        return json.load(f_handle)
+    try:
+        with manifest_path.open("r", encoding="utf-8") as f_handle:
+            return json.load(f_handle)
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise OSError from exc
 
 
 def extract_archive_safely(archive_path: Path, destination: Path) -> None:
     """Safely extract a tar archive into a destination directory.
 
     Args:
-        archive_path: Archive to extract.
-        destination: Extraction destination.
+        archive_path (Path): Archive to extract.
+        destination (Path): Extraction destination.
 
     Raises:
-        tarfile.ReadError: If the file is not a readable tar archive.
-        tarfile.CompressionError: If the archive compression is invalid.
         OSError: If extraction fails.
     """
     destination.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive_path, "r:*") as archive:
-        members = get_safe_tarfile_members(archive, destination)
-        archive.extractall(path=destination, members=members)  # noqa: S202 members are pre-vetted for safety
+    try:
+        with tarfile.open(archive_path, "r:*") as archive:
+            # members are pre-vetted for safety
+            members = get_safe_tarfile_members(archive, destination)
+            archive.extractall(path=destination, members=members)  # noqa: S202
+    except (tarfile.ReadError, tarfile.CompressionError, OSError) as exp:
+        raise OSError from exp
 
 
 def find_experiment_dir_by_launch_mm(root_dir: Path) -> Path:
     """Find the experiment directory by locating exactly one launch.mm file.
 
     Args:
-        root_dir: Backup root directory.
+        root_dir (Path): Backup root directory.
 
     Returns:
-        Path to the directory containing launch.mm.
+        Path: The path to the directory containing launch.mm.
 
     Raises:
         FileNotFoundError: If no experiment directory is found.
@@ -216,10 +216,10 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
     layout and optional content.
 
     Args:
-        root_dir: Root directory to validate.
+        root_dir (Path): Root directory to validate.
 
     Returns:
-        Validated backup layout.
+        BackupLayout: Validated backup layout.
 
     Raises:
         FileNotFoundError: If required files or directories are missing.

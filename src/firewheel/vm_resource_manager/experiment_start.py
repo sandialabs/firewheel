@@ -74,7 +74,7 @@ class ExperimentStart:
 
         Arguments:
             custom_time (datetime.datetime): If provided, this time will be added
-            to the database as the start time instead of the current time.
+                to the database as the start time instead of the current time.
 
         Returns:
             datetime.datetime: A datetime object representing the time value as

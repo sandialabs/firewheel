@@ -5,6 +5,7 @@ import hashlib
 import tarfile
 import traceback
 from time import sleep
+from typing import Any
 from pathlib import Path
 from functools import wraps as _wraps
 
@@ -27,11 +28,11 @@ def files_are_identical(source: Path, destination: Path) -> bool:
     """Return whether two files are byte-for-byte identical.
 
     Args:
-        source: Source file path.
-        destination: Destination file path.
+        source (Path): Source file path.
+        destination (Path): Destination file path.
 
     Returns:
-        True if both files exist and have identical contents, otherwise False.
+        bool: True if both files exist and have identical contents, otherwise False.
     """
     if not source.is_file() or not destination.is_file():
         return False
@@ -42,11 +43,11 @@ def directories_are_identical(source: Path, destination: Path) -> bool:
     """Return whether two directory trees are identical.
 
     Args:
-        source: Source directory path.
-        destination: Destination directory path.
+        source (Path): Source directory path.
+        destination (Path): Destination directory path.
 
     Returns:
-        True if the directory trees have identical structure and file contents,
+        bool: True if the directory trees have identical structure and file contents,
         otherwise False.
     """
     if not source.is_dir() or not destination.is_dir():
@@ -79,12 +80,12 @@ def copytree_if_needed(source: Path, destination: Path, force: bool) -> bool:
     If the destination exists and is identical to the source, no action is taken.
 
     Args:
-        source: Source directory.
-        destination: Destination directory.
-        force: Whether differing existing content may be overwritten.
+        source (Path): Source directory.
+        destination (Path): Destination directory.
+        force (bool): Whether differing existing content may be overwritten.
 
     Returns:
-        True if content was copied or overwritten, False if skipped because the
+        bool: True if content was copied or overwritten, False if skipped because the
         destination already matched the source.
 
     Raises:
@@ -119,12 +120,12 @@ def copyfile_if_needed(source: Path, destination: Path, force: bool) -> bool:
     If the destination exists and is identical to the source, no action is taken.
 
     Args:
-        source: Source file.
-        destination: Destination file.
-        force: Whether differing existing content may be overwritten.
+        source (Path): Source file.
+        destination (Path): Destination file.
+        force (bool): Whether differing existing content may be overwritten.
 
     Returns:
-        True if content was copied or overwritten, False if skipped because the
+        bool: True if content was copied or overwritten, False if skipped because the
         destination already matched the source.
 
     Raises:
@@ -157,8 +158,8 @@ def print_phase_header(console, title: str) -> None:
     """Print a restore phase header.
 
     Args:
-        console: The console to print to.
-        title: Phase title to display.
+        console (Console): The console to print to.
+        title (str): Phase title to display.
     """
     console.rule(f"[bold blue]{title}[/bold blue]")
 
@@ -167,8 +168,8 @@ def print_success(console, message: str) -> None:
     """Print a success message.
 
     Args:
-        console: The console to print to.
-        message: Message to display.
+        console (Console): The console to print to.
+        message (str): Message to display.
     """
     console.print(f"[green]✓ {message}[/green]")
 
@@ -177,8 +178,8 @@ def print_reused(console, message: str) -> None:
     """Print a reused/skipped message.
 
     Args:
-        console: The console to print to.
-        message: Message to display.
+        console (Console): The console to print to.
+        message (str): Message to display.
     """
     console.print(f"[yellow]↺ {message}[/yellow]")
 
@@ -187,8 +188,8 @@ def print_error(console, message: str) -> None:
     """Print an error message.
 
     Args:
-        console: The console to print to.
-        message: Message to display.
+        console (Console): The console to print to.
+        message (str): Message to display.
     """
     console.print(f"[red]✗ {message}[/red]")
 
@@ -197,9 +198,9 @@ def print_result_card(console, title: str, lines: list[tuple[str, str]]) -> None
     """Print a concise result card.
 
     Args:
-        console: The console to print to.
-        title: Card title.
-        lines: Sequence of key/value pairs to display.
+        console (Console): The console to print to.
+        title (str): Card title.
+        lines (list[tuple[str, str]]): Sequence of key/value pairs to display.
     """
     console.print(f"[bold]{title}[/bold]")
     for key, value in lines:
@@ -230,11 +231,11 @@ def badpath(path: str, base: Path) -> bool:
     """Check whether a path escapes the provided base directory.
 
     Args:
-        path: Proposed extraction path.
-        base: Intended extraction base directory.
+        path (str): Proposed extraction path.
+        base (Path): Intended extraction base directory.
 
     Returns:
-        True if the resolved path escapes the base directory, otherwise False.
+        bool: True if the resolved path escapes the base directory, otherwise False.
     """
     joint = (base / path).resolve()
     return not str(joint).startswith(str(base.resolve()))
@@ -244,11 +245,11 @@ def badlink(info: tarfile.TarInfo, base: Path) -> bool:
     """Check whether a tar link target escapes the provided base directory.
 
     Args:
-        info: Tar file member to inspect.
-        base: Intended extraction base directory.
+        info (tarfile.TarInfo): Tar file member to inspect.
+        base (Path): Intended extraction base directory.
 
     Returns:
-        True if the resolved link target escapes the base directory, otherwise
+        bool: True if the resolved link target escapes the base directory, otherwise
         False.
     """
     link_path = (base / Path(info.name).parent).resolve()
@@ -262,11 +263,11 @@ def get_safe_tarfile_members(
     """Return tar members considered safe to extract under a base directory.
 
     Args:
-        tarfile_obj: Open tar archive.
-        base: Intended extraction base directory.
+        tarfile_obj (tarfile.TarFile): Open tar archive.
+        base (Path): Intended extraction base directory.
 
     Returns:
-        List of safe tar members.
+        list[tarfile.TarInfo]: List of safe tar members.
     """
     resolved_base = base.resolve()
     result: list[tarfile.TarInfo] = []
@@ -376,7 +377,7 @@ def retry(num_tries, exceptions=None, base_delay=10, exp_factor=2):
         """
 
         @_wraps(func)
-        def f_retry(*args, **kwargs):
+        def f_retry(*args: Any, **kwargs: Any):
             """
             The retry loop which attempts the function ``num_tries`` times
             and will catch exceptions passed into exceptions, then sleep
@@ -384,8 +385,8 @@ def retry(num_tries, exceptions=None, base_delay=10, exp_factor=2):
             base_delay*exp_factor**(attempt) seconds before retrying.
 
             Args:
-                *args: Any arguments to the function.
-                **kwargs: Any keyword arguments to the function.
+                *args (Any): Any arguments to the function.
+                **kwargs (Any): Any keyword arguments to the function.
 
             Returns:
                 The passed in function.
