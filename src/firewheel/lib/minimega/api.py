@@ -254,6 +254,32 @@ class minimegaAPI:  # noqa: N801
         return new_response
 
     @staticmethod
+    def parse_history(raw_response):
+        """
+        Parse minimega history output into a list of commands per host.
+
+        Args:
+            raw_response (list[dict]): Output from `self.mm.history()`
+
+        Returns:
+            dict: Mapping of hostname -> list of history commands
+        """
+        history_by_host = {}
+
+        for host_response in raw_response:
+            hostname = host_response["Host"]
+            response = host_response.get("Response")
+
+            if not response:
+                history_by_host[hostname] = []
+                continue
+
+            commands = [line for line in response.splitlines() if line.strip()]
+            history_by_host[hostname] = commands
+
+        return history_by_host
+
+    @staticmethod
     def check_host_filter(filter_dict, elem):
         """
         Checks an element against a provided dictionary of filter keys
