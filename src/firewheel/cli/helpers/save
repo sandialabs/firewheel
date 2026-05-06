@@ -539,7 +539,7 @@ def save_vm_state(
     mm_history = mm_api.get_history()
     tap_commands = [
         cmd
-        for commands in mm_history
+        for _, commands in mm_history.items()
         for cmd in commands
         if "tap create" in cmd
     ]
@@ -547,6 +547,9 @@ def save_vm_state(
         with launch_file.open("a", encoding="utf-8") as f:
             for cmd in tap_commands:
                 f.write(f"{cmd}\n")
+        print_success(console, "Saved minimega tap commands (e.g., a control network)")
+    else:
+        print_reused(console, "No experiment tap commands (e.g., a control network)")
 
 
     mapping_file = output_dir / "vm_mapping.json"
