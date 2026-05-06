@@ -533,6 +533,22 @@ def save_vm_state(
         )
         return 1
 
+    # If there are any manual `tap create` commands (e.g., from a control network)
+    # those need to be added to the launch file
+    launch_file = output_dir / exp_files.name / "launch.mm"
+    mm_history = mm_api.get_history()
+    tap_commands = [
+        cmd
+        for commands in mm_history
+        for cmd in commands
+        if "tap create" in cmd
+    ]
+    if tap_commands:
+        with launch_file.open("a", encoding="utf-8") as f:
+            for cmd in tap_commands:
+                f.write(f"{cmd}\n")
+
+
     mapping_file = output_dir / "vm_mapping.json"
     try:
         with mapping_file.open("w", encoding="utf-8") as f_handle:
