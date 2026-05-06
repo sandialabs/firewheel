@@ -66,16 +66,24 @@ class ExperimentStart:
             self.log.error("Error occurred when trying to close the GRPC Client")
             self.log.exception(exp)
 
-    def add_start_time(self):
+    def add_start_time(self, custom_time=None):
         """
-        Report the current time as a new start time for the database. May be
+        Set the current time as a new start time for the database. May be
         called arbitrary many times without affecting the consistency of the
         time returned by `get_start_time()`.
+
+        Arguments:
+            custom_time (datetime.datetime): If provided, this time will be added
+                to the database as the start time instead of the current time.
 
         Returns:
             datetime.datetime: A datetime object representing the time value as
             added to the database: 1-second resolution, UTC.
         """
+        if custom_time is not None:
+            self.grpc_client.set_experiment_start_time(custom_time)
+            return custom_time
+
         # Check to make sure that it isn't already set
         current_time = self.get_start_time()
         if current_time:

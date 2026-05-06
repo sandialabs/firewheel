@@ -42,7 +42,8 @@ config edit
 
 usage: firewheel config edit [-e EDITOR]
 
-Edit the FIREWHEEL configuration with a text editor. The user must set either the VISUAL or EDITOR environment variable or use the provided flag to override these environment variables.
+Edit the FIREWHEEL configuration with a text editor. The user must set either the VISUAL or EDITOR
+environment variable or use the provided flag to override these environment variables.
 
 options:
 

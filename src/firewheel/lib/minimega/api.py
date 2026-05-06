@@ -253,6 +253,29 @@ class minimegaAPI:  # noqa: N801
                 new_response[hostname] = new_host_response
         return new_response
 
+    def get_history(self):
+        """
+        Get minimega history output into a list of commands per host.
+
+        Returns:
+            dict: Mapping of hostname -> list of history commands
+        """
+        history_by_host = {}
+        raw_response = self.mm.history()
+
+        for host_response in raw_response:
+            hostname = host_response["Host"]
+            response = host_response.get("Response")
+
+            if not response:
+                history_by_host[hostname] = []
+                continue
+
+            commands = [line for line in response.splitlines() if line.strip()]
+            history_by_host[hostname] = commands
+
+        return history_by_host
+
     @staticmethod
     def check_host_filter(filter_dict, elem):
         """
@@ -470,3 +493,63 @@ class minimegaAPI:  # noqa: N801
         """
         host = self.get_hosts(host_key=platform.node())
         return host["cpucommit"] / host["cpus"]
+
+    def count_started_background_processes(self, output: str) -> int:
+        """Count started background processes from minimega output.
+
+        Args:
+            output (str): Captured minimega command output.
+
+        Returns:
+            int: Number of lines indicating a background process was started.
+        """
+        count = 0
+        for line in output.splitlines():
+            if "Started background process with id" in line:
+                count += 1
+        return count
+
+    def run_minimega_script(self, script_path: Path) -> tuple[int, str]:
+        """Run a minimega script and capture its output.
+
+        Args:
+            script_path (Path): Path to the minimega script.
+
+        Returns:
+            tuple[int, str]:
+                - return code
+                - combined stdout/stderr text
+
+        Raises:
+            subprocess.CalledProcessError: If minimega returns a non-zero status.
+            OSError: If the command cannot be launched.
+        """
+        minimega_bin_path = os.path.join(
+            config["minimega"]["install_dir"], "bin", "minimega"
+        )
+
+        try:
+            result = subprocess.run(
+                [
+                    minimega_bin_path,
+                    f"-base={self.mm_base}",
+                    "-e",
+                    "read",
+                    str(script_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (subprocess.CalledProcessError, OSError) as exc:
+            raise exc
+
+        combined_output = ""
+        if result.stdout:
+            combined_output += result.stdout
+        if result.stderr:
+            if combined_output:
+                combined_output += "\n"
+            combined_output += result.stderr
+
+        return result.returncode, combined_output
