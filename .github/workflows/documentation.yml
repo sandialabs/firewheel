@@ -40,7 +40,7 @@ jobs:
       uses: sandialabs/firewheel_ci/.github/actions/prepare-tox@v1
     - name: Build Documentation
       run: |
-        apt install -y graphviz
+        sudo apt-get install -y graphviz
         tox -e dependencies,docs
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
