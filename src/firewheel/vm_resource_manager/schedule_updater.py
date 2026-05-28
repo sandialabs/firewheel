@@ -433,6 +433,7 @@ class ScheduleUpdater(Thread):
             experiment_time = api.get_experiment_start_time(
                 self.experiment_start_time_object
             )
+            self.log.debug("ScheduleUpdater.get_start_time() -> %s", experiment_time)
             if experiment_time:
                 self.experiment_start_time_object.close()
                 self.experiment_start_time_object = None

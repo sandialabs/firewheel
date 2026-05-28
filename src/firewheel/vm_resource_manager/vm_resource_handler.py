@@ -329,9 +329,15 @@ class VMResourceHandler:
                             self.experiment_start_time - curtime
                         ).total_seconds()
 
-                        self.log.debug(
-                            "Experiment will start in %s seconds", start_seconds
-                        )
+                        if start_seconds > 0:
+                            self.log.debug(
+                                "Experiment will start in %s seconds", start_seconds
+                            )
+                        else:
+                            self.log.debug(
+                                "Experiment started %s ago", start_seconds
+                            )
+
                         self.log.debug(
                             "The `ScheduleEntry` '%s' with start time %s will start in %s seconds",
                             schedule_entry.executable,
@@ -1134,7 +1140,11 @@ class VMResourceHandler:
                 events.append(event)
                 continue
 
-            if not time_updated and start_time > self.current_time:
+            if (
+                not time_updated
+                and start_time > self.current_time
+                and (start_time <= 0 or self.experiment_start_time is not None)
+            ):
                 self.current_time = start_time
                 time_updated = True
                 self.set_current_time(self.current_time)
@@ -1153,7 +1163,11 @@ class VMResourceHandler:
             # Wait for experiment start time before passing on
             # positive time events
             if start_time > 0 and not self.experiment_start_time:
-                self.log.debug("WAITING FOR START TIME")
+                self.log.debug(
+                    "WAITING FOR START TIME for positive-time event at %s",
+                    start_time,
+                )
+
                 # Put the event back since we can't process it yet
                 self.prior_q.put((start_time, event))
 
@@ -1162,8 +1176,25 @@ class VMResourceHandler:
                 self.current_time = 0
                 self.set_current_time(self.current_time)
 
-                # This will force a sleep until notified by the ScheduleUpdater
-                # that a new event has been enqueued
+                # Do not rely solely on the updater thread to publish the
+                # experiment start event. Query directly here as well.
+                try:
+                    start_time_value = api.get_experiment_start_time()
+                except Exception as exp:  # noqa: BLE001
+                    self.log.error("Unable to query experiment start time directly")
+                    self.log.exception(exp)
+                    start_time_value = None
+
+                if start_time_value is not None:
+                    self.log.debug(
+                        "Directly obtained experiment start time while waiting: %s",
+                        start_time_value,
+                    )
+                    self.experiment_start_time = start_time_value
+                    continue
+
+                # Sleep until notified that new queue content may be available,
+                # then loop and try again.
                 self.condition.wait()
                 continue
 

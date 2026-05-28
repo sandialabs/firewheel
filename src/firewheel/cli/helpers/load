@@ -103,6 +103,8 @@ import os
 import re
 import sys
 import json
+import math
+import base64
 import pickle
 import argparse
 import tempfile
@@ -200,10 +202,165 @@ def _restore_experiment_time(experiment_time_path: Path) -> None:
     start.add_start_time(new_start_time)
 
 
+def _is_save_prepended_break(entry: Any) -> bool:
+    """Heuristically determine whether a schedule entry is the break prepended by save.
+
+    For the initial implementation, use a deliberately simple heuristic:
+    if the first schedule entry is an infinite pause/break, treat it as the
+    save-prepended break and strip it during non-paused restore.
+
+    Args:
+        entry: Candidate schedule entry object.
+
+    Returns:
+        ``True`` if the entry appears to be the save-prepended break,
+        otherwise ``False``.
+    """
+    try:
+        if not getattr(entry, "pause", False):
+            return False
+
+        data = getattr(entry, "data", None)
+        if not isinstance(data, list) or not data:
+            return False
+
+        first = data[0]
+        if not isinstance(first, dict):
+            return False
+
+        duration = first.get("pause_duration")
+        return math.isinf(duration)
+    except (TypeError, ValueError):
+        return False
+
+
+def _strip_save_prepended_break_from_schedule(
+    schedule: list[Any],
+) -> tuple[list[Any], bool]:
+    """Remove the leading save-prepended break from a schedule when present.
+
+    Args:
+        schedule: Decoded list of schedule entries.
+
+    Returns:
+        Tuple of:
+            - updated schedule list
+            - whether a leading save-prepended break was removed
+    """
+    if not schedule:
+        return schedule, False
+
+    first = schedule[0]
+    if _is_save_prepended_break(first):
+        return schedule[1:], True
+
+    return schedule, False
+
+
+def _restore_schedule_file(
+    source_path: Path,
+    destination_path: Path,
+    force: bool,
+    paused: bool,
+) -> bool:
+    """Restore one schedule file, optionally stripping the save-prepended break.
+
+    If ``paused`` is ``True``, the file is restored byte-for-byte using the
+    existing copy-if-needed helper.
+
+    If ``paused`` is ``False``, the schedule payload is decoded, the
+    save-prepended leading break is removed when present, and the transformed
+    schedule is written to the destination. Existing identical transformed
+    output is reused automatically. Differing existing content still requires
+    ``force=True``.
+
+    Args:
+        source_path: Source schedule file from the backup.
+        destination_path: Destination path in the live schedule cache.
+        force: Whether overwriting differing existing content is allowed.
+        paused: Whether the restore should preserve the prepended break.
+
+    Returns:
+        ``True`` if the destination content was written/updated,
+        otherwise ``False`` if existing identical content was reused.
+
+    Raises:
+        RuntimeError: If the schedule file cannot be decoded or transformed.
+        FileExistsError: If destination differs and force is False.
+    """
+    if paused:
+        return copyfile_if_needed(source_path, destination_path, force=force)
+
+    try:
+        with source_path.open("r", encoding="utf-8") as f_handle:
+            schedule_obj = json.load(f_handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Failed to read schedule file {source_path}: {exc}"
+        ) from exc
+
+    if "text" not in schedule_obj:
+        raise RuntimeError(f"Schedule file {source_path} is missing required key 'text'")
+
+    try:
+        decoded_text = base64.b64decode(schedule_obj["text"])
+        schedule = pickle.loads(decoded_text)  # nosec
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Failed to decode schedule payload from {source_path}: {exc}"
+        ) from exc
+
+    if schedule is None:
+        schedule = []
+
+    if not isinstance(schedule, list):
+        raise RuntimeError(
+            f"Expected schedule payload in {source_path} to decode to a list, got {type(schedule)!r}"
+        )
+
+    updated_schedule, _removed_break = _strip_save_prepended_break_from_schedule(schedule)
+
+    updated_obj = {
+        "server_name": schedule_obj.get("server_name"),
+        "text": base64.b64encode(pickle.dumps(updated_schedule)).decode("utf-8"),
+        "ip": schedule_obj.get("ip"),
+    }
+    updated_text = json.dumps(updated_obj, sort_keys=True)
+
+    if destination_path.exists():
+        try:
+            existing_text = destination_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to read existing destination schedule {destination_path}: {exc}"
+            ) from exc
+
+        if existing_text == updated_text:
+            return False
+
+        if not force:
+            raise FileExistsError(
+                "Restore would overwrite existing path with different contents: "
+                f"{destination_path}\n"
+                "Rerun with --force to overwrite differing content."
+            )
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        destination_path.write_text(updated_text, encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to write restored schedule to {destination_path}: {exc}"
+        ) from exc
+
+    return True
+
+
 def _restore_schedule_files(
     schedule_dir: Path,
     schedule_db: ScheduleDb,
     force: bool,
+    paused: bool,
 ) -> tuple[int, int]:
     """Restore schedule files into the schedule cache.
 
@@ -211,6 +368,7 @@ def _restore_schedule_files(
         schedule_dir: Source schedule directory.
         schedule_db: ScheduleDb instance.
         force: Whether differing existing files may be overwritten.
+        paused: Whether the restore should preserve the prepended break.
 
     Returns:
         Tuple of:
@@ -227,7 +385,12 @@ def _restore_schedule_files(
 
         processed_count += 1
         destination = destination_root / file.name
-        if copyfile_if_needed(file, destination, force=force):
+        if _restore_schedule_file(
+            source_path=file,
+            destination_path=destination,
+            force=force,
+            paused=paused,
+        ):
             copied_count += 1
 
     return processed_count, copied_count
@@ -456,6 +619,7 @@ def _validate_destination_paths(
     imagestore_cache: Path,
     vm_resource_cache: Path,
     force: bool,
+    paused: bool,
 ) -> None:
     """Validate restore destination paths before modifying the system.
 
@@ -469,6 +633,7 @@ def _validate_destination_paths(
         imagestore_cache: ImageStore cache path.
         vm_resource_cache: VmResourceStore cache path.
         force: Whether overwriting existing differing content is allowed.
+        paused: Whether the restore should preserve the prepended break.
 
     Raises:
         FileExistsError: If an existing destination differs and force is False.
@@ -484,8 +649,24 @@ def _validate_destination_paths(
         if not schedule_file.is_file():
             continue
         dest = schedule_cache_root / schedule_file.name
-        if dest.exists():
-            if not files_are_identical(schedule_file, dest) and not force:
+        if dest.exists() and not force:
+            try:
+                if paused:
+                    identical = files_are_identical(schedule_file, dest)
+                else:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        transformed_dest = Path(temp_dir) / schedule_file.name
+                        _restore_schedule_file(
+                            source_path=schedule_file,
+                            destination_path=transformed_dest,
+                            force=True,
+                            paused=False,
+                        )
+                        identical = files_are_identical(transformed_dest, dest)
+            except Exception:
+                identical = False
+
+            if not identical:
                 conflicts.append(str(dest))
 
     if layout.imagestore_dir is not None and imagestore_cache.exists():
@@ -556,6 +737,7 @@ def _restore_from_layout(
             imagestore_cache=imagestore_cache,
             vm_resource_cache=vm_resource_cache,
             force=force,
+            paused=paused,
         )
         print_success(console, "Restore destinations validated")
     except FileExistsError as exc:
@@ -669,6 +851,7 @@ def _restore_from_layout(
             layout.schedules_dir,
             schedule_db,
             force=force,
+            paused=paused,
         )
         if summary["schedule_files_copied"] == summary["schedule_files_processed"]:
             print_success(console,
@@ -690,7 +873,12 @@ def _restore_from_layout(
         summary["started_vms"] = True
         print_success(console, "Started saved VMs")
 
-        print_phase_header(console, "Phase 5: Launch VM Resource Handlers")
+        print_phase_header(console, "Phase 5: Restore Experiment Time")
+        _restore_experiment_time(layout.experiment_time_path)
+        summary["restored_experiment_time"] = True
+        print_success(console, "Restored experiment time")
+
+        print_phase_header(console, "Phase 6: Launch VM Resource Handlers")
         if layout.launch_cmds_path is not None:
             launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
             vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
@@ -698,7 +886,8 @@ def _restore_from_layout(
                 output_path=launch_cmd_updated_path,
                 mm_api=mm_api,
             )
-            print_success(console,
+            print_success(
+                console,
                 f"Rebuilt VM resource handler socket paths for {len(vm_name_to_mm_id)} VMs"
             )
 
@@ -707,25 +896,25 @@ def _restore_from_layout(
                 handler_output
             )
             summary["started_vm_resource_handlers"] = True
-            print_success(console,
+            print_success(
+                console,
                 "Started VM resource handlers "
                 f"({summary['vm_processes_started']} processes launched)"
             )
         else:
             print_reused(console, "No VM resource handler launch file present; skipping")
 
-        print_phase_header(console, "Phase 6: Finalize Restore")
-        _restore_experiment_time(layout.experiment_time_path)
-        summary["restored_experiment_time"] = True
-        print_success(console, "Restored experiment time")
-
         if paused:
-            print_reused(console, f"All VMs and VM Resource Schedules will remain in a PAUSED state.")
+            print_reused(
+                console,
+                "All VMs and VM Resource Schedules will remain in a PAUSED state.",
+            )
         else:
-            res_schedules = resume_all_schedules(mm_api, schedule_db)
-            print_success(console, f"Resumed VM Resource Handling for {res_schedules} VMs.")
-
-
+            print_success(
+                console,
+                "Restored schedules without the save-prepended break; "
+                "VM Resource Handling will continue automatically.",
+            )
 
     # This is reasonable to catch at this level to report any failure during the restore process
     except Exception as exc:  # noqa: BLE001
