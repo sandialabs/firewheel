@@ -1140,11 +1140,7 @@ class VMResourceHandler:
                 events.append(event)
                 continue
 
-            if (
-                not time_updated
-                and start_time > self.current_time
-                and (start_time <= 0 or self.experiment_start_time is not None)
-            ):
+            if not time_updated and start_time > self.current_time:
                 self.current_time = start_time
                 time_updated = True
                 self.set_current_time(self.current_time)
