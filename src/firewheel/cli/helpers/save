@@ -250,7 +250,7 @@ def check_time() -> dict[str, str | int]:
         raise RuntimeError("Experiment must have a start time prior to saving!")
 
     seconds_since_start = vm_resource_api.get_experiment_time_since_start()
-    if seconds_since_start:
+    if seconds_since_start is not None and seconds_since_start > 0:
         seconds_since_start = int(seconds_since_start)
     else:
         seconds_since_start = 0
