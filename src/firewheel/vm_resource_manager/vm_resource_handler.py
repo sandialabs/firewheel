@@ -334,9 +334,7 @@ class VMResourceHandler:
                                 "Experiment will start in %s seconds", start_seconds
                             )
                         else:
-                            self.log.debug(
-                                "Experiment started %s ago", start_seconds
-                            )
+                            self.log.debug("Experiment started %s ago", start_seconds)
 
                         self.log.debug(
                             "The `ScheduleEntry` '%s' with start time %s will start in %s seconds",
