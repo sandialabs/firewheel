@@ -587,8 +587,15 @@ def save_vm_state(
 
         for file in schedule_db_paths:
             try:
+                # It is possible for the experiment_time to be negative if the
+                # VMs have completed configuring but positive time has not yet
+                # been reached. In this case, we want to set the
+                # seconds_since_start to 0 so that negative time VMs do not get
+                # re-run
+                seconds_since_start = max(0, experiment_time["seconds_since_start"])
+
                 prune_schedule_entries(
-                    experiment_time["seconds_since_start"],
+                    seconds_since_start,
                     file,
                     schedule_dir / file.name,
                     console,
