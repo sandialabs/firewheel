@@ -39,36 +39,36 @@ def files_are_identical(source: Path, destination: Path) -> bool:
     return filecmp.cmp(source, destination, shallow=False)
 
 
-def directories_are_identical(source: Path, destination: Path) -> bool:
-    """Return whether two directory trees are identical.
+def directories_are_identical(
+    source: Path, destination: Path, ignore: set[str] | None = None
+) -> bool:
+    if ignore is None:
+        ignore = set()
 
-    Args:
-        source (Path): Source directory path.
-        destination (Path): Destination directory path.
-
-    Returns:
-        bool: True if the directory trees have identical structure and file contents,
-        otherwise False.
-    """
     if not source.is_dir() or not destination.is_dir():
         return False
 
     comparison = filecmp.dircmp(source, destination)
 
-    if comparison.left_only or comparison.right_only or comparison.funny_files:
+    left_only = [x for x in comparison.left_only if x not in ignore]
+    right_only = [x for x in comparison.right_only if x not in ignore]
+    common_files = [x for x in comparison.common_files if x not in ignore]
+
+    if left_only or right_only or comparison.funny_files:
         return False
 
     _, mismatch, errors = filecmp.cmpfiles(
-        source,
-        destination,
-        comparison.common_files,
-        shallow=False,
+        source, destination, common_files, shallow=False
     )
     if mismatch or errors:
         return False
 
     for common_dir in comparison.common_dirs:
-        if not directories_are_identical(source / common_dir, destination / common_dir):
+        if common_dir in ignore:
+            continue
+        if not directories_are_identical(
+            source / common_dir, destination / common_dir, ignore
+        ):
             return False
 
     return True

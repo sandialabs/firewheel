@@ -641,7 +641,7 @@ def _validate_destination_paths(
     conflicts: list[str] = []
 
     if saved_exp_path.exists():
-        if not directories_are_identical(layout.experiment_dir, saved_exp_path) and not force:
+        if not directories_are_identical(layout.experiment_dir, saved_exp_path, ignore={"launch.mm"}) and not force:
             conflicts.append(str(saved_exp_path))
 
     schedule_cache_root = Path(schedule_db.cache.cache)
