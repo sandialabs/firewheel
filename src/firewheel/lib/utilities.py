@@ -42,6 +42,33 @@ def files_are_identical(source: Path, destination: Path) -> bool:
 def directories_are_identical(
     source: Path, destination: Path, ignore: set[str] | None = None
 ) -> bool:
+    """Recursively compare two directories for identical contents.
+
+    This function checks whether `source` and `destination` are both existing
+    directories with the same files and subdirectories. File contents are
+    compared using a deep comparison (`shallow=False`). Any names included in
+    `ignore` are excluded from comparisons at every directory level.
+
+    Args:
+        source: Path to the source directory.
+        destination: Path to the destination directory.
+        ignore: Optional set of file or directory names to exclude from the
+            comparison. Ignored names are skipped wherever they appear in the
+            directory tree.
+
+    Returns:
+        `True` if both paths are directories and their non-ignored contents are
+        identical; otherwise, `False`.
+
+    Notes:
+        - Returns `False` if either path is not a directory.
+        - Returns `False` if either directory contains non-ignored entries not
+          present in the other.
+        - Returns `False` if any common file differs in content or cannot be
+          compared.
+        - Returns `False` if `filecmp.dircmp` reports any funny files.
+
+    """
     if ignore is None:
         ignore = set()
 
