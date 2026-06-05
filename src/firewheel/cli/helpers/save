@@ -89,6 +89,7 @@ DONE
 
 RUN LocalPython ON control
 #!/usr/bin/env python
+import os
 import sys
 import json
 import math
@@ -97,6 +98,7 @@ import base64
 import pickle
 import shutil
 import argparse
+import subprocess
 from typing import Any
 from pathlib import Path
 from datetime import datetime, timezone
@@ -482,7 +484,7 @@ def save_vm_state(
         print_error(console, "FileStore connection failed.")
         return 1
 
-    exp_files = Path(saved_exp.get_file_path(experiment_name))
+    output_dir = Path(saved_exp.get_file_path(experiment_name))
     vm_mapping = VMMapping()
     schedule_db = ScheduleDb()
 
@@ -490,25 +492,37 @@ def save_vm_state(
     files = schedule_db.cache.list_distinct_contents()
     schedule_db_paths = [Path(schedule_db.cache.get_path(file)) for file in files]
 
-    output_dir = Path.cwd() / f"{experiment_name}_backup"
-    if output_dir.exists():
+    # The minimega directory where the files are "saved"
+    # needs to be owned by the current user and the firewheel group
+    # to enable modification
+    firewheel_group = config["system"]["default_group"]
+    minimega_base_dir = config["minimega"]["base_dir"]
+    try:
+        subprocess.run(["sudo", "chown", "-R",
+            f"{os.getuid()}:{firewheel_group}",
+            f"{minimega_base_dir}"
+        ], check=True)
+    except subprocess.CalledProcessError as exc:
         print_error(
             console,
-            f"Output directory [cyan]{output_dir}[/cyan] already exists.",
-        )
-        console.print(
-            "[yellow]Choose a different --name or remove the existing directory.[/yellow]"
+            f"Error ensuring correct backup directory ([cyan]{output_dir}[/cyan]) ownership: {exc}",
         )
         return 1
 
     try:
-        output_dir.mkdir(parents=True, exist_ok=False)
+        # The files also need to have write permissions to enable
+        # possible modification and add other files to the dirctory
+        cur_umask = os.umask(0o777)
+        os.umask(cur_umask)
+        permissions_value = 0o777 - cur_umask
+        os.chmod(output_dir, permissions_value)
     except OSError as exc:
         print_error(
             console,
-            f"Could not create output directory [cyan]{output_dir}[/cyan]: {exc}",
+            f"Error ensuring correct backup directory ([cyan]{output_dir}[/cyan]) write permissions: {exc}",
         )
         return 1
+
 
     launch_cmds_included = False
     imagestore_included = False
@@ -516,26 +530,10 @@ def save_vm_state(
 
     print_phase_header(console, "Phase 2: Collect Restore Data")
 
-    try:
-        if exp_files.exists():
-            with console.status(
-                "[yellow]Copying VM State/HDD files...[/yellow]",
-                spinner="line",
-            ):
-                shutil.copytree(exp_files, output_dir / exp_files.name)
-            print_success(console, "Copied VM State/HDD files")
-        else:
-            print_reused(console, "No VM State/HDD files were present to copy")
-    except OSError as exc:
-        print_error(
-            console,
-            f"Error copying VM State/HD directory [cyan]{exp_files}[/cyan]: {exc}",
-        )
-        return 1
 
     # If there are any manual `tap create` commands (e.g., from a control network)
     # those need to be added to the launch file
-    launch_file = output_dir / exp_files.name / "launch.mm"
+    launch_file = output_dir / "launch.mm"
     mm_history = mm_api.get_history()
     tap_commands = [
         cmd
@@ -667,7 +665,7 @@ def save_vm_state(
         experiment_name=experiment_name,
         complete=complete,
         archived=archive,
-        experiment_dir_name=exp_files.name,
+        experiment_dir_name=output_dir.name,
         has_launch_cmds=launch_cmds_included,
         has_imagestore_cache=imagestore_included,
         has_vm_resource_cache=vm_resource_cache_included,
