@@ -597,7 +597,7 @@ def _print_validation_summary(layout: BackupLayout) -> None:
             ("Root directory", str(layout.root_dir)),
             (
                 "Experiment name",
-                str(manifest.get("experiment_name", layout.experiment_dir.name)),
+                str(manifest.get("experiment_name", layout.root_dir.name)),
             ),
             ("FIREWHEEL version", str(manifest.get("fw_version"))),
             ("Format version", str(manifest.get("format_version"))),
@@ -641,7 +641,7 @@ def _validate_destination_paths(
     conflicts: list[str] = []
 
     if saved_exp_path.exists():
-        if not directories_are_identical(layout.experiment_dir, saved_exp_path, ignore={"launch.mm"}) and not force:
+        if not directories_are_identical(layout.root_dir, saved_exp_path, ignore={"launch.mm"}) and not force:
             conflicts.append(str(saved_exp_path))
 
     schedule_cache_root = Path(schedule_db.cache.cache)
@@ -724,8 +724,8 @@ def _restore_from_layout(
         print_error(console, f"Failed to initialize restore dependencies: {exc}")
         return 1
 
-    experiment_name = str(layout.manifest.get("experiment_name", layout.experiment_dir.name))
-    saved_exp_path = Path(saved_exp.get_file_path(layout.experiment_dir.name))
+    experiment_name = str(layout.manifest.get("experiment_name", layout.root_dir.name))
+    saved_exp_path = Path(saved_exp.get_file_path(layout.root_dir.name))
     imagestore_cache = Path(image_store.cache)
     vm_resource_cache = Path(vm_resource_store.cache)
 
@@ -799,7 +799,7 @@ def _restore_from_layout(
         print_phase_header(console, "Phase 3: Restore Data")
 
         experiment_files_copied = copytree_if_needed(
-            source=layout.experiment_dir,
+            source=layout.root_dir,
             destination=saved_exp_path,
             force=force,
         )

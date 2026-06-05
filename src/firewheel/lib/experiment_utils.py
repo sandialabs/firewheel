@@ -36,7 +36,6 @@ class BackupLayout:
         vm_mapping_path: Path to the VM mapping file.
         experiment_time_path: Path to the experiment time file.
         schedules_dir: Path to the schedules directory.
-        experiment_dir: Path to the saved minimega experiment directory.
         launch_mm_path: Path to the experiment launch script.
         launch_cmds_path: Optional path to VM resource handler launch commands.
         imagestore_dir: Optional path to saved ImageStore cache.
@@ -49,7 +48,6 @@ class BackupLayout:
     vm_mapping_path: Path
     experiment_time_path: Path
     schedules_dir: Path
-    experiment_dir: Path
     launch_mm_path: Path
     launch_cmds_path: Path | None
     imagestore_dir: Path | None
@@ -225,16 +223,15 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
             f"Expected directory but found otherwise: {schedules_dir}"
         )
 
-    experiment_dir = find_experiment_dir_by_launch_mm(root_dir)
-    launch_mm_path = experiment_dir / "launch.mm"
+    launch_mm_path = root_dir / "launch.mm"
     if not launch_mm_path.is_file():
         raise FileNotFoundError(f"Missing required file: {launch_mm_path}")
 
     expected_dir_name = manifest.get("experiment_dir_name")
-    if expected_dir_name and experiment_dir.name != expected_dir_name:
+    if expected_dir_name and root_dir.name != expected_dir_name:
         raise ValueError(
             f"Manifest expected experiment_dir_name={expected_dir_name!r}, "
-            f"but found {experiment_dir.name!r}"
+            f"but found {root_dir.name!r}"
         )
 
     launch_cmds_name = manifest.get("files", {}).get("launch_cmds")
@@ -262,7 +259,6 @@ def validate_backup_directory(root_dir: Path) -> BackupLayout:
         vm_mapping_path=vm_mapping_path,
         experiment_time_path=experiment_time_path,
         schedules_dir=schedules_dir,
-        experiment_dir=experiment_dir,
         launch_mm_path=launch_mm_path,
         launch_cmds_path=launch_cmds_path,
         imagestore_dir=imagestore_dir,
