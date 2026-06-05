@@ -149,7 +149,7 @@ def load_manifest(root_dir: Path) -> dict[str, Any]:
     manifest_path = root_dir / MANIFEST_FILENAME
     try:
         with manifest_path.open("r", encoding="utf-8") as f_handle:
-            return json.load(f_handle)
+            return json.load(f_handle)  # type: ignore[no-any-return]
     except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
         raise OSError from exc
 

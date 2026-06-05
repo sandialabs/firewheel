@@ -50,14 +50,14 @@ def directories_are_identical(
     `ignore` are excluded from comparisons at every directory level.
 
     Args:
-        source: Path to the source directory.
-        destination: Path to the destination directory.
-        ignore: Optional set of file or directory names to exclude from the
+        source (Path): Path to the source directory.
+        destination (Path): Path to the destination directory.
+        ignore (set[str] | None): Optional set of file or directory names to exclude from the
             comparison. Ignored names are skipped wherever they appear in the
             directory tree.
 
     Returns:
-        `True` if both paths are directories and their non-ignored contents are
+        bool: `True` if both paths are directories and their non-ignored contents are
         identical; otherwise, `False`.
 
     Notes:
