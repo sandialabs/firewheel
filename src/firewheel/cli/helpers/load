@@ -3,10 +3,11 @@ FIREWHEEL Team
 DONE
 
 DESCRIPTION
-Load a previously saved FIREWHEEL experiment from either a backup directory or a
-supported tar archive. In most cases, users will point this Helper at a backup
-directory or archive that was previously created by :ref:`helper_save`, often in
-the present working directory from which the save was performed.
+Load a previously saved FIREWHEEL experiment from either a saved experiment
+directory or a supported tar archive. In most cases, users will point this
+Helper at a directory or archive that was previously created by
+:ref:`helper_save`, often in the present working directory where the save archive was created,
+or in the minimega saved files directory.
 
 This Helper validates the backup layout and metadata, ensures that no experiment
 is currently running, restores saved VM files, restores VM configuration state
@@ -14,33 +15,62 @@ and schedules, restores optional cache content when present, launches the saved
 VMs, rebuilds and relaunches VM Resource handlers when needed, and restores
 experiment time metadata.
 
+No FIREWHEEL experiment may already be running when this Helper is invoked. In
+most cases, users should reset the environment with
+:ref:`firewheel restart<helper_restart>` before attempting a restore.
+
 If restore destinations already exist and are identical to the backup content,
 they are reused automatically. If they differ, the Helper requires the
-:option:`load --force` option before overwriting them.
+:option:`load --force` option before overwriting them. In other words,
+:option:`load --force` is only required for differing existing content; it is
+not required when the existing content is already identical to the backup.
 
 By default, backups restored with this Helper are automatically resumed so that
 the experiment continues running immediately after restore completes. If you want
 to inspect the restored environment before allowing schedules to continue, use
 :option:`load --paused` to restore the experiment in a paused state. In that
 case, VM execution remains paused and VM Resource handlers remain at a break
-until users manually resume the experiment with :ref:`firewheel vm resume --all<helper_vm_resume>`.
+until users manually resume the experiment with
+:ref:`firewheel vm resume --all<helper_vm_resume>`.
+
+The :option:`load --dry-run` option is recommended when restoring an older
+backup, restoring into a partially populated environment, or restoring onto a
+different system than the one that created the backup. A dry run validates the
+backup layout and restore targets without making changes.
+
+If a restore fails after modifying part of the system, the restore may be only
+partially applied. In that case, the recommended recovery is to run
+:ref:`firewheel restart hard<helper_restart>` and then retry the restore.
 
 A typical backup accepted by this Helper looks similar to:
 
 .. code-block:: text
 
-    <experiment_name>_backup/
+    <saved experiment directory>/
     ├── manifest.json
     ├── vm_mapping.json
     ├── experiment_time.json
     ├── schedules/
     ├── launch_cmds.mm
-    ├── <experiment_name>/
-    │   └── launch.mm
+    ├── launch.mm
+    ├── <vm_1>.hdd
+    ├── <vm_1>.state
     ├── imagestore_cache/
     └── vm_resource_cache/
 
-This same content may also be provided as a supported tar archive (i.e. ``.tar``, ``.tar.gz``, ``.tgz``).
+This same content may also be provided as a supported tar archive (i.e.
+``.tar``, ``.tar.gz``, ``.tgz``).
+
+Backups may optionally include ``imagestore_cache`` and
+``vm_resource_cache`` directories. These are only restored when present in the
+backup. Their absence is normal for backups that were created without
+:option:`save --complete`.
+
+Save/load portability depends on the deployment topology in which the backup is
+created and restored. Restoring a backup from one single-node deployment to a
+different single-node deployment has been tested and verified. Other restore
+paths, including cluster-related restores, should currently be treated as not
+yet supported.
 
 **Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] source``
 
@@ -912,8 +942,7 @@ def _restore_from_layout(
         else:
             print_success(
                 console,
-                "Restored schedules without the save-prepended break; "
-                "VM Resource Handling will continue automatically.",
+                "Restored schedules and resumed VM Resource handling automatically"
             )
 
     # This is reasonable to catch at this level to report any failure during the restore process

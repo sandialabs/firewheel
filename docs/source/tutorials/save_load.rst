@@ -147,23 +147,20 @@ Portability Status
 ******************
 
 The table below summarizes the current validation status for common save/load
-deployment transitions. Any cluster sizes shown are examples only. They are
-meant to illustrate the kinds of cluster-to-cluster restores that should
-currently be treated as not yet fully validated, not to define a complete list
-of supported or unsupported cluster combinations.
+deployment transitions.
 
 +----------------------------------------------------------+---------------------------+
 | Restore path                                             | Current status            |
 +==========================================================+===========================+
 | single-node -> single-node                               | tested and verified       |
 +----------------------------------------------------------+---------------------------+
-| single-node -> cluster                                   | not yet fully validated   |
+| single-node -> cluster                                   | not yet supported         |
 +----------------------------------------------------------+---------------------------+
-| cluster -> single-node                                   | not yet fully validated   |
+| cluster -> single-node                                   | not yet supported         |
 +----------------------------------------------------------+---------------------------+
-| cluster -> cluster (same size)                           | not yet fully validated   |
+| cluster -> cluster (same size)                           | not yet supported         |
 +----------------------------------------------------------+---------------------------+
-| cluster -> cluster (different size)                      | not yet fully validated   |
+| cluster -> cluster (different sizes)                     | not yet supported         |
 +----------------------------------------------------------+---------------------------+
 
 When restoring into any environment other than the verified single-node to
@@ -258,14 +255,14 @@ For example:
     ✓ Wrote manifest metadata
     ────────────────────────────────────────── Save Complete ───────────────────────────────────────────
     ✓ Experiment save completed successfully
-    Saved Backup
-    Experiment name            router_tree_saved_state
-    Backup directory           /scratch/minimega/files/saved/router_tree_saved_state
-    Schedule files             12
-    launch_cmds.mm             Included
-    ImageStore cache           Not included
-    VmResourceStore cache      Not included
-    Archive                    Not created
+      Saved Backup
+      Experiment name            router_tree_saved_state
+      Backup directory           /scratch/minimega/files/saved/router_tree_saved_state
+      Schedule files             12
+      launch_cmds.mm             Included
+      ImageStore cache           Not included
+      VmResourceStore cache      Not included
+      Archive                    Not created
     Next step: Restore this backup later with firewheel load /scratch/minimega/files/saved/router_tree_saved_state
     or use firewheel vm resume --all to resume the current experiment.
 

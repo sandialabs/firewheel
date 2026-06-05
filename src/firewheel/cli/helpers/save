@@ -4,26 +4,33 @@ DONE
 
 DESCRIPTION
 Save the current state of a running FIREWHEEL experiment into a backup directory.
-This Helper captures the current minimega namespace state, VM mapping, experiment
-time metadata, schedule files, optional cache content, and VM Resource handler
-launch information. The backup is written into the minimega files directory and
-can optionally be archived into a single ``.tar`` file written into the
+This Helper captures the current minimega namespace state, VM mapping,
+experiment time metadata, schedule files, optional cache content, and VM
+Resource handler launch information needed to restore the experiment later. The
+saved experiment directory is written into the minimega files directory and can
+optionally also be archived into a single ``.tar`` file written into the
 **present working directory**.
 
 During save, FIREWHEEL waits for all minimega hosts to complete the namespace
 save operation before continuing. The saved schedule files are also modified so
-that completed entries are removed and a break is prepended, ensuring that a
-restored experiment can be resumed in a controlled manner.
+that completed entries are removed and a break is prepended. This ensures that a
+restored experiment can later be resumed in a controlled manner.
 
-When the save completes, the current experiment is paused. At that point, users
-can either:
+When the save completes, the current experiment is paused. This is expected
+behavior and is part of the normal save workflow. At that point, users can
+either:
 
-* resume the current experiment with :ref:`firewheel vm resume --all<helper_vm_resume>` to continue working
-  from that saved checkpoint, or
-* reset the testbed with :ref:`firewheel restart<helper_restart>` and later restore the saved
-  backup with :ref:`helper_load`.
+* resume the current experiment with
+  :ref:`firewheel vm resume --all<helper_vm_resume>` to continue working from
+  that saved checkpoint, or
+* reset the testbed with :ref:`firewheel restart<helper_restart>` and later
+  restore the saved backup with :ref:`helper_load`.
 
-A typical saved backup directory looks similar to:
+The experiment name must be unique for the current node or cluster. If a saved
+experiment with the requested name already exists in the minimega saved files
+directory, the save operation is expected to fail.
+
+A typical saved experiment directory looks similar to:
 
 .. code-block:: text
 
@@ -45,8 +52,26 @@ Not all files or directories are present in every backup. For example,
 exists, and ``imagestore_cache`` / ``vm_resource_cache`` are only included when
 :option:`save --complete` is used.
 
-If :option:`save --archive` is used, a ``.tar`` archive is also created in the
-present working directory.
+If :option:`save --archive` is used, the Helper creates an uncompressed
+``.tar`` archive in the present working directory. Although
+:ref:`helper_load` accepts ``.tar``, ``.tar.gz``, and ``.tgz`` files,
+:ref:`helper_save` currently creates only an uncompressed tarball. For large
+experiments, users who want a compressed archive for transfer or storage should
+generally compress that tarball afterward using external tools. Highly parallel
+compression tools such as ``pigz`` are often a good choice for large backups.
+
+For example, after running :option:`save --archive`, you can compress the
+tarball using all available CPU cores while keeping the original file with:
+
+.. code-block:: bash
+
+    $ pigz -k -p "$(nproc)" <experiment_name>_backup.tar
+
+Save/load portability depends on the deployment topology in which the backup is
+created and restored. Restoring a backup from one single-node deployment to a
+different single-node deployment has been tested and verified. Other restore
+paths, including cluster-related restores, should currently be treated as not
+yet supported.
 
 **Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
 
