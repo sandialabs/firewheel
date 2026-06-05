@@ -14,8 +14,8 @@ previously saved state.
 
 This workflow is useful when you want to preserve a configured experiment for
 later reuse, checkpoint an experiment before trying a risky change, recover
-from a mistake made during manual VM interaction, or move a saved experiment
-state to a different physical cluster.
+from a mistake made during manual VM interaction, or restore a saved experiment
+in another compatible environment after appropriate validation.
 
 By the end of this tutorial, you will have demonstrated that FIREWHEEL can restore
 an experiment back to a known saved point rather than forcing you to rebuild and
@@ -112,6 +112,65 @@ The second diagram below shows that restore workflow.
        resume -> verify;
    }
 
+.. note::
+
+   Before using :ref:`helper_save` and :ref:`helper_load`, keep the following
+   operational expectations in mind:
+
+   * :ref:`helper_save` pauses the currently running experiment when the save
+     completes. To continue working in that same experiment after saving, run:
+
+     .. code-block:: bash
+
+         $ firewheel vm resume --all
+
+   * :ref:`helper_load` requires that no FIREWHEEL experiment is currently
+     running. In most cases, users should first reset the testbed with:
+
+     .. code-block:: bash
+
+         $ firewheel restart
+
+   * A restore reuses existing files or directories automatically when their
+     contents are identical to the backup. The :option:`load --force` option is
+     only required when an existing restore destination differs from the backup.
+
+   * If a restore fails after making partial changes, the recommended recovery is
+     to reset the environment and try again:
+
+     .. code-block:: bash
+
+         $ firewheel restart hard
+
+******************
+Portability Status
+******************
+
+The table below summarizes the current validation status for common save/load
+deployment transitions. Any cluster sizes shown are examples only. They are
+meant to illustrate the kinds of cluster-to-cluster restores that should
+currently be treated as not yet fully validated, not to define a complete list
+of supported or unsupported cluster combinations.
+
++----------------------------------------------------------+---------------------------+
+| Restore path                                             | Current status            |
++==========================================================+===========================+
+| single-node -> single-node                               | tested and verified       |
++----------------------------------------------------------+---------------------------+
+| single-node -> cluster                                   | not yet fully validated   |
++----------------------------------------------------------+---------------------------+
+| cluster -> single-node                                   | not yet fully validated   |
++----------------------------------------------------------+---------------------------+
+| cluster -> cluster (same size)                           | not yet fully validated   |
++----------------------------------------------------------+---------------------------+
+| cluster -> cluster (different size)                      | not yet fully validated   |
++----------------------------------------------------------+---------------------------+
+
+When restoring into any environment other than the verified single-node to
+single-node case, it is strongly recommended to run :option:`load --dry-run`
+first and carefully validate VM behavior and VM Resource handling after the
+restore completes.
+
 ************************
 Launching an Experiment
 ************************
@@ -190,7 +249,7 @@ For example:
     ✓ Namespace saved successfully
     ✓ Final ns save host status recorded
     ────────────────────────────────── Phase 2: Collect Restore Data ───────────────────────────────────
-    ✓ Copied VM State/HDD files
+    ✓ Saved minimega tap commands (e.g., a control network)
     ✓ Saved VM mapping
     ✓ Saved experiment time
     Copying schedule files... ━━━━━━━━━━━━━━━━━━━ 12/12 0:00:00
@@ -222,6 +281,28 @@ If you would also like a tar archive, you can instead use:
 
     $ firewheel save --name router_tree_saved_state --archive
 
+.. note::
+
+   The :option:`save --archive` option currently creates an uncompressed
+   ``.tar`` archive. The :ref:`helper_load` Helper can restore from ``.tar``,
+   ``.tar.gz``, or ``.tgz`` files.
+
+   For large experiments, if you want a compressed archive for transfer or
+   storage, it is generally better to compress the resulting tarball afterward
+   using external tools. Highly parallel compression tools such as ``pigz`` are
+   often a good choice for large backups.
+
+   For example, to compress using all available CPU cores while keeping the
+   original tarball:
+
+   .. code-block:: bash
+
+       $ firewheel save --name my_experiment --archive
+       $ pigz -k -p "$(nproc)" my_experiment_backup.tar
+
+   This produces ``my_experiment_backup.tar.gz``, which can later be restored
+   with :ref:`helper_load`.
+
 If you want to include the backing images and VM resources cache content, use:
 
 .. code-block:: bash
@@ -234,15 +315,18 @@ At this point, FIREWHEEL has saved the entire experiment state.
 Introducing an Unwanted Change
 ******************************
 
-At this point, you have saved a known-good checkpoint of the experiment.
-As part of the save process, the experiment is paused so that you can either preserve that saved state and stop working, or intentionally continue working from the current experiment as a new "fork" of that state.
-In practice, after saving, you now have two choices:
+At this point, you have saved a known-good checkpoint of the experiment. As part
+of the save process, the experiment is paused so that you can either preserve
+that saved state and stop working, or intentionally continue working from the
+current experiment as a new "fork" of that state. In practice, after saving,
+you now have two choices:
 
 #. Reset the testbed and later restore the saved checkpoint with :ref:`helper_load`.
 #. Resume the currently running experiment and continue making additional changes.
 
-For this tutorial, we will choose the second option so that we can intentionally move the running experiment away from the saved state and later prove that :ref:`helper_load` restores the earlier checkpoint.
-Resume the experiment with:
+For this tutorial, we will choose the second option so that we can intentionally
+move the running experiment away from the saved state and later prove that
+:ref:`helper_load` restores the earlier checkpoint. Resume the experiment with:
 
 .. code-block:: bash
 
@@ -266,6 +350,8 @@ Verify that the original saved marker is gone and the unwanted marker exists:
 .. code-block:: bash
 
     $ ls *marker.txt
+
+You should see only ``bad_marker.txt``.
 
 At this point, the running experiment no longer matches the saved checkpoint.
 This is exactly the kind of situation where save/load is useful: you made
@@ -319,7 +405,7 @@ If you saved a directory, run:
     Planned Restore
     Experiment                 router_tree_saved_state
     Saved VM files             /scratch/minimega/files/saved/router_tree_saved_state
-    VM mapping                 //scratch/minimega/files/saved/router_tree_saved_state/vm_mapping.json
+    VM mapping                 /scratch/minimega/files/saved/router_tree_saved_state/vm_mapping.json
     Schedules                  /scratch/minimega/files/saved/router_tree_saved_state/schedules
     Launch VMs via             /scratch/minimega/files/saved/router_tree_saved_state/launch.mm
     Launch handlers via        /scratch/minimega/files/saved/router_tree_saved_state/launch_cmds.mm
@@ -362,12 +448,12 @@ If you saved a directory:
     ✓ Restored schedules (12 files)
     ─────────────────────────────────────── Phase 4: Launch VMs ────────────────────────────────────────
     ✓ Started saved VMs
-    ─────────────────────────────── Phase 5: Launch VM Resource Handlers ───────────────────────────────
+    ─────────────────────────────────── Phase 5: Restore Experiment Time ───────────────────────────────
+    ✓ Restored experiment time
+    ─────────────────────────────── Phase 6: Launch VM Resource Handlers ───────────────────────────────
     ✓ Rebuilt VM resource handler socket paths for 12 VMs
     ✓ Started VM resource handlers (12 processes launched)
-    ──────────────────────────────────── Phase 6: Finalize Restore ─────────────────────────────────────
-    ✓ Restored experiment time
-    ✓ Resumed VM Resource Handling for 12 VMs.
+    ✓ Restored schedules and resumed VM Resource handling automatically
     ───────────────────────────────────────── Restore Complete ─────────────────────────────────────────
     ✓ Experiment restore completed successfully
     Restore Result
@@ -381,7 +467,6 @@ If you saved a directory:
     VMs launched               Yes
     VM handlers launched       Yes (12 processes)
     Experiment time            Restored
-
 
 .. note::
 
