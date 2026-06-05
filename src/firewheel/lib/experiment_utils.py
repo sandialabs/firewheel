@@ -176,39 +176,6 @@ def extract_archive_safely(archive_path: Path, destination: Path) -> None:
         raise OSError from exp
 
 
-def find_experiment_dir_by_launch_mm(root_dir: Path) -> Path:
-    """Find the experiment directory by locating exactly one launch.mm file.
-
-    Args:
-        root_dir (Path): Backup root directory.
-
-    Returns:
-        Path: The path to the directory containing launch.mm.
-
-    Raises:
-        FileNotFoundError: If no experiment directory is found.
-        ValueError: If multiple candidate experiment directories are found.
-        OSError: If the directory cannot be inspected.
-    """
-    matches = [path.parent for path in root_dir.rglob("launch.mm") if path.is_file()]
-
-    matches = [path for path in matches if path.parent == root_dir]
-
-    if not matches:
-        raise FileNotFoundError(
-            f"Could not find an experiment directory containing launch.mm under {root_dir}"
-        )
-
-    if len(matches) > 1:
-        names = ", ".join(sorted(match.name for match in matches))
-        raise ValueError(
-            f"Multiple experiment directories containing launch.mm found under "
-            f"{root_dir}: {names}"
-        )
-
-    return matches[0]
-
-
 def validate_backup_directory(root_dir: Path) -> BackupLayout:
     """Validate a FIREWHEEL backup directory.
 
