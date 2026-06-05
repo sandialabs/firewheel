@@ -6,8 +6,9 @@ DESCRIPTION
 Save the current state of a running FIREWHEEL experiment into a backup directory.
 This Helper captures the current minimega namespace state, VM mapping, experiment
 time metadata, schedule files, optional cache content, and VM Resource handler
-launch information. The backup is written into the **present working directory**
-and can optionally be archived into a single ``.tar`` file.
+launch information. The backup is written into the minimega files directory and
+can optionally be archived into a single ``.tar`` file written into the
+**present working directory**.
 
 During save, FIREWHEEL waits for all minimega hosts to complete the namespace
 save operation before continuing. The saved schedule files are also modified so
@@ -26,15 +27,16 @@ A typical saved backup directory looks similar to:
 
 .. code-block:: text
 
-    <present working directory>/
-    └── <experiment_name>_backup/
+    <minimega files `saved` directory>/
+    └── <experiment_name>/
         ├── manifest.json
         ├── vm_mapping.json
         ├── experiment_time.json
         ├── schedules/
         ├── launch_cmds.mm
-        ├── <experiment_name>/
-        │   └── launch.mm
+        ├── launch.mm
+        ├── <vm_1>.hdd
+        ├── <vm_1>.state
         ├── imagestore_cache/
         └── vm_resource_cache/
 
@@ -44,7 +46,7 @@ exists, and ``imagestore_cache`` / ``vm_resource_cache`` are only included when
 :option:`save --complete` is used.
 
 If :option:`save --archive` is used, a ``.tar`` archive is also created in the
-present working directory alongside the backup directory.
+present working directory.
 
 **Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
 

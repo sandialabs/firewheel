@@ -201,20 +201,20 @@ For example:
     ✓ Experiment save completed successfully
     Saved Backup
     Experiment name            router_tree_saved_state
-    Backup directory           /home/firewheel/router_tree_saved_state_backup
+    Backup directory           /scratch/minimega/files/saved/router_tree_saved_state
     Schedule files             12
     launch_cmds.mm             Included
     ImageStore cache           Not included
     VmResourceStore cache      Not included
     Archive                    Not created
-    Next step: Restore this backup later with firewheel load /home/firewheel/router_tree_saved_state_backup
+    Next step: Restore this backup later with firewheel load /scratch/minimega/files/saved/router_tree_saved_state
     or use firewheel vm resume --all to resume the current experiment.
 
-This writes a backup directory in the current working directory:
+This writes a backup directory in the minimega files store. In this example it is:
 
 .. code-block:: text
 
-    router_tree_saved_state_backup/
+    /scratch/minimega/files/saved/router_tree_saved_state
 
 If you would also like a tar archive, you can instead use:
 
@@ -296,13 +296,13 @@ If you saved a directory, run:
 
 .. code-block:: bash
 
-    $ firewheel load router_tree_saved_state_backup --dry-run
+    $ firewheel load /scratch/minimega/files/saved/router_tree_saved_state --dry-run
     ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
-    Source: /home/firewheel/router_tree_saved_state_backup
+    Source: /scratch/minimega/files/saved/router_tree_saved_state
     ✓ Using existing backup directory
     ───────────────────────────────────── Phase 2: Validate Backup ─────────────────────────────────────
     Validated Backup
-    Root directory             /home/firewheel/router_tree_saved_state_backup
+    Root directory             /scratch/minimega/files/saved/router_tree_saved_state
     Experiment name            router_tree_saved_state
     FIREWHEEL version          2.11.1.dev13
     Format version             1
@@ -319,10 +319,10 @@ If you saved a directory, run:
     Planned Restore
     Experiment                 router_tree_saved_state
     Saved VM files             /scratch/minimega/files/saved/router_tree_saved_state
-    VM mapping                 /home/firewheel/router_tree_saved_state_backup/vm_mapping.json
-    Schedules                  /home/firewheel/router_tree_saved_state_backup/schedules
-    Launch VMs via             /home/firewheel/router_tree_saved_state_backup/router_tree_saved_state/launch.mm
-    Launch handlers via        /home/firewheel/router_tree_saved_state_backup/launch_cmds.mm
+    VM mapping                 //scratch/minimega/files/saved/router_tree_saved_state/vm_mapping.json
+    Schedules                  /scratch/minimega/files/saved/router_tree_saved_state/schedules
+    Launch VMs via             /scratch/minimega/files/saved/router_tree_saved_state/launch.mm
+    Launch handlers via        /scratch/minimega/files/saved/router_tree_saved_state/launch_cmds.mm
     ImageStore cache           Not present
     VmResourceStore cache      Not present
     Experiment time            Would restore last
@@ -338,13 +338,13 @@ If you saved a directory:
 
 .. code-block:: bash
 
-    $ firewheel load router_tree_saved_state_backup
+    $ firewheel load /scratch/minimega/files/saved/router_tree_saved_state
     ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
-    Source: /home/firewheel/router_tree_saved_state_backup
+    Source: /scratch/minimega/files/saved/router_tree_saved_state
     ✓ Using existing backup directory
     ───────────────────────────────────── Phase 2: Validate Backup ─────────────────────────────────────
     Validated Backup
-    Root directory             /home/firewheel/router_tree_saved_state_backup
+    Root directory             /scratch/minimega/files/saved/router_tree_saved_state
     Experiment name            router_tree_saved_state
     FIREWHEEL version          2.11.1.dev13
     Format version             1
