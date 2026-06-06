@@ -7,13 +7,21 @@ import json
 import math
 import pickle
 import tarfile
-from typing import Any
+from typing import Any, Optional
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from importlib.metadata import version
 
-from firewheel.lib.utilities import get_safe_tarfile_members
+from rich.console import Console
+
+from firewheel.lib.utilities import (
+    get_safe_tarfile_members,
+    print_error,
+    print_reused,
+    print_result_card,
+)
+from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 MANIFEST_FILENAME = "manifest.json"
@@ -53,6 +61,107 @@ class BackupLayout:
     imagestore_dir: Path | None
     vm_resource_store_dir: Path | None
     manifest: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SavedExperimentInfo:
+    """Represents one saved experiment in the minimega saved FileStore.
+
+    Attributes:
+        name: Saved experiment directory name.
+        path: Full path to the saved experiment directory.
+        has_manifest: Whether ``manifest.json`` exists in the directory.
+        modified_at: Last modification time of the directory, if available.
+    """
+
+    name: str
+    path: Path
+    has_manifest: bool
+    modified_at: Optional[datetime]
+
+
+def list_saved_experiments() -> list[SavedExperimentInfo]:
+    """List saved experiments from the minimega saved FileStore.
+
+    Returns:
+        list[SavedExperimentInfo]: Saved experiment directories sorted by name.
+
+    Raises:
+        OSError: If the saved FileStore cannot be accessed.
+    """
+    saved_exp = FileStore("saved")
+    saved_root = Path(saved_exp.cache)
+
+    results: list[SavedExperimentInfo] = []
+    if not saved_root.exists():
+        return results
+
+    for entry in sorted(saved_root.iterdir(), key=lambda path: path.name):
+        if not entry.is_dir():
+            continue
+
+        try:
+            modified_at = datetime.fromtimestamp(
+                entry.stat().st_mtime, tz=timezone.utc
+            )
+        except OSError:
+            modified_at = None
+
+        results.append(
+            SavedExperimentInfo(
+                name=entry.name,
+                path=entry,
+                has_manifest=(entry / MANIFEST_FILENAME).is_file(),
+                modified_at=modified_at,
+            )
+        )
+
+    return results
+
+
+def print_saved_experiments(console: Console) -> int:
+    """Print available saved experiments.
+
+    Args:
+        console: Console used for output.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
+    try:
+        saved_experiments = list_saved_experiments()
+    except OSError as exc:
+        print_error(console, f"Failed to list saved experiments: {exc}")
+        return 1
+
+    if not saved_experiments:
+        print_reused(console, "No saved experiments found")
+        return 0
+
+    print_result_card(
+        console,
+        "Saved Experiments",
+        [
+            (
+                exp.name,
+                (
+                    f"{exp.path}"
+                    + (
+                        f" | modified {exp.modified_at.isoformat()}"
+                        if exp.modified_at is not None
+                        else ""
+                    )
+                    + (
+                        " | manifest present"
+                        if exp.has_manifest
+                        else " | manifest missing"
+                    )
+                ),
+            )
+            for exp in saved_experiments
+        ],
+    )
+    return 0
 
 
 def is_supported_archive(path: Path) -> bool:

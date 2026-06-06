@@ -4,10 +4,15 @@ DONE
 
 DESCRIPTION
 Load a previously saved FIREWHEEL experiment from either a saved experiment
-directory or a supported tar archive. In most cases, users will point this
-Helper at a directory or archive that was previously created by
-:ref:`helper_save`, often in the present working directory where the save archive was created,
-or in the minimega saved files directory.
+directory, a supported tar archive, or a saved experiment name. This Helper can
+also list saved experiments in the minimega saved files directory. In most cases,
+users will point this Helper at content that was previously created by
+:ref:`helper_save`, either by providing the full path to the saved experiment
+directory or archive, or by providing the saved experiment name directly.
+
+If only an experiment name is provided, this Helper assumes the backup is in the
+minimega saved files directory and resolves the source from there before
+continuing with normal validation and restore processing.
 
 This Helper validates the backup layout and metadata, ensures that no experiment
 is currently running, restores saved VM files, restores VM configuration state
@@ -72,7 +77,7 @@ different single-node deployment has been tested and verified. Other restore
 paths, including cluster-related restores, should currently be treated as not
 yet supported.
 
-**Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] source``
+**Usage:**  ``firewheel load [-h] [--dry-run] [--force] [-p] [--list] [source]``
 
 Arguments
 +++++++++
@@ -99,12 +104,18 @@ Named Arguments
     it. This is useful when you want to inspect the restored environment before
     allowing schedules to continue.
 
+.. option:: --list
+
+    List saved experiments in the minimega saved files directory and exit.
+
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
 .. option:: source
 
-    Path to the backup directory or supported archive file to restore.
+    Path to the backup directory or supported archive file to restore, or the
+    name of a saved experiment in the minimega saved files directory. This
+    argument is not required when :option:`load --list` is used.
 
     Supported archive types are:
 
@@ -115,15 +126,19 @@ Positional Arguments
 Examples
 ++++++++
 
+``firewheel load router_tree_saved_state``
+
 ``firewheel load my_experiment_backup``
 
 ``firewheel load my_experiment_backup.tar``
 
-``firewheel load my_experiment_backup --dry-run``
+``firewheel load router_tree_saved_state --dry-run``
 
 ``firewheel load my_experiment_backup --force``
 
 ``firewheel load my_experiment_backup.tgz --paused``
+
+``firewheel load --list``
 
 DONE
 
@@ -166,6 +181,7 @@ from firewheel.lib.experiment_utils import (
     extract_archive_safely,
     validate_backup_directory,
     create_resume_schedule_entry,
+    print_saved_experiments,
 )
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
@@ -466,6 +482,37 @@ def _check_no_existing_experiment() -> None:
     experiment_start = ExperimentStart()
     if experiment_start.get_launch_time() is not None:
         raise RuntimeError(error_message)
+
+def _resolve_backup_source(source: str) -> Path:
+    """Resolve a load source as either a direct path or a saved experiment name.
+
+    Resolution order:
+        1. If ``source`` already exists as a path, use it directly.
+        2. Otherwise, treat ``source`` as an experiment name in the minimega
+           saved files directory.
+        3. If that also does not exist, return the original resolved path so the
+           caller can report the standard missing-path error.
+
+    Args:
+        source: User-provided load source.
+
+    Returns:
+        Resolved path to use for restore processing.
+    """
+    source_path = Path(source).resolve()
+    if source_path.exists():
+        return source_path
+
+    try:
+        saved_exp = FileStore("saved")
+        candidate = Path(saved_exp.get_file_path(source))
+    except OSError:
+        return source_path
+
+    if candidate.exists():
+        return candidate.resolve()
+
+    return source_path
 
 def update_socket_path(
     process_config: dict[str, Any],
@@ -1015,24 +1062,33 @@ def _restore_from_layout(
     return 0
 
 def load_vm_state(
-    source: str,
+    source: str | None,
     dry_run: bool = False,
     force: bool = False,
     paused: bool = False,
+    list_only: bool = False,
 ) -> int:
     """Load VM state from a backup directory or supported archive.
 
     Args:
-        source: Source directory or archive path.
+        source: Source directory, archive path, or saved experiment name.
         dry_run: Whether to validate only without modifying the system.
         force: Whether to overwrite existing restore destinations only when
             contents differ.
         paused: Whether to keep the VMs (and VMR Schedule) in a paused/break state after starting them.
+        list_only: Whether to list saved experiments and exit.
 
     Returns:
         ``0`` on success and ``1`` on failure.
     """
-    source_path = Path(source).resolve()
+    if list_only:
+        return print_saved_experiments(console)
+
+    if source is None:
+        print_error(console, "A restore source must be provided unless --list is used.")
+        return 1
+
+    source_path = _resolve_backup_source(source)
 
     print_phase_header(console, "Phase 1: Read Backup Source")
     console.print(f"[cyan]Source:[/cyan] {source_path}")
@@ -1108,13 +1164,20 @@ def resume_all_schedules(mm_api, schedule_db) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Load VM state and schedule files from a backup directory or archive.",
+        description=(
+            "Load VM state and schedule files from a backup directory, "
+            "supported archive, or saved experiment name, or list saved experiments."
+        ),
         prog="firewheel load",
     )
     parser.add_argument(
         "source",
         type=str,
-        help="Path to the backup archive or extracted backup directory.",
+        nargs="?",
+        help=(
+            "Path to the backup archive or extracted backup directory, "
+            "or the name of a saved experiment in the minimega saved files directory."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -1131,13 +1194,23 @@ if __name__ == "__main__":
         action="store_true",
         help="Restore the experiment in a PAUSED state, enabling fine-grained control over resuming VM execution.",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List saved experiments in the minimega saved files directory and exit.",
+    )
     args = parser.parse_args()
+
+    if not args.list and args.source is None:
+        parser.error("the following arguments are required: source")
+
     sys.exit(
         load_vm_state(
             source=args.source,
             dry_run=args.dry_run,
             force=args.force,
             paused=args.paused,
+            list_only=args.list,
         )
     )
 DONE

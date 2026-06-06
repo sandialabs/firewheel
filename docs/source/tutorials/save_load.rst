@@ -375,11 +375,14 @@ Loading the Saved State
 
 Now that the testbed is cleared, we want to load our previously saved state.
 First we will validate the backup before performing the actual restore.
-If you saved a directory, run:
+If you saved a directory, you can provide either the full path to that directory
+or just the saved experiment name. If only the name is provided,
+:ref:`helper_load` will look for it in the minimega saved files directory.
+For example:
 
 .. code-block:: bash
 
-    $ firewheel load /scratch/minimega/files/saved/router_tree_saved_state --dry-run
+    $ firewheel load router_tree_saved_state --dry-run
     ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
     Source: /scratch/minimega/files/saved/router_tree_saved_state
     ✓ Using existing backup directory
@@ -421,7 +424,7 @@ If you saved a directory:
 
 .. code-block:: bash
 
-    $ firewheel load /scratch/minimega/files/saved/router_tree_saved_state
+    $ firewheel load router_tree_saved_state
     ─────────────────────────────────── Phase 1: Read Backup Source ────────────────────────────────────
     Source: /scratch/minimega/files/saved/router_tree_saved_state
     ✓ Using existing backup directory

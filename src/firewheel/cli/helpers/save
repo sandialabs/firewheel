@@ -3,7 +3,9 @@ FIREWHEEL Team
 DONE
 
 DESCRIPTION
-Save the current state of a running FIREWHEEL experiment into a backup directory.
+Save the current state of a running FIREWHEEL experiment into a backup
+directory. This Helper can also list saved experiments in the minimega saved
+files directory.
 This Helper captures the current minimega namespace state, VM mapping,
 experiment time metadata, schedule files, optional cache content, and VM
 Resource handler launch information needed to restore the experiment later. The
@@ -73,7 +75,7 @@ different single-node deployment has been tested and verified. Other restore
 paths, including cluster-related restores, should currently be treated as not
 yet supported.
 
-**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a]``
+**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a] [--list]``
 
 Arguments
 +++++++++
@@ -102,6 +104,10 @@ Named Arguments
     Archive the saved experiment directory as a single ``.tar`` file in addition to
     leaving the backup directory on disk.
 
+.. option:: --list
+
+    List saved experiments in the minimega saved files directory and exit.
+
 Examples
 ++++++++
 
@@ -112,6 +118,8 @@ Examples
 ``firewheel save --complete``
 
 ``firewheel save --name my_experiment --complete --archive``
+
+``firewheel save --list``
 DONE
 
 RUN LocalPython ON control
@@ -158,6 +166,7 @@ from firewheel.lib.experiment_utils import (
     VMRESOURCESTORE_DIRNAME,
     build_manifest,
     write_manifest,
+    print_saved_experiments,
 )
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
@@ -457,6 +466,7 @@ def save_vm_state(
     experiment_name: str = "firewheel_experiment",
     complete: bool = False,
     archive: bool = False,
+    list_only: bool = False,
 ) -> int:
     """Save the current VM state and schedule data.
 
@@ -470,6 +480,7 @@ def save_vm_state(
         complete: If True, save all files from the experiment, including cached
             images and VM resources.
         archive: If True, archive the saved output directory as a ``.tar`` file.
+        list_only: Whether to list saved experiments and exit.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -478,6 +489,10 @@ def save_vm_state(
         RuntimeError: If the FileStore connection fails.
     """
     console = Console(theme=cli_output_theme)
+
+    if list_only:
+        return print_saved_experiments(console)
+
     mm_api = minimegaAPI()
 
     try:
@@ -750,7 +765,7 @@ def save_vm_state(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Save VM state and schedule files.",
+        description="Save VM state and schedule files, or list saved experiments.",
         prog="firewheel save",
     )
     default_experiment_name = (
@@ -781,12 +796,18 @@ if __name__ == "__main__":
         action="store_true",
         help="If provided, archive the saved experiment directory as a .tar file.",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List saved experiments in the minimega saved files directory and exit.",
+    )
     args = parser.parse_args()
     sys.exit(
         save_vm_state(
             experiment_name=args.name,
             complete=args.complete,
             archive=args.archive,
+            list_only=args.list,
         )
     )
 DONE
