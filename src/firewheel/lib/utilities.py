@@ -287,7 +287,7 @@ def badlink(info: tarfile.TarInfo, base: Path) -> bool:
 
 def get_safe_tarfile_members(
     tarfile_obj: tarfile.TarFile,
-    base: Path,
+    base: Path = Path("."),
 ) -> list[tarfile.TarInfo]:
     """Return tar members considered safe to extract under a base directory.
 
