@@ -122,9 +122,9 @@ class CliTestCase(unittest.TestCase):
 
         helper_list = mock_stdout.getvalue().strip().split("\n")
         # This verifies that the number of CLI Helpers
-        # is exactly 43. This will need to be fixed if
+        # is exactly 45. This will need to be fixed if
         # Helpers are added/removed.
-        self.assertEqual(len(helper_list[1:]), 43)
+        self.assertEqual(len(helper_list[1:]), 45)
 
         heading = "FIREWHEEL Helper commands:"
         self.assertIn(heading, mock_stdout.getvalue())
