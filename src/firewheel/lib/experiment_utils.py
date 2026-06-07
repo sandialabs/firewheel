@@ -6,6 +6,7 @@ import sys
 import json
 import math
 import pickle
+import shutil
 import tarfile
 from typing import Any, Optional
 from pathlib import Path
@@ -13,13 +14,14 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from importlib.metadata import version
 
+from rich.table import Table
 from rich.console import Console
 
 from firewheel.lib.utilities import (
-    get_safe_tarfile_members,
     print_error,
     print_reused,
-    print_result_card,
+    print_success,
+    get_safe_tarfile_members,
 )
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
@@ -70,14 +72,18 @@ class SavedExperimentInfo:
     Attributes:
         name: Saved experiment directory name.
         path: Full path to the saved experiment directory.
-        has_manifest: Whether ``manifest.json`` exists in the directory.
-        modified_at: Last modification time of the directory, if available.
+        created_at: Backup creation time from the manifest, if available.
+        seconds_since_start: Elapsed experiment time at save, if available.
+        schedule_count: Number of saved schedule files, if available.
+        complete: Whether the backup included optional caches, if known.
     """
 
     name: str
     path: Path
-    has_manifest: bool
-    modified_at: Optional[datetime]
+    created_at: Optional[datetime]
+    seconds_since_start: Optional[int]
+    schedule_count: Optional[int]
+    complete: Optional[bool]
 
 
 def list_saved_experiments() -> list[SavedExperimentInfo]:
@@ -85,9 +91,6 @@ def list_saved_experiments() -> list[SavedExperimentInfo]:
 
     Returns:
         list[SavedExperimentInfo]: Saved experiment directories sorted by name.
-
-    Raises:
-        OSError: If the saved FileStore cannot be accessed.
     """
     saved_exp = FileStore("saved")
     saved_root = Path(saved_exp.cache)
@@ -100,19 +103,56 @@ def list_saved_experiments() -> list[SavedExperimentInfo]:
         if not entry.is_dir():
             continue
 
-        try:
-            modified_at = datetime.fromtimestamp(
-                entry.stat().st_mtime, tz=timezone.utc
-            )
-        except OSError:
-            modified_at = None
+        created_at = None
+        seconds_since_start = None
+        schedule_count = None
+        complete = None
+
+        manifest_path = entry / MANIFEST_FILENAME
+        if manifest_path.is_file():
+            try:
+                with manifest_path.open("r", encoding="utf-8") as f_handle:
+                    manifest = json.load(f_handle)
+
+                if isinstance(manifest, dict):
+                    raw_created_at = manifest.get("created_at")
+                    if isinstance(raw_created_at, str):
+                        try:
+                            created_at = datetime.fromisoformat(raw_created_at)
+                        except ValueError:
+                            created_at = None
+
+                    raw_schedule_count = manifest.get("schedule_count")
+                    if isinstance(raw_schedule_count, int):
+                        schedule_count = raw_schedule_count
+
+                    raw_complete = manifest.get("complete")
+                    if isinstance(raw_complete, bool):
+                        complete = raw_complete
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        experiment_time_path = entry / EXPERIMENT_TIME_FILENAME
+        if experiment_time_path.is_file():
+            try:
+                with experiment_time_path.open("r", encoding="utf-8") as f_handle:
+                    experiment_time = json.load(f_handle)
+
+                if isinstance(experiment_time, dict):
+                    raw_seconds = experiment_time.get("seconds_since_start")
+                    if isinstance(raw_seconds, int):
+                        seconds_since_start = raw_seconds
+            except (OSError, json.JSONDecodeError):
+                pass
 
         results.append(
             SavedExperimentInfo(
                 name=entry.name,
                 path=entry,
-                has_manifest=(entry / MANIFEST_FILENAME).is_file(),
-                modified_at=modified_at,
+                created_at=created_at,
+                seconds_since_start=seconds_since_start,
+                schedule_count=schedule_count,
+                complete=complete,
             )
         )
 
@@ -123,7 +163,7 @@ def print_saved_experiments(console: Console) -> int:
     """Print available saved experiments.
 
     Args:
-        console: Console used for output.
+        console (Console): Console used for output.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -138,28 +178,89 @@ def print_saved_experiments(console: Console) -> int:
         print_reused(console, "No saved experiments found")
         return 0
 
-    print_result_card(
-        console,
-        "Saved Experiments",
-        [
+    table = Table(title="Saved Experiments", row_styles=["none", "dim"])
+    table.add_column("Name", style="cyan", no_wrap=True)
+    table.add_column("Created Time")
+    table.add_column("Sec Into Experiment", justify="right")
+    table.add_column("Num Schedules", justify="right")
+    table.add_column("All Exp Data")
+
+    for exp in saved_experiments:
+        created_text = "-"
+        if exp.created_at is not None:
+            created_text = exp.created_at.replace(microsecond=0).isoformat()
+
+        table.add_row(
+            exp.name,
+            created_text,
             (
-                exp.name,
-                (
-                    f"{exp.path}"
-                    + (
-                        f" | modified {exp.modified_at.isoformat()}"
-                        if exp.modified_at is not None
-                        else ""
-                    )
-                    + (
-                        " | manifest present"
-                        if exp.has_manifest
-                        else " | manifest missing"
-                    )
-                ),
-            )
-            for exp in saved_experiments
-        ],
+                str(exp.seconds_since_start)
+                if exp.seconds_since_start is not None
+                else "-"
+            ),
+            str(exp.schedule_count) if exp.schedule_count is not None else "-",
+            ("Yes" if exp.complete is True else "No" if exp.complete is False else "-"),
+        )
+
+    console.print(table)
+    return 0
+
+
+def get_saved_experiment_path(experiment_name: str) -> Path:
+    """Get the path to a saved experiment by name.
+
+    Args:
+        experiment_name (str): Saved experiment directory name.
+
+    Returns:
+        Path to the saved experiment directory.
+    """
+    saved_exp = FileStore("saved")
+    return Path(saved_exp.get_file_path(experiment_name))
+
+
+def delete_saved_experiment(console: Console, experiment_name: str) -> int:
+    """Delete a saved experiment from the minimega saved FileStore.
+
+    Args:
+        console (Console): Console used for output.
+        experiment_name (str): Name of the saved experiment to delete.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
+    try:
+        saved_path = get_saved_experiment_path(experiment_name)
+    except OSError as exc:
+        print_error(console, f"Failed to access saved experiments: {exc}")
+        return 1
+
+    if not saved_path.exists():
+        print_error(
+            console,
+            f"Saved experiment [cyan]{experiment_name}[/cyan] does not exist.",
+        )
+        return 1
+
+    if not saved_path.is_dir():
+        print_error(
+            console,
+            f"Saved experiment path [cyan]{saved_path}[/cyan] is not a directory.",
+        )
+        return 1
+
+    try:
+        shutil.rmtree(saved_path)
+    except OSError as exc:
+        print_error(
+            console,
+            f"Failed to delete saved experiment [cyan]{experiment_name}[/cyan]: {exc}",
+        )
+        return 1
+
+    print_success(
+        console,
+        f"Deleted saved experiment [cyan]{experiment_name}[/cyan]",
     )
     return 0
 

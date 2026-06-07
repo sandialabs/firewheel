@@ -4,7 +4,7 @@ DONE
 
 DESCRIPTION
 Save the current state of a running FIREWHEEL experiment into a backup
-directory. This Helper can also list saved experiments in the minimega saved
+directory. This Helper can also list or delete saved experiments in the minimega saved
 files directory.
 This Helper captures the current minimega namespace state, VM mapping,
 experiment time metadata, schedule files, optional cache content, and VM
@@ -75,7 +75,7 @@ different single-node deployment has been tested and verified. Other restore
 paths, including cluster-related restores, should currently be treated as not
 yet supported.
 
-**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a] [--list]``
+**Usage:**  ``firewheel save [-h] [-n NAME] [-c] [-a] [--list] [--delete NAME]``
 
 Arguments
 +++++++++
@@ -108,6 +108,10 @@ Named Arguments
 
     List saved experiments in the minimega saved files directory and exit.
 
+.. option:: --delete NAME
+
+    Delete a saved experiment from the minimega saved files directory and exit.
+
 Examples
 ++++++++
 
@@ -120,6 +124,8 @@ Examples
 ``firewheel save --name my_experiment --complete --archive``
 
 ``firewheel save --list``
+
+``firewheel save --delete my_experiment``
 DONE
 
 RUN LocalPython ON control
@@ -167,6 +173,7 @@ from firewheel.lib.experiment_utils import (
     build_manifest,
     write_manifest,
     print_saved_experiments,
+    delete_saved_experiment,
 )
 from firewheel.lib.minimega.file_store import FileStore
 from firewheel.vm_resource_manager.vm_mapping import VMMapping
@@ -467,6 +474,7 @@ def save_vm_state(
     complete: bool = False,
     archive: bool = False,
     list_only: bool = False,
+    delete_name: str | None = None,
 ) -> int:
     """Save the current VM state and schedule data.
 
@@ -481,6 +489,7 @@ def save_vm_state(
             images and VM resources.
         archive: If True, archive the saved output directory as a ``.tar`` file.
         list_only: Whether to list saved experiments and exit.
+        delete_name: Name of a saved experiment to delete and then exit.
 
     Returns:
         ``0`` on success and ``1`` on failure.
@@ -492,6 +501,9 @@ def save_vm_state(
 
     if list_only:
         return print_saved_experiments(console)
+
+    if delete_name is not None:
+        return delete_saved_experiment(console, delete_name)
 
     mm_api = minimegaAPI()
 
@@ -801,13 +813,22 @@ if __name__ == "__main__":
         action="store_true",
         help="List saved experiments in the minimega saved files directory and exit.",
     )
+    parser.add_argument(
+        "--delete",
+        type=str,
+        metavar="NAME",
+        help="Delete a saved experiment from the minimega saved files directory and exit.",
+    )
     args = parser.parse_args()
+    if args.list and args.delete is not None:
+        parser.error("--list and --delete cannot be used together")
     sys.exit(
         save_vm_state(
             experiment_name=args.name,
             complete=args.complete,
             archive=args.archive,
             list_only=args.list,
+            delete_name=args.delete,
         )
     )
 DONE
