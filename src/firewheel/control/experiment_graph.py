@@ -1641,16 +1641,10 @@ class ExperimentGraph:
                 vertex_filter, path_action
             )
 
-        def do_source(graph, vertex_filter, source_queue, path_queue):
-            for source_id in iter(source_queue.get, "STOP"):
-                paths = nx.single_source_shortest_path(graph, source_id)
-                for dest, value in paths.items():
-                    dest_obj = self.g.nodes[dest]["object"]
-                    if vertex_filter(dest_obj) is True:
-                        path_queue.put((source_id, dest, value))
-            path_queue.put("STOP")
+        vertices = list(filter(vertex_filter, VertexIterator(self, self.g)))
+        # Identify NetworkX graph ID values for stability in worker processes
+        vertex_ids = {vertex.graph_id for vertex in vertices}
 
-        vert_it = filter(vertex_filter, VertexIterator(self, self.g))
         workers = []
         source_queue = Queue()
         path_queue = Queue()
@@ -1658,7 +1652,8 @@ class ExperimentGraph:
         self.log.debug("Initializing %d worker processes.", num_workers)
         for _ in range(num_workers):
             proc = Process(
-                target=do_source, args=(self.g, vertex_filter, source_queue, path_queue)
+                target=_compute_filtered_paths,
+                args=(self.g, vertex_ids, source_queue, path_queue),
             )
             proc.start()
             workers.append(proc)
@@ -1666,7 +1661,7 @@ class ExperimentGraph:
         self.log.debug("Handing out sources.")
         if sample_pct:
             self.log.debug("Only sampling %s of sources.", sample_pct)
-        for source in vert_it:
+        for source in vertices:
             if sample_pct:
                 if random.random() < sample_pct:
                     source_queue.put(source.graph_id)
@@ -1677,24 +1672,41 @@ class ExperimentGraph:
             source_queue.put("STOP")
 
         self.log.debug("Processing resulting paths.")
+        graph_nodes = self.g.nodes
         ends = 0
         while ends < num_workers:
             result = path_queue.get(block=True)
             if result == "STOP":
                 ends += 1
-                continue
-
-            # Get the objects.
-            source_obj = self.g.nodes[result[0]]["object"]
-            dest_obj = self.g.nodes[result[1]]["object"]
-            path_objs = []
-            for vert in result[2]:
-                path_objs.append(self.g.nodes[vert]["object"])
-
-            # Do the path action.
-            path_action(source_obj, dest_obj, path_objs)
+            else:
+                source, dest, shortest_path = result
+                # Get the objects
+                source_obj = graph_nodes[source]["object"]
+                dest_obj = graph_nodes[dest]["object"]
+                path_objs = [graph_nodes[node]["object"] for node in shortest_path]
+                # Execute the path action
+                path_action(source_obj, dest_obj, path_objs)
 
         self.log.debug("Waiting for workers to terminate.")
         for worker in workers:
             worker.join()
         return None
+
+
+def _compute_filtered_paths(graph, vertex_ids, source_queue, path_queue):
+    """
+    Given a source queue, add paths passing the filter to the path queue.
+
+    Args:
+        graph (networkx.Graph): The underlying graph.
+        vertex_ids (set): A (pre-filtered) set of nodes IDs representing
+            vertices in the graph.
+        source_queue (multiprocessing.Queue): Queue of source vertex IDs.
+        path_queue (multiprocessing.Queue): Queue for path results.
+    """
+    for source in iter(source_queue.get, "STOP"):
+        paths = nx.single_source_shortest_path(graph, source)
+        for dest, shortest_path in paths.items():
+            if dest in vertex_ids:
+                path_queue.put((source, dest, shortest_path))
+    path_queue.put("STOP")
