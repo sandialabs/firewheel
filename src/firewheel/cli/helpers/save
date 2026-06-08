@@ -538,6 +538,15 @@ def save_vm_state(
         print_error(console, "FileStore connection failed.")
         return 1
 
+    try:
+        exp_save_path = str(Path(saved_exp.store) / experiment_name)
+        saved_exp.mm_api.mm.file_get(exp_save_path)
+        saved_exp._check_mesh_transfer(exp_save_path)
+    except Exception as exp:
+        print(exp)
+        print_error(console, "Mirroring saved experiment cache between FIREWHEEL nodes failed")
+        return 1
+
     output_dir = Path(saved_exp.get_file_path(experiment_name))
     vm_mapping = VMMapping()
     schedule_db = ScheduleDb()

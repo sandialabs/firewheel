@@ -522,6 +522,47 @@ def _resolve_backup_source(source: str) -> Path:
 
     return source_path
 
+def update_vmrh_host(prefix: str, process_config: dict[str, Any]):
+    """Update the FIREWHEEL host that the VM resource handler runs on based on
+    where the VM was launched.
+    """
+    mm_api = minimegaAPI()
+    vm_name = process_config["vm_name"]
+    head_node = mm_api.get_head_node()
+    currently_configured_host = head_node
+    is_mesh_cmd = False
+    split_prefix = prefix.split()
+    if prefix.startswith("mesh send"):
+        is_mesh_cmd = True
+        currently_configured_host = split_prefix[2]
+
+    new_host = mm_api.mm_vms()[vm_name]["hostname"]
+
+    # new host was the same as currently configured one, so keep don't change anything
+    if new_host == currently_configured_host:
+        return prefix
+
+    # if it was a mesh command before but not anymore, remove that portion of the prefix
+    elif is_mesh_cmd and new_host == head_node:
+        prefix = " ".join(split_prefix[3:])
+
+    # if it was not a mesh command before but is now, add the mesh send
+    elif not is_mesh_cmd and new_host != head_node:
+        prefix = f"mesh send {new_host} {prefix}"
+
+    # Finally, if it was a mesh command before, it still should be (but to a different host), update that
+    elif is_mesh_cmd and new_host != currently_configured_host:
+        split_prefix[2] = new_host
+        prefix = " ".join(split_prefix)
+
+    else:
+        raise ValueError("Unhandled vm_resource_handler prefix")
+
+    if not prefix.endswith(" "):
+        prefix = f"{prefix} "
+
+    return prefix
+
 def update_socket_path(
     process_config: dict[str, Any],
     vm_name_to_mm_id: Mapping[str, str],
@@ -556,6 +597,8 @@ def update_launch_command_line(
     """Update the JSON path field inside a launch command line."""
     prefix, process_config = parse_launch_command_line(line)
     update_socket_path(process_config, vm_name_to_mm_id, mm_base)
+
+    prefix = update_vmrh_host(prefix, process_config)
 
     new_json_text = json.dumps(process_config, separators=(",", ":"))
     is_mesh_command = prefix.startswith("mesh send ")
@@ -642,8 +685,7 @@ def rewrite_launch_cmds_file(
             )
             outfile.write(updated_line + "\n")
 
-
-def rebuild_launch_cmds_file_with_current_mm_ids(
+def rebuild_launch_cmds_file_with_current_mm_ids_and_hosts(
     input_path: Path,
     output_path: Path,
     mm_api: minimegaAPI,
@@ -966,7 +1008,7 @@ def _restore_from_layout(
         print_phase_header(console, "Phase 6: Launch VM Resource Handlers")
         if layout.launch_cmds_path is not None:
             launch_cmd_updated_path = layout.root_dir / "launch_cmds_updated.mm"
-            vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids(
+            vm_name_to_mm_id = rebuild_launch_cmds_file_with_current_mm_ids_and_hosts(
                 input_path=layout.launch_cmds_path,
                 output_path=launch_cmd_updated_path,
                 mm_api=mm_api,
