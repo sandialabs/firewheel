@@ -18,7 +18,7 @@ from firewheel.lib.utilities import retry
 class minimegaAPI:  # noqa: N801
     """
     This class implements an API to minimega to run common commands and
-    parse outputs into python objects.
+    parse outputs into Python objects.
     """
 
     def __init__(self, mm_base=None, timeout=120, skip_retry=False):
@@ -75,7 +75,8 @@ class minimegaAPI:  # noqa: N801
         Provide method for determining if the current node is the head node.
 
         Returns:
-            bool: True if the current node is the head node. False otherwise.
+            bool: :py:data:`True` if the current node is the head node.
+                :py:data:`False` otherwise.
         """
         cluster_head_node = minimegaAPI.get_head_node()
         am_head_node = platform.node() == cluster_head_node
@@ -103,7 +104,7 @@ class minimegaAPI:  # noqa: N801
     @retry(5, (TimeoutError,), base_delay=10, exp_factor=2)
     def _check_version(self, timeout, skip_retry=False):
         """
-        Checks if the version of the minimega python bindings matches the
+        Checks if the version of the minimega Python bindings matches the
         versions of all running instances of minimega in the namespace.
 
         To enable timeouts, a process is spawned to call the necessary
@@ -116,7 +117,7 @@ class minimegaAPI:  # noqa: N801
                 is an error.
 
         Returns:
-            bool: True if versions match, False otherwise.
+            bool: :py:data:`True` if versions match, :py:data:`False` otherwise.
 
         Raises:
             TimeoutError: If a timeout occurs when connecting to minimega.
@@ -163,7 +164,7 @@ class minimegaAPI:  # noqa: N801
             path (str): The path to set group permissions.
 
         Returns:
-            bool: True on success, False otherwise.
+            bool: :py:data:`True` on success, :py:data:`False` otherwise.
         """
         try:
             relative_path = Path(path).relative_to(self.mm_base)
@@ -189,7 +190,7 @@ class minimegaAPI:  # noqa: N801
                 ``sys.executable``.)
 
         Returns:
-            bool: True on success, False otherwise.
+            bool: :py:data:`True` on success, :py:data:`False` otherwise.
 
         Raises:
             minimega.Error: If minimega has an issue running the command.
@@ -227,12 +228,12 @@ class minimegaAPI:  # noqa: N801
     @staticmethod
     def mmr_map(raw_response, first_value_only=False):
         """
-        Attempts to map a raw minimega output into a python dictionary
+        Attempts to map a raw minimega output into a Python dictionary
 
         Args:
             raw_response (str): raw output from a minimega command.
-            first_value_only (bool): If True, return only the first value in the response.
-                Defaults to False.
+            first_value_only (bool): If :py:data:`True`, return only the first value in the response.
+                Defaults to :py:data:`False`.
 
         Returns:
             dict: Dictionary representation of minimega output.
@@ -289,7 +290,7 @@ class minimegaAPI:  # noqa: N801
 
         (1) For each ``filter_key``, ensure that the provided element's value
             for that key satisfies the ``filter_relation`` for the given ``filter_value``.
-        (2) Return True only if each filter check is satisfied.
+        (2) Return :py:data:`True` only if each filter check is satisfied.
 
         Currently, the following ``filter_relation`` values are supported:
         ``{"=", "!=", "~", "!~"}``.
