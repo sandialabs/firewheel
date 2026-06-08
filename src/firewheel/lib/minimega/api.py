@@ -6,6 +6,7 @@ import platform
 import subprocess
 import multiprocessing
 from pathlib import Path
+from contextlib import contextmanager
 
 import minimega
 
@@ -132,32 +133,24 @@ class minimegaAPI:  # noqa: N801
             RuntimeError: If a timeout occurs when connecting to minimega but
                 ``skip_retry is true``.
         """
-        compatibility_queue = multiprocessing.Queue()
+        with safe_process_context(
+            _enqueue_binding_compatibility, self.mm_socket, self.mm_namespace
+        ) as (process, compatibility_queue):
+            # Check the completed process for failure conditions
+            process.join(timeout)
+            if process.is_alive():
+                error_message = (
+                    f"Timed out after {timeout} seconds when trying to receive "
+                    f"from minimega socket at: {self.mm_socket}"
+                )
+                if skip_retry:
+                    raise RuntimeError(error_message)
+                raise TimeoutError(error_message)
 
-        process = multiprocessing.Process(
-            target=_enqueue_binding_compatibility,
-            args=(compatibility_queue, self.mm_socket, self.mm_namespace),
-        )
-        process.start()
-        process.join(timeout)
-
-        if process.is_alive():
-            process.terminate()
-            process.join()
-
-            error_message = (
-                f"Timed out after {timeout} seconds when trying to receive "
-                f"from minimega socket at: {self.mm_socket}"
-            )
-            if skip_retry:
-                raise RuntimeError(error_message)
-            raise TimeoutError(error_message)
-
-        try:
-            versions_match = compatibility_queue.get(timeout=3)
-        except queue.Empty:
-            versions_match = False
-        return versions_match
+            try:
+                return compatibility_queue.get(timeout=3)
+            except queue.Empty:
+                return False
 
     def set_group_perms(self, path):
         """
@@ -568,3 +561,38 @@ def _enqueue_binding_compatibility(compatibility_queue, mm_socket, mm_namespace)
     responses = [_.get("Response", "") for _ in mm.version()]
     compatibility = all(minimega.__version__ in response for response in responses)
     compatibility_queue.put(compatibility)
+
+
+@contextmanager
+def safe_process_context(target, *extra_args):
+    """
+    Manages spawning, terminating, and cleaning up a multiprocessing task.
+
+    Args:
+        target (callable): The global worker function to execute in the
+            child process. This function must accept a queue as its
+            first argument.
+        *extra_args: Additional arguments to pass to the target
+            function.
+
+    Yields:
+        tuple: A pair containing:
+            - ``process`` (``multiprocessing.Process``): The spawned
+              process instance.
+            - ``task_queue`` (``multiprocessing.Queue``): The queue
+              injected into the process.
+    """
+    context = multiprocessing.get_context()
+    task_queue = context.Queue()
+
+    # Launch a worker process to updae the queue
+    process = context.Process(target=target, args=(task_queue, *extra_args))
+
+    try:
+        process.start()
+        yield process, task_queue
+    finally:
+        # Ensure cleanup (regardless of timeouts or errors)
+        if process.is_alive():
+            process.terminate()
+            process.join()
