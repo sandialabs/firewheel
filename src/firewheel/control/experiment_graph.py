@@ -13,7 +13,7 @@ import pprint
 import random
 import inspect
 import logging
-from multiprocessing import Queue, Process
+import multiprocessing
 
 import networkx as nx
 
@@ -1646,12 +1646,13 @@ class ExperimentGraph:
         vertex_ids = {vertex.graph_id for vertex in vertices}
 
         workers = []
-        source_queue = Queue()
-        path_queue = Queue()
+        context = multiprocessing.get_context()
+        source_queue = context.Queue()
+        path_queue = context.Queue()
 
         self.log.debug("Initializing %d worker processes.", num_workers)
         for _ in range(num_workers):
-            proc = Process(
+            proc = context.Process(
                 target=_compute_filtered_paths,
                 args=(self.g, vertex_ids, source_queue, path_queue),
             )
