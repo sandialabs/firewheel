@@ -231,20 +231,22 @@ class ExperimentGraphDecorableTestCase(unittest.TestCase):
             return decoratee_entry
 
         inst2 = firewheel.control.experiment_graph.ExperimentGraphDecorable()
+        # Decorator is unset; use Python default `__eq__`
         self.assertFalse(self.inst == inst2)
+        self.assertIs(self.inst.__eq__(inst2), NotImplemented)
 
         self.inst.decorate(Dec, init_args=[42], conflict_handler=resolve_conflict)
         inst2.decorate(Dec, init_args=[42], conflict_handler=resolve_conflict)
-        # At this point, the conflict resolution has worked if the test passes.
-        # pylint: disable=unnecessary-dunder-call
-        self.assertTrue(self.inst.__eq__(inst2))
-
-        # It turns out the statement "self.inst == inst2" is not equivalent to
-        # "self.inst.__eq__(inst2)" but rather is equivalent to
-        # "ExperimentGraphDecorable.__eq__(self.inst, inst2)". Our decorators
-        # do not handle class methods--everything becomes an instance method.
-        # So, the statement "self.inst == inst2" actually does not end up
-        # working.
+        # Python "dunder methods" (e.g., `__eq__`) are looked up on the
+        # instance's type, rather than via traditional instance
+        # attribute lookup. For example:
+        #     self.inst == inst2
+        # is equivalent to:
+        #     type(self.inst).__eq__(self.inst, inst2)
+        #
+        # Because our decorators do not handle class methods--everything
+        # is mapped to an instance method--comparisons of this nature
+        # should still fail.
         self.assertFalse(self.inst == inst2)
 
     def test_is_decorated_by(self):
