@@ -5,8 +5,10 @@ import queue
 import platform
 import subprocess
 import multiprocessing
+from typing import Any, Optional
 from pathlib import Path
 from contextlib import contextmanager
+from collections.abc import Generator
 
 import minimega
 
@@ -28,7 +30,12 @@ class minimegaAPI:  # noqa: N801
     parse outputs into Python objects.
     """
 
-    def __init__(self, mm_base=None, timeout=120, skip_retry=False):
+    def __init__(
+        self,
+        mm_base: Optional[str] = None,
+        timeout: int = 120,
+        skip_retry: bool = False,
+    ) -> None:
         """
         Initializes the object with a minimega connection.
 
@@ -79,7 +86,7 @@ class minimegaAPI:  # noqa: N801
         self.mesh_size = self.get_mesh_size()
 
     @staticmethod
-    def get_am_head_node():
+    def get_am_head_node() -> bool:
         """
         Provide method for determining if the current node is the head node.
 
@@ -92,7 +99,7 @@ class minimegaAPI:  # noqa: N801
         return am_head_node
 
     @staticmethod
-    def get_head_node():
+    def get_head_node() -> str:
         """
         Get the head node from the FIREWHEEL configuration.
 
@@ -111,7 +118,7 @@ class minimegaAPI:  # noqa: N801
         return cluster_head_node
 
     @retry(5, (TimeoutError,), base_delay=10, exp_factor=2)
-    def _check_version(self, timeout, skip_retry=False):
+    def _check_version(self, timeout: int, skip_retry: bool = False) -> bool:
         """
         Checks if the version of the minimega Python bindings matches the
         versions of all running instances of minimega in the namespace.
@@ -152,7 +159,7 @@ class minimegaAPI:  # noqa: N801
             except queue.Empty:
                 return False
 
-    def set_group_perms(self, path):
+    def set_group_perms(self, path: str) -> bool:
         """
         Recursively sets the group permissions on a path to be equal
         to the user permissions.
@@ -178,7 +185,7 @@ class minimegaAPI:  # noqa: N801
         self.log.debug("Successfully set group permissions on %s.", full_path)
         return True
 
-    def ns_kill_processes(self, path):
+    def ns_kill_processes(self, path: str) -> bool:
         """
         Kill a specified process using ``pkill -f``
 
@@ -210,7 +217,7 @@ class minimegaAPI:  # noqa: N801
                 raise
         return processes_killed
 
-    def get_mesh_size(self):
+    def get_mesh_size(self) -> int:
         """
         Gets the size of the minimega mesh.
 
@@ -275,7 +282,10 @@ class minimegaAPI:  # noqa: N801
         return history_by_host
 
     @staticmethod
-    def check_host_filter(filter_dict, elem):
+    def check_host_filter(
+        filter_dict: Optional[dict[str, tuple[str, Any]]],
+        elem: dict[str, Any],
+    ) -> bool:
         """
         Checks an element against a provided dictionary of filter keys
         and expected values.
@@ -323,7 +333,10 @@ class minimegaAPI:  # noqa: N801
                     return False
         return True
 
-    def mm_vms(self, filter_dict=None):
+    def mm_vms(
+        self,
+        filter_dict: Optional[dict[str, tuple[str, Any]]] = None,
+    ) -> dict[str, dict[str, Any]]:
         """
         List the VMs in current experiment. Optionally filtered by supplied filter_dict.
 
@@ -354,7 +367,7 @@ class minimegaAPI:  # noqa: N801
         return vms
 
     @staticmethod
-    def _parse_output(output):
+    def _parse_output(output: str) -> list[list[str]]:
         """
         Debug function. Used to parse the output of a minimega shell command.
 
@@ -364,13 +377,10 @@ class minimegaAPI:  # noqa: N801
         Returns:
             list: A list representation of the minimega shell command output.
         """
-        new_output = []
-        for line in output.decode("utf-8").split("\n"):
-            new_output.append([k.strip() for k in line.split("|")])
-        return new_output
+        return [[k.strip() for k in line.split("|")] for line in output.split("\n")]
 
     @staticmethod
-    def _parse_table(table_output):
+    def _parse_table(table_output: list[list[str]]) -> list[dict[str, str]]:
         """
         Debug function. Used to parse the tabular output of a minimega shell command.
 
@@ -380,15 +390,13 @@ class minimegaAPI:  # noqa: N801
         Returns:
             list: A parsed table representation of the minimega output.
         """
-        header = table_output[0]
-        rows = table_output[1:-1]
-        new_table = []
-        for row in rows:
-            new_row = {header[i]: row[i] for i in range(len(header))}
-            new_table.append(new_row)
-        return new_table
+        header, rows = table_output[0], table_output[1:-1]
+        return [
+            {title: row[col_i] for col_i, title in enumerate(header)}
+            for row in rows
+        ]
 
-    def _cmd_to_dict(self, cmd):
+    def _cmd_to_dict(self, cmd: list[str]) -> list[dict[str, str]]:
         """
         Debug function. Used to return a dictionary representation of the output
         of a minimega shell command.
@@ -405,7 +413,7 @@ class minimegaAPI:  # noqa: N801
         return parsed_table
 
     @staticmethod
-    def _run_cmd(args):
+    def _run_cmd(args: list[str]) -> str:
         """
         Debug function. Used to return the output of a minimega shell command.
 
@@ -424,22 +432,20 @@ class minimegaAPI:  # noqa: N801
             config["minimega"]["install_dir"], "bin", "minimega"
         )
         new_args = [minimega_bin_path, "-e", *args]
-        ret = subprocess.run(new_args, capture_output=True, check=True)
-        return ret
+        result = subprocess.run(new_args, capture_output=True, check=True)
+        return result.stdout.decode("utf-8")
 
-    def _parse_host(self, host_item):
+    def _parse_host(self, host_item: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
         """
         Parses a host response item from minimega.
 
         Args:
-            host_item (tuple): Tuple of hostname, host_values from minimega
-                `host` output.
+            host_item (tuple): Tuple of ``hostname``, ``host_values``
+                from minimega ``host`` output.
 
         Returns:
             dict: The parsed host.
         """
-        if not host_item:
-            return None
         hostname, host_values = host_item
         host_value = host_values[0]
         control_hostname = hostname
@@ -453,7 +459,7 @@ class minimegaAPI:  # noqa: N801
         }
         return new_host
 
-    def get_hosts(self, host_key=None):
+    def get_hosts(self, host_key: Optional[str] = None):
         """
         Get the  hosts in the minimega namespace, and return the parsed hosts
         as a dict keyed on hostname.
@@ -481,7 +487,7 @@ class minimegaAPI:  # noqa: N801
             parsed_hosts[hostname] = parsed_host
         return parsed_hosts
 
-    def get_cpu_commit_ratio(self):
+    def get_cpu_commit_ratio(self) -> float:
         """
         Returns the ratio of committed CPUs to logical CPUs on the current
         physical host. This is used to intelligently throttle based on load.
@@ -489,7 +495,8 @@ class minimegaAPI:  # noqa: N801
         Returns:
             float: (CPU commit / logical CPUs).
         """
-        host = self.get_hosts(host_key=platform.node())
+        if (host := self.get_hosts(host_key=platform.node())) is None:
+            raise RuntimeError(f"Host {platform.node()} not found")
         return host["cpucommit"] / host["cpus"]
 
     def count_started_background_processes(self, output: str) -> int:
@@ -555,7 +562,11 @@ class minimegaAPI:  # noqa: N801
         return result.returncode, combined_output
 
 
-def _enqueue_binding_compatibility(compatibility_queue, mm_socket, mm_namespace):
+def _enqueue_binding_compatibility(
+    compatibility_queue: multiprocessing.Queue,
+    mm_socket: str,
+    mm_namespace: Optional[str],
+) -> None:
     # Update the queue to reflect Python binding compatibility
     mm = minimega.minimega(mm_socket, True, False, mm_namespace)
     responses = [_.get("Response", "") for _ in mm.version()]
@@ -564,7 +575,9 @@ def _enqueue_binding_compatibility(compatibility_queue, mm_socket, mm_namespace)
 
 
 @contextmanager
-def safe_process_context(target, *extra_args):
+def safe_process_context(
+    target: Any, *extra_args: Any
+) -> Generator[tuple[multiprocessing.Process, multiprocessing.Queue], None, None]:
     """
     Manages spawning, terminating, and cleaning up a multiprocessing task.
 
@@ -576,11 +589,9 @@ def safe_process_context(target, *extra_args):
             function.
 
     Yields:
-        tuple: A pair containing:
-            - ``process`` (``multiprocessing.Process``): The spawned
-              process instance.
-            - ``task_queue`` (``multiprocessing.Queue``): The queue
-              injected into the process.
+        tuple[multiprocessing.Process, multiprocessing.Queue]: A pair
+            containing the spawned process instance and the queue
+            injected into the process.
     """
     context = multiprocessing.get_context()
     task_queue = context.Queue()
