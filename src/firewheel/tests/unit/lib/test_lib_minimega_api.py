@@ -28,6 +28,7 @@ def _build_api_without_init() -> minimegaAPI:
     api.mm = Mock()
     api.mm_base = "/tmp/mm"
     api.mm_socket = "/tmp/mm/minimega"
+    api.mm_namespace = "firewheel"
     return api
 
 
