@@ -3,9 +3,51 @@ Interface to the mapping between VMs, their current (vm resource) state, and oth
 metadata.
 """
 
+from enum import Enum
+
 from firewheel.config import config
 from firewheel.lib.log import Log
 from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
+
+
+class VMState(str, Enum):
+    """
+    Valid virtual machine lifecycle states.
+
+    This enum defines the allowed values that may be reported to the
+    infrastructure through ``set_state()``. Each enum member uses a
+    string value so it can be passed directly to APIs, logging, and
+    comparisons without needing additional conversion.
+
+    States:
+        UNINITIALIZED:
+            The VM has not yet contacted the server or been set to any state.
+
+        NA:
+            The VM Resource Manager is not used for this VM.
+
+        CONFIGURING:
+            The VM is currently being configured.
+
+        CONFIGURED:
+            The VM configuration has completed successfully. When all
+            VMs reach this state, the experiment start time may be set.
+
+        FAILED:
+            The VM failed during configuration or could not reach the
+            configured state.
+
+        TESTING:
+            The VM is currently running tests. This is a user-defined state that may be used
+            as desired, but it is not used by the VRM system itself.
+    """
+
+    UNINITIALIZED = "uninitialized"
+    NA = "n/a"
+    CONFIGURING = "configuring"
+    CONFIGURED = "configured"
+    FAILED = "failed"
+    TESTING = "testing"
 
 
 class VMMapping:
@@ -53,6 +95,45 @@ class VMMapping:
         """
         self.grpc_client.close()
 
+    def _serialize_vm_mapping_state(self, vmm):
+        """
+        Convert a VMState enum in a VM mapping into its string value for transport.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: A copy of the VM mapping with ``state`` converted to its
+            string value when needed.
+        """
+        serialized = dict(vmm)
+        if "state" in serialized and isinstance(serialized["state"], VMState):
+            serialized["state"] = serialized["state"].value
+        return serialized
+
+    def _deserialize_vm_mapping_state(self, vmm):
+        """
+        Convert a serialized VM mapping state string back into a VMState enum.
+
+        Args:
+            vmm (dict): Dictionary representation of a VM mapping.
+
+        Returns:
+            dict: The VM mapping with ``state`` converted to ``VMState`` when
+            present.
+        """
+        if not vmm or "state" not in vmm or vmm["state"] is None:
+            return vmm
+
+        deserialized = dict(vmm)
+        state = deserialized["state"]
+
+        if isinstance(state, VMState):
+            return deserialized
+
+        deserialized["state"] = VMState(state)
+        return deserialized
+
     def get(self, server_uuid=None):
         """
         Retrieve a single entry from the database. This can only retrieve
@@ -72,7 +153,8 @@ class VMMapping:
             vmm = self.grpc_client.get_vm_mapping_by_uuid(server_uuid)
         else:
             raise ValueError("Must provide server_uuid")
-        return vmm
+
+        return self._deserialize_vm_mapping_state(vmm)
 
     def get_all(
         self, filter_time=None, filter_state=None, project_dict=None, length=False
@@ -88,8 +170,10 @@ class VMMapping:
         Args:
             filter_time (int): Only return VM information when the current
                                relative time matches this value.
-            filter_state (str): Only return VM information when the current
-                                vm resource state matches this value.
+            filter_state (str | VMState): Only return VM information when the current
+                               vm resource state matches this value. If a string is
+                               provided, substring matching is used against the
+                               serialized enum value.
             project_dict (dict): Only return VM information from these keys.
             length (bool): Should the function return how many VMs are in the list
                            or should it return the list itself.
@@ -99,7 +183,6 @@ class VMMapping:
             dictionary is the same as would be returned for the VM if retrieved
             using `get()`. If length is `True`, returns the length of the list.
         """
-
         if not project_dict:
             project_dict = {"_id": 0}
 
@@ -107,11 +190,27 @@ class VMMapping:
         ret = []
 
         for vmm in vmms:
+            vmm = self._deserialize_vm_mapping_state(vmm)
+
             if filter_time and vmm["current_time"] != filter_time:
                 continue
-            if filter_state and filter_state not in vmm["state"]:
-                continue
+
+            if filter_state is not None:
+                state = vmm["state"]
+
+                if isinstance(filter_state, VMState):
+                    if state != filter_state:
+                        continue
+                else:
+                    filter_text = str(filter_state).lower()
+                    if (
+                        filter_text not in state.value.lower()
+                        and filter_text not in state.name.lower()
+                    ):
+                        continue
+
             ret.append(vmm)
+
         if length:
             return len(ret)
 
@@ -121,7 +220,7 @@ class VMMapping:
         self,
         server_uuid,
         server_name,
-        state=config["vm_resource_manager"]["default_state"],
+        state=VMState.UNINITIALIZED,
         current_time="",
         server_address="",
     ):
@@ -131,14 +230,14 @@ class VMMapping:
         Args:
             server_uuid (str): UUID of the VM.
             server_name (str): Hostname of the VM.
-            state (str): Vm Resource state the VM starts in. Defaults to the
-                         configured default state (located in the FIREWHEEL configuration).
+            state (VMState | str): Vm Resource state the VM starts in.
+                Defaults to :py:attr:`VMState.UNINITIALIZED`.
             current_time (str): The current (relative) time for the VM.
-                                Defaults to '', meaning the VM has not contacted the
-                                server yet.
-            server_address (str): The `control_ip` of the host where the VM Resource
-                                  is found.
+                Defaults to '', meaning the VM has not contacted the server yet.
+            server_address (str): The `control_ip` of the host where the VM Resource is found.
         """
+        state = VMState(state)
+
         document = {
             "server_uuid": server_uuid,
             "server_name": server_name,
@@ -146,7 +245,7 @@ class VMMapping:
             "current_time": current_time,
             "control_ip": server_address,
         }
-        self.grpc_client.set_vm_mapping(document)
+        self.grpc_client.set_vm_mapping(self._serialize_vm_mapping_state(document))
 
     def set_vm_state_by_uuid(self, uuid, state):
         """
@@ -154,14 +253,17 @@ class VMMapping:
 
         Args:
             uuid (str): UUID of the VM.
-            state (str): The new state for the VM.
+            state (VMState | str): The new state for the VM.
 
         Returns:
             dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`.
         """
+        state = VMState(state)
         vmm = {"server_uuid": uuid, "state": state}
-        ret = self.grpc_client.set_vm_state_by_uuid(vmm)
-        return ret
+        ret = self.grpc_client.set_vm_state_by_uuid(
+            self._serialize_vm_mapping_state(vmm)
+        )
+        return self._deserialize_vm_mapping_state(ret)
 
     def set_vm_time_by_uuid(self, uuid, time):
         """
@@ -176,7 +278,7 @@ class VMMapping:
         """
         vmm = {"server_uuid": uuid, "current_time": time}
         ret = self.grpc_client.set_vm_time_by_uuid(vmm)
-        return ret
+        return self._deserialize_vm_mapping_state(ret)
 
     def get_count_vm_not_ready(self):
         """
@@ -229,9 +331,9 @@ class VMMapping:
         }
 
         if "state" not in entry:
-            new_entry["state"] = config["vm_resource_manager"]["default_state"]
+            new_entry["state"] = VMState.UNINITIALIZED
         else:
-            new_entry["state"] = entry["state"]
+            new_entry["state"] = VMState(entry["state"])
 
         if "current_time" not in entry:
             new_entry["current_time"] = ""
@@ -246,7 +348,7 @@ class VMMapping:
 
     def batch_put(self, server_list):
         """
-        Add a list of VM information  to the database as a batch update. Each
+        Add a list of VM information to the database as a batch update. Each
         entry in the list is a dictionary specifying the relevant information.
 
         Args:
@@ -265,7 +367,6 @@ class VMMapping:
                                 Only `server_uuid` and `server_name` fields are
                                 required for each entry in the list.
         """
-        # Avoid polluting the up-stream data structures.
         for entry in server_list:
             new_entry = self.prepare_put(entry)
             self.put(

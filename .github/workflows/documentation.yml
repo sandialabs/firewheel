@@ -29,7 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # full history
+        fetch-tags: true
     - name: Setup Pages
       uses: actions/configure-pages@v5
     - name: Set up Python
@@ -40,6 +43,7 @@ jobs:
       uses: sandialabs/firewheel_ci/.github/actions/prepare-tox@v1
     - name: Build Documentation
       run: |
+        sudo apt-get install -y graphviz
         tox -e dependencies,docs
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3

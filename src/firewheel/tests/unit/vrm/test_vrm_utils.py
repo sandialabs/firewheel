@@ -2,7 +2,7 @@ import unittest
 
 from firewheel.config import config
 from firewheel.vm_resource_manager import utils
-from firewheel.vm_resource_manager.vm_mapping import VMMapping
+from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 
 
 class UtilsTestCase(unittest.TestCase):
@@ -13,7 +13,7 @@ class UtilsTestCase(unittest.TestCase):
             {
                 "server_name": "2",
                 "control_ip": "3",
-                "state": "test",
+                "state": VMState.TESTING,
                 "current_time": "0",
                 "server_uuid": "12345",
             },
@@ -34,7 +34,7 @@ class UtilsTestCase(unittest.TestCase):
         pre = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
         self.assertNotEqual(pre, None)
 
-        new_state = "new_state"
+        new_state = VMState.FAILED
         utils.set_vm_state(
             self.vmmapping_entries[1]["server_uuid"], new_state, mapping=self.vmmapping
         )
@@ -47,7 +47,7 @@ class UtilsTestCase(unittest.TestCase):
 
     def test_vm_state_invalid(self):
         with self.assertRaises(RuntimeError):
-            utils.set_vm_state("invalid", "new_state", mapping=self.vmmapping)
+            utils.set_vm_state("invalid", VMState.FAILED, mapping=self.vmmapping)
 
     def test_vm_time_update(self):
         pre = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
@@ -74,8 +74,8 @@ class UtilsTestCase(unittest.TestCase):
         self.assertEqual(count, len(self.vmmapping_entries))
 
     def test_not_ready_count_with_ready(self):
-        self.vmmapping.put("5", "ready1", state="configured")
-        self.vmmapping.put("6", "noresources1", state="N/A")
+        self.vmmapping.put("5", "ready1", state=VMState.CONFIGURED)
+        self.vmmapping.put("6", "noresources1", state=VMState.NA)
 
         count = utils.get_vm_count_not_ready(mapping=self.vmmapping)
         self.assertEqual(count, len(self.vmmapping_entries))

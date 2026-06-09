@@ -265,10 +265,6 @@ These settings are used with FIREWHEEL's :ref:`vm-resource-manager`.
     +-------------------------------+----------+-----------------+-----------------------------------------------------------------------------------------------------------+
     |            Setting            |Value Type|     Default     |                                                Description                                                |
     +===============================+==========+=================+===========================================================================================================+
-    |.. _config-default_state:      |          |                 |                                                                                                           |
-    |                               |          |                 |                                                                                                           |
-    |``default_state``              |string    |``uninitialized``|The default *state* of VMs after they are launched.                                                        |
-    +-------------------------------+----------+-----------------+-----------------------------------------------------------------------------------------------------------+
     |.. _config-exp_start:          |          |                 |                                                                                                           |
     |                               |          |                 |                                                                                                           |
     |``experiment_start_buffer_sec``|int       |``60``           |The number of seconds after all experiment VMs have been configured to start :ref:`schedule-positive-time`.|

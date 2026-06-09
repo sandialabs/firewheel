@@ -4,7 +4,7 @@ FIREWHEEL
 
 .. image:: https://sandialabs.github.io/firewheel/_static/logo_horizontal.png
 
-.. image:: https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%7C%203.11%7C%203.12%7C%203.13-blue
+.. image:: https://img.shields.io/badge/python-3.9%20%7C%203.10%7C%203.11%7C%203.12%7C%203.13-blue
     :target: https://pypi.org/project/firewheel/
 .. image:: https://www.bestpractices.dev/projects/9722/badge
    :target: https://www.bestpractices.dev/projects/9722
@@ -13,7 +13,7 @@ FIREWHEEL
 
 .. readme-inclusion-marker
 
-FIREWHEEL is an experiment orchestration tool that assists a user in building and controlling, repeatable experiments of distributed network systems at any scale.
+FIREWHEEL is an experiment orchestration tool that assists a user in building and controlling repeatable experiments of distributed network systems at any scale.
 
 FIREWHEEL was developed as part of Sandia National Laboratories `Emulytics <https://www.sandia.gov/emulytics>`_ program.
 With FIREWHEEL, users can easily construct modular parts of a cyber system, called *Model Components*.
