@@ -543,7 +543,6 @@ def save_vm_state(
         saved_exp.mm_api.mm.file_get(exp_save_path)
         saved_exp._check_mesh_transfer(exp_save_path)
     except Exception as exp:
-        print(exp)
         print_error(console, "Mirroring saved experiment cache between FIREWHEEL nodes failed")
         return 1
 
