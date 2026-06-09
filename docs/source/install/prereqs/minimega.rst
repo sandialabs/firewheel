@@ -21,7 +21,7 @@ You can download the cross-platform discovery binaries from https://github.com/s
 Installing minimega
 ###################
 
-To instantiate emulation-based experiments, FIREWHEEL relies on `minimega <https://www.sandia.gov/minimega>`_ version 2.7 or higher.
+To instantiate emulation-based experiments, FIREWHEEL relies on `minimega <https://www.sandia.gov/minimega>`_ version 3.0.1 or higher.
 minimega should be installed on all :ref:`cluster-nodes` and configured as a `minimega mesh <https://www.sandia.gov/minimega/using-minimega/>`_.
 Additionally, FIREWHEEL expects that minimega has been configured as a ``systemd`` service.
 While we recommend that users review minimega documentation, found at https://www.sandia.gov/minimega, this section will provide some details about how to install minimega and configure it for use with FIREWHEEL.
@@ -126,11 +126,15 @@ First, the minimega ``systemd`` service should be installed by running::
     This assumes that minimega was installed into ``/opt/minimega``.
 
 Next, we need to update minimega's configuration file located at ``/etc/minimega/minimega.conf``.
-The ``MM_MESH_DEGREE`` variable should be updated to be the size of your :ref:`FIREWHEEL-cluster`.
-For example, if your :ref:`FIREWHEEL-cluster` contained 2 nodes, you should change it to be ``MM_MESH_DEGREE=2``.
-Here is a single line find/replace which can be useful in scripting this action::
+The ``MM_DEGREE`` variable should be updated to be the size of your :ref:`FIREWHEEL-cluster`.
+For example, if your :ref:`FIREWHEEL-cluster` contained 2 nodes, you should change it to be ``MM_DEGREE=2``.
+To use the :ref:`helper-save`/:ref:`helper-load` functionality, users will also need to enable ``MM_ABSSNAPSHOT`` (i.e., ``MM_ABSSNAPSHOT=true``).
+Here is are some find/replace commands which can be useful in scripting this action:
 
-    sudo sed -i 's/MM_MESH_DEGREE=0/MM_MESH_DEGREE=1/g' /etc/minimega/minimega.conf
+.. code-block:: bash
+
+    sudo sed -i 's/MM_DEGREE=0/MM_DEGREE=1/g' /etc/minimega/minimega.conf
+    sudo sed -i 's/MM_ABSSNAPSHOT=false/MM_ABSSNAPSHOT=true/g' /etc/minimega/minimega.conf
 
 Next, it is important to set the correct permissions and ownership for both minimega and discovery.
 We can use the following commands:

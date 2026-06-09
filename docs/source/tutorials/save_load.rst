@@ -28,6 +28,7 @@ Prerequisites
 Before starting, ensure that:
 
 * FIREWHEEL is installed and functioning correctly.
+* You have minimega version 3.0.1 or later installed, and it is configured to use absolute paths for backing images when creating snapshots (that is, with the ``MM_ABSSNAPSHOT=true`` configuration option). See :ref:`configuring-minimega` for more details.
 * The necessary repositories and VM images for the chosen experiment are installed.
 * You can access running VMs through miniweb or VNC.
 * The testbed is in a clean state.
