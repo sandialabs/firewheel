@@ -166,6 +166,7 @@ from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
 
+from firewheel.config import config
 from firewheel.cli.utils import cli_output_theme
 from firewheel.lib.utilities import (
     print_error,
