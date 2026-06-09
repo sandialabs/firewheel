@@ -552,4 +552,6 @@ class minimegaAPI:  # noqa: N801
                 combined_output += "\n"
             combined_output += result.stderr
 
+        self.log.info(combined_output)
+
         return result.returncode, combined_output
