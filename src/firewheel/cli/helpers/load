@@ -1143,6 +1143,11 @@ def load_vm_state(
         print_error(console, "A restore source must be provided unless --list is used.")
         return 1
 
+    # Compute snapshots not yet supported
+    if len(config["cluster"]["compute"]) > 1:
+        print_error(console, f"Cluster snapshots are not currently supported!")
+        return 1
+
     source_path = _resolve_backup_source(source)
 
     print_phase_header(console, "Phase 1: Read Backup Source")
