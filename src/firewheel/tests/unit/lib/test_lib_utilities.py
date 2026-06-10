@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import tarfile
 import tempfile
+import multiprocessing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -29,6 +30,7 @@ from firewheel.lib.utilities import (
     files_are_identical,
     escape_embedded_json,
     unescape_embedded_json,
+    manage_queueing_process,
     get_safe_tarfile_members,
     directories_are_identical,
 )
@@ -459,3 +461,82 @@ def test_badlink_with_nested_parent_escape(tmp_path: Path) -> None:
     info = tarfile.TarInfo(name="nested/link")
     info.linkname = "../../../etc/passwd"
     assert badlink(info, tmp_path) is True
+
+
+class TestManageQueueingProcess:
+    """Unit tests for task queue process manager."""
+
+    @pytest.fixture
+    def mock_queue(self):
+        return Mock()
+
+    @pytest.fixture
+    def mock_process(self):
+        return Mock()
+
+    @pytest.fixture
+    def mock_context(self, mock_queue, mock_process):
+        context = Mock()
+        context.Queue.return_value = mock_queue
+        context.Process.return_value = mock_process
+        return context
+
+    @pytest.fixture(autouse=True)
+    def mock_get_context(self, mock_context):
+        with patch.object(multiprocessing, "get_context", return_value=mock_context) as mocked:
+            yield mocked
+
+    def test_yields_process_and_queue_after_start(
+        self, mock_get_context, mock_context, mock_queue, mock_process
+    ):
+        with manage_queueing_process("target", "arg1", "arg2") as (process, queue):
+            assert process is mock_process
+            assert queue is mock_queue
+
+        mock_get_context.assert_called_once_with()
+        mock_context.Queue.assert_called_once_with()
+        mock_context.Process.assert_called_once_with(
+            target="target",
+            args=(mock_queue, "arg1", "arg2"),
+        )
+        mock_process.start.assert_called_once_with()
+
+    def test_terminates_and_joins_when_process_is_alive_on_exit(
+        self, mock_process
+    ):
+        mock_process.is_alive.return_value = True
+
+        with manage_queueing_process("target"):
+            pass
+
+        mock_process.start.assert_called_once_with()
+        mock_process.is_alive.assert_called_once_with()
+        mock_process.terminate.assert_called_once_with()
+        mock_process.join.assert_called_once_with()
+
+    def test_does_not_terminate_or_join_when_process_not_alive_on_exit(
+        self, mock_process
+    ):
+        mock_process.is_alive.return_value = False
+
+        with manage_queueing_process("target"):
+            pass
+
+        mock_process.start.assert_called_once_with()
+        mock_process.is_alive.assert_called_once_with()
+        mock_process.terminate.assert_not_called()
+        mock_process.join.assert_not_called()
+
+    def test_cleanup_still_happens_when_exception_raised_inside_context(
+        self, mock_process
+    ):
+        mock_process.is_alive.return_value = True
+
+        with pytest.raises(RuntimeError, match="FAILURE"):
+            with manage_queueing_process("target"):
+                raise RuntimeError("FAILURE")
+
+        mock_process.start.assert_called_once_with()
+        mock_process.is_alive.assert_called_once_with()
+        mock_process.terminate.assert_called_once_with()
+        mock_process.join.assert_called_once_with()
