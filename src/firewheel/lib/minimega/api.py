@@ -7,14 +7,12 @@ import subprocess
 import multiprocessing
 from typing import Any, Optional
 from pathlib import Path
-from contextlib import contextmanager
-from collections.abc import Generator
 
 import minimega
 
 from firewheel.config import config
 from firewheel.lib.log import Log
-from firewheel.lib.utilities import retry
+from firewheel.lib.utilities import retry, manage_queueing_process
 
 # Python 3.14+ starts processes by default via the `forkserver` method
 multiprocessing.set_start_method("forkserver", force=True)
@@ -140,7 +138,7 @@ class minimegaAPI:  # noqa: N801
             RuntimeError: If a timeout occurs when connecting to minimega but
                 ``skip_retry is true``.
         """
-        with safe_process_context(
+        with manage_queueing_process(
             _enqueue_binding_compatibility, self.mm_socket, self.mm_namespace
         ) as (process, compatibility_queue):
             # Check the completed process for failure conditions
@@ -572,38 +570,3 @@ def _enqueue_binding_compatibility(
     responses = [_.get("Response", "") for _ in mm.version()]
     compatibility = all(minimega.__version__ in response for response in responses)
     compatibility_queue.put(compatibility)
-
-
-@contextmanager
-def safe_process_context(
-    target: Any, *extra_args: Any
-) -> Generator[tuple[multiprocessing.Process, multiprocessing.Queue], None, None]:
-    """
-    Manages spawning, terminating, and cleaning up a multiprocessing task.
-
-    Args:
-        target (callable): The global worker function to execute in the
-            child process. This function must accept a queue as its
-            first argument.
-        *extra_args: Additional arguments to pass to the target
-            function.
-
-    Yields:
-        tuple[multiprocessing.Process, multiprocessing.Queue]: A pair
-            containing the spawned process instance and the queue
-            injected into the process.
-    """
-    context = multiprocessing.get_context()
-    task_queue = context.Queue()
-
-    # Launch a worker process to updae the queue
-    process = context.Process(target=target, args=(task_queue, *extra_args))
-
-    try:
-        process.start()
-        yield process, task_queue
-    finally:
-        # Ensure cleanup (regardless of timeouts or errors)
-        if process.is_alive():
-            process.terminate()
-            process.join()

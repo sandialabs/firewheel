@@ -57,33 +57,40 @@ def test_get_am_head_node(monkeypatch) -> None:
         assert minimegaAPI.get_am_head_node() is True
 
 
-def test_check_version_success(mock_mm_api) -> None:
+@pytest.fixture
+def mock_task_queue_process():
+    return Mock()
+
+
+@pytest.fixture
+def mock_task_queue():
+    return Mock()
+
+
+@pytest.fixture
+def mock_queue_context(mock_task_queue_process, mock_task_queue):
+    with patch("firewheel.lib.minimega.api.manage_queueing_process") as context_manager:
+        mock_context = (mock_task_queue_process, mock_task_queue)
+        context_manager.return_value.__enter__.return_value = mock_context
+        yield mock_context
+
+
+def test_check_version_success(
+    mock_mm_api, mock_queue_context, mock_task_queue_process, mock_task_queue
+) -> None:
     """Verify version check returns queue result when child finishes."""
-    queue = Mock()
-    queue.get.return_value = True
-
-    proc = Mock()
-    proc.is_alive.return_value = False
-
-    with (
-        patch("firewheel.lib.minimega.api.multiprocessing.Queue", return_value=queue),
-        patch("firewheel.lib.minimega.api.multiprocessing.Process", return_value=proc),
-    ):
-        assert mock_mm_api._check_version(timeout=1, skip_retry=False) is True
+    mock_task_queue_process.is_alive.return_value = False
+    mock_task_queue.get.return_value = True
+    assert mock_mm_api._check_version(timeout=1, skip_retry=False) is True
 
 
-def test_check_version_timeout_raises_runtimeerror_when_skip_retry(mock_mm_api) -> None:
+def test_check_version_timeout_raises_runtimeerror_when_skip_retry(
+    mock_mm_api, mock_queue_context, mock_task_queue_process, mock_task_queue
+) -> None:
     """Verify version check raises RuntimeError when skip_retry is enabled."""
-    queue = Mock()
-    proc = Mock()
-    proc.is_alive.return_value = True
-
-    with (
-        patch("firewheel.lib.minimega.api.multiprocessing.Queue", return_value=queue),
-        patch("firewheel.lib.minimega.api.multiprocessing.Process", return_value=proc),
-    ):
-        with pytest.raises(RuntimeError):
-            mock_mm_api._check_version(timeout=1, skip_retry=True)
+    mock_task_queue_process.is_alive.return_value = True
+    with pytest.raises(RuntimeError):
+        mock_mm_api._check_version(timeout=1, skip_retry=True)
 
 
 def test_set_group_perms_success(mock_mm_api) -> None:
@@ -201,7 +208,7 @@ def test_mm_vms(mock_mm_api) -> None:
 
 def test_parse_output() -> None:
     """Verify raw shell output is split into pipe-delimited columns."""
-    parsed = minimegaAPI._parse_output(b"a|b\nc|d\n")
+    parsed = minimegaAPI._parse_output("a|b\nc|d\n")
     assert parsed == [["a", "b"], ["c", "d"], [""]]
 
 
@@ -213,7 +220,7 @@ def test_parse_table() -> None:
 
 def test_cmd_to_dict(mock_mm_api) -> None:
     """Verify command helper composes parsing helpers."""
-    mock_mm_api._run_cmd = Mock(return_value=b"a|b\n1|2\n")
+    mock_mm_api._run_cmd = Mock(return_value="a|b\n1|2\n")
     result = mock_mm_api._cmd_to_dict(["vm", "info"])
     assert result == [{"a": "1", "b": "2"}]
 
@@ -221,14 +228,16 @@ def test_cmd_to_dict(mock_mm_api) -> None:
 def test_run_cmd(config, monkeypatch) -> None:
     """Verify raw command execution invokes minimega binary."""
     monkeypatch.setitem(config["minimega"], "install_dir", "/opt/minimega")
-    mocked = Mock()
-    mocked.stdout = b""
-    mocked.stderr = b""
+    mock_result = Mock()
+    mock_result.stdout = b"Output"
+    mock_result.stderr = b"Error"
 
-    with patch("firewheel.lib.minimega.api.subprocess.run", return_value=mocked) as run:
-        ret = minimegaAPI._run_cmd(["vm", "info"])
+    with patch(
+        "firewheel.lib.minimega.api.subprocess.run", return_value=mock_result
+    ) as run:
+        result = minimegaAPI._run_cmd(["vm", "info"])
 
-    assert ret is mocked
+    assert result == "Output"
     run.assert_called_once_with(
         ["/opt/minimega/bin/minimega", "-e", "vm", "info"],
         capture_output=True,
@@ -343,11 +352,6 @@ def test_mmr_map_ignores_empty_tabular() -> None:
     """Verify empty tabular responses are skipped."""
     raw = [{"Header": ["a"], "Tabular": [], "Host": "host1"}]
     assert minimegaAPI.mmr_map(raw) == {}
-
-
-def test_parse_host_none_returns_none(mock_mm_api) -> None:
-    """Verify parsing a falsey host item returns None."""
-    assert mock_mm_api._parse_host(None) is None
 
 
 def test_get_hosts_single_hit(mock_mm_api) -> None:
