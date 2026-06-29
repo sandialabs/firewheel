@@ -85,7 +85,7 @@ format = [
 ]
 docs = [
     "Sphinx>=7.0.0,<=8.2.3",
-    "myst-nb<=1.3.0",
+    "myst-nb<=1.4.0",
     "sphinx-rtd-theme==3.1.0",
     "sphinxcontrib-spelling>=7.0.0,<=8.0.2",
     "sphinx-copybutton==0.5.2",
