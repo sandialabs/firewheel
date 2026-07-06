@@ -55,7 +55,7 @@ dependencies = [
     "ansible>=7.0.0,<=12.0.0",
     "ansible-runner>=2.0.0,<=2.4.3",
     "minimega>=3.0.0",
-    "ClusterShell<=1.9.3",
+    "ClusterShell<=1.10",
     "colorama<=0.4.6",
     "coverage<=7.10.7",
     "grpcio>=1.71.0,<=1.80.0",
