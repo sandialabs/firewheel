@@ -5,7 +5,7 @@ DESCRIPTION
 
 Create a FIREWHEEL experiment using a set of model components.
 
-**Usage:**  ``firewheel experiment [-h] [--profile] [--dry-run] [-f] <model_component>[:<name1>=<value1>[:<name2>=<value2>]...] [<model_component2>[:<name1>=<value1>[:<name2>=<value2>]...]]``
+**Usage:**  ``firewheel experiment [-h] [--format {table,json}] [--profile] [--dry-run] [-f] [-r] [-ni] <model_component>[:<name1>=<value1>[:<name2>=<value2>]...] [<model_component2>[:<name1>=<value1>[:<name2>=<value2>]...]]``
 
 All of the experiment Helper's command line arguments, along with any named
 MC parameter value settings, must be included on a single line.
@@ -28,6 +28,15 @@ Component) or realizing the topology into an emulation. The current method to
 launch an experiment is to use the ``minimega.launch`` model component which uses
 `minimega <https://www.sandia.gov/minimega>`_ to instantiate the emulation. **NOTE: This is not required**.
 FIREWHEEL is extensible and enables users to create other experiment instantiation methods.
+
+This Helper supports both human-readable table output and machine-readable
+JSON output.
+
+.. note::
+
+    When using ``--format json``, this Helper requires non-interactive execution.
+    Re-run with :option:`--no-install` to prevent interactive Model Component
+    INSTALL prompting.
 
 Arguments
 +++++++++
@@ -54,13 +63,19 @@ Positional Arguments
         $ # Muliple MC named arguments
         $ firewheel experiment tests.router_tree:3 tests.large_resource:size=1024:location_dir=/tmp:preload=True minimega.launch
 
-
 Named Arguments
 ^^^^^^^^^^^^^^^
 
 .. option:: -h, --help
 
     Print this experiment Helper description then exit. (optional)
+
+.. option:: --format {table,json}
+
+    :default: ``table``
+
+    Select the output format. ``table`` prints a human-readable execution summary.
+    ``json`` returns a structured JSON response.
 
 .. option:: -f, --force
 
@@ -82,7 +97,6 @@ Named Arguments
 
     Continue regardless of if Model Components within the experiment have been "installed" (i.e., the ``INSTALL`` file executed). Defaults to None. (optional)
 
-
 Examples
 ++++++++
 ``firewheel experiment acme.run minimega.launch``
@@ -93,16 +107,22 @@ Examples
 
 ``firewheel experiment -r tests.vm_gen:size=3 tests.connect_all tests.ping_all minimega.launch``
 
+``firewheel experiment --format json --no-install tests.router_tree:3 minimega.launch``
+
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
+import os
+import io
 import sys
+import json
 import errno
 import argparse
 import cProfile
 import traceback
-from datetime import datetime
+import tempfile
+from datetime import datetime, timezone
 
 from rich.align import Align
 from rich.console import Console
@@ -116,19 +136,209 @@ from firewheel.control.dependency_graph import UnsatisfiableDependenciesError
 from firewheel.control.model_component_manager import ModelComponentManager
 
 
-def get_mc_list(cli_args, install_mcs=None):
-    """
-    Get the list of model components and their arguments from the command line.
+class ExperimentHelperError(Exception):
+    """Expected operational error for the experiment helper.
 
     Args:
-        cli_args (list): A list of command line-input model components.
-        install_mcs (bool): A flag indicating whether to install model components automatically.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+        phase (str): Phase in which the error occurred.
+    """
+
+    def __init__(self, message, error_type, phase):
+        """Initialize the exception.
+
+        Args:
+            message (str): Human-readable error message.
+            error_type (str): Stable machine-readable error type.
+            phase (str): Phase in which the error occurred.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+        self.phase = phase
+
+
+class OutputCapture:
+    """Capture both Python-level and file-descriptor-level stdout/stderr.
+
+    This context manager redirects:
+      - Python ``sys.stdout`` / ``sys.stderr``
+      - OS file descriptors 1 and 2
+
+    into temporary files so that normal prints, Rich console output, and many
+    subprocess writes inherited from this process can be captured safely.
+
+    After the context exits, the original stdout/stderr streams and file
+    descriptors are restored, even if an exception occurs.
+    """
+
+    def __init__(self):
+        """Initialize the output capture state."""
+        self.stdout = ""
+        self.stderr = ""
+
+        self._stdout_tmp = None
+        self._stderr_tmp = None
+
+        self._old_stdout = None
+        self._old_stderr = None
+
+        self._old_stdout_fd = None
+        self._old_stderr_fd = None
+
+        self._capture_stdout = None
+        self._capture_stderr = None
+
+    def __enter__(self):
+        """Enter the capture context.
+
+        Returns:
+            OutputCapture: This output capture instance.
+        """
+        self._old_stdout = sys.stdout
+        self._old_stderr = sys.stderr
+
+        self._old_stdout_fd = os.dup(1)
+        self._old_stderr_fd = os.dup(2)
+
+        self._stdout_tmp = tempfile.TemporaryFile(mode="w+b")
+        self._stderr_tmp = tempfile.TemporaryFile(mode="w+b")
+
+        os.dup2(self._stdout_tmp.fileno(), 1)
+        os.dup2(self._stderr_tmp.fileno(), 2)
+
+        self._capture_stdout = os.fdopen(os.dup(1), "w", encoding="utf-8", buffering=1)
+        self._capture_stderr = os.fdopen(os.dup(2), "w", encoding="utf-8", buffering=1)
+
+        sys.stdout = self._capture_stdout
+        sys.stderr = self._capture_stderr
+
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        """Exit the capture context and restore stdout/stderr.
+
+        Args:
+            exc_type (type | None): Exception type if an exception occurred.
+            exc (BaseException | None): Exception instance if an exception occurred.
+            exc_tb (types.TracebackType | None): Traceback if an exception occurred.
+
+        Returns:
+            bool: Always returns ``False`` so exceptions propagate normally.
+        """
+        try:
+            try:
+                if sys.stdout is not None:
+                    sys.stdout.flush()
+            except (OSError, ValueError):
+                pass
+
+            try:
+                if sys.stderr is not None:
+                    sys.stderr.flush()
+            except (OSError, ValueError):
+                pass
+
+            try:
+                if self._stdout_tmp is not None:
+                    self._stdout_tmp.flush()
+            except OSError:
+                pass
+
+            try:
+                if self._stderr_tmp is not None:
+                    self._stderr_tmp.flush()
+            except OSError:
+                pass
+
+            try:
+                if self._stdout_tmp is not None:
+                    self._stdout_tmp.seek(0)
+                    self.stdout = self._stdout_tmp.read().decode("utf-8", errors="replace")
+            except OSError:
+                self.stdout = ""
+
+            try:
+                if self._stderr_tmp is not None:
+                    self._stderr_tmp.seek(0)
+                    self.stderr = self._stderr_tmp.read().decode("utf-8", errors="replace")
+            except OSError:
+                self.stderr = ""
+
+        finally:
+            try:
+                if self._capture_stdout is not None:
+                    self._capture_stdout.close()
+            except OSError:
+                pass
+
+            try:
+                if self._capture_stderr is not None:
+                    self._capture_stderr.close()
+            except OSError:
+                pass
+
+            if self._old_stdout_fd is not None:
+                os.dup2(self._old_stdout_fd, 1)
+                os.close(self._old_stdout_fd)
+
+            if self._old_stderr_fd is not None:
+                os.dup2(self._old_stderr_fd, 2)
+                os.close(self._old_stderr_fd)
+
+            sys.stdout = self._old_stdout
+            sys.stderr = self._old_stderr
+
+            try:
+                if self._stdout_tmp is not None:
+                    self._stdout_tmp.close()
+            except OSError:
+                pass
+
+            try:
+                if self._stderr_tmp is not None:
+                    self._stderr_tmp.close()
+            except OSError:
+                pass
+
+        return False
+
+
+def run_phase_with_capture(func, *args, **kwargs):
+    """Execute a function while capturing stdout and stderr.
+
+    Args:
+        func (callable): Function to execute.
+        *args: Positional arguments for ``func``.
+        **kwargs: Keyword arguments for ``func``.
+
+    Returns:
+        tuple: A tuple containing:
+            - result (Any): The return value of ``func``.
+            - stdout_text (str): Captured stdout text.
+            - stderr_text (str): Captured stderr text.
+    """
+    with OutputCapture() as capture:
+        result = func(*args, **kwargs)
+    return result, capture.stdout, capture.stderr
+
+
+def get_mc_list(cli_args, install_mcs=None):
+    """Get the list of model components and their arguments from the command line.
+
+    Args:
+        cli_args (list): List of command-line input model components.
+        install_mcs (bool | None): Whether to install model components automatically.
             By default, this method will defer to the default defined by the model component
             object's constructor. If set to :py:data:`False`, model components will not
             be installed.
 
     Returns:
         list: A list of model component objects.
+
+    Raises:
+        ExperimentHelperError: If a model component argument is malformed.
     """
     initial_mc_list = []
     for init_mc in cli_args:
@@ -144,8 +354,11 @@ def get_mc_list(cli_args, install_mcs=None):
             elif len(arg_sp) == 1:
                 anon_args.append(arg_sp[0])
             else:
-                print(f"ERROR: Malformed argument for ModelComponent {init_mc_name}.")
-                sys.exit(errno.EDEADLK)
+                raise ExperimentHelperError(
+                    f"Malformed argument for ModelComponent {init_mc_name}.",
+                    "malformed_model_component_argument",
+                    "model_component_resolution",
+                )
         if len(anon_args) > 0:
             args["plugin"][""] = anon_args
 
@@ -155,15 +368,20 @@ def get_mc_list(cli_args, install_mcs=None):
 
 
 def create_cli_parser():
-    """
-    Create an :py:class:`argparse.ArgumentParser` for the ``experiment`` Helper.
+    """Create an argparse parser for the experiment helper.
 
     Returns:
-        argparse.ArgumentParser: The ``experiment`` Helper parser.
+        argparse.ArgumentParser: The configured parser.
     """
     parser = argparse.ArgumentParser(
         description="Start a FIREWHEEL experiment.",
         prog="firewheel experiment",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format. Defaults to table.",
     )
     parser.add_argument(
         "--profile",
@@ -235,20 +453,22 @@ def create_cli_parser():
     return parser
 
 
-def print_output(console, dependency_time=0.0, total_time=0.0, exp_result=None):
-    """
-    Print the output from this Helper in an easy-to-read format.
+def build_table_result(dependency_graph_time=0.0, total_time=0.0, exp_result=None):
+    """Build a Rich table for experiment execution results.
 
     Args:
-        console (rich.console.Console): The console for displaying output.
-        dependency_time (float): The time it took to generate the dependency graph.
-        total_time (float): The total time for this Helper to run.
-        exp_result (list): A list of results from the execution of each MC.
+        dependency_graph_time (float): Time to generate the dependency graph.
+        total_time (float): Total helper runtime.
+        exp_result (list | None): Results from each MC execution.
 
     Returns:
-        int: An exit code indicating how many MC failed, or zero if all succeeded.
+        tuple: A tuple containing:
+            - table (RichDefaultTable): The rendered results table.
+            - exit_code (int): Exit code based on model component failures.
     """
-    caption = f"Dependency resolution took [cyan]{dependency_time:.3f}[/ cyan] seconds"
+    caption = (
+        f"Dependency graph resolution took [cyan]{dependency_graph_time:.3f}[/ cyan] seconds"
+    )
 
     table = RichDefaultTable(
         title="Model Components Executed",
@@ -280,36 +500,145 @@ def print_output(console, dependency_time=0.0, total_time=0.0, exp_result=None):
             f"[cyan]{res['time']:.3f}[/] seconds",
         )
 
+    return table, exit_code
+
+
+def render_table(console, dependency_graph_time=0.0, total_time=0.0, exp_result=None):
+    """Print table output for human-readable mode.
+
+    Args:
+        console (rich.console.Console): Console for rendering.
+        dependency_graph_time (float): Dependency graph resolution time.
+        total_time (float): Total helper runtime.
+        exp_result (list | None): Experiment execution results.
+
+    Returns:
+        int: Exit code.
+    """
+    table, exit_code = build_table_result(
+        dependency_graph_time, total_time, exp_result
+    )
     console.print("\n", table, "\n")
     return exit_code
 
 
-def run_experiment(mcm, console, dry_run=False, is_profile=False):
-    """
-    Execute all model components which have been included within the dependency graph.
+def build_json_success_result(
+    cmd_args,
+    active_exp_present,
+    dependency_graph_time,
+    total_time,
+    exp_result,
+    captured_output,
+):
+    """Build the final JSON success payload.
 
     Args:
-        mcm (firewheel.control.model_component_manager.ModelComponentManager): The
-            ModelComponentManager used to execute the experiment graph.
-        console (rich.console.Console): The console for displaying output.
-        dry_run (bool): If this is a dry run. Defaults to False.
-        is_profile (bool): If the execution should be profiled. Defaults to False.
+        cmd_args (argparse.Namespace): Parsed command-line arguments.
+        active_exp_present (bool): Whether an active experiment was detected.
+        dependency_graph_time (float): Time to build the dependency graph.
+        total_time (float): Total helper runtime.
+        exp_result (list): Results from experiment execution.
+        captured_output (dict): Captured stdout/stderr grouped by phase.
 
     Returns:
-        list: A list of the experimental results.
+        dict: Structured JSON success payload.
+    """
+    exit_code = sum(1 for res in exp_result if res["errors"])
+
+    return {
+        "success": exit_code == 0,
+        "dry_run": cmd_args.dry_run,
+        "profile_enabled": cmd_args.profile,
+        "force": cmd_args.force,
+        "restart": cmd_args.restart,
+        "no_install": cmd_args.no_install,
+        "active_experiment_detected": active_exp_present,
+        "dependency_graph_time": dependency_graph_time,
+        "total_time": total_time,
+        "model_components": [
+            {
+                "name": res["model_component"],
+                "success": not res["errors"],
+                "errors": res["errors"],
+                "time": res["time"],
+            }
+            for res in exp_result
+        ],
+        "captured_output": captured_output,
+        "message": (
+            "Experiment completed successfully."
+            if exit_code == 0
+            else "Experiment completed with model component failures."
+        ),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def build_json_error_result(
+    cmd_args,
+    active_exp_present,
+    error,
+    captured_output,
+    dependency_graph_time=None,
+    total_time=None,
+):
+    """Build the final JSON error payload.
+
+    Args:
+        cmd_args (argparse.Namespace): Parsed command-line arguments.
+        active_exp_present (bool): Whether an active experiment was detected.
+        error (ExperimentHelperError): Structured helper error.
+        captured_output (dict): Captured stdout/stderr grouped by phase.
+        dependency_graph_time (float | None): Time to build dependency graph, if known.
+        total_time (float | None): Total helper runtime, if known.
+
+    Returns:
+        dict: Structured JSON error payload.
+    """
+    return {
+        "success": False,
+        "dry_run": cmd_args.dry_run,
+        "profile_enabled": cmd_args.profile,
+        "force": cmd_args.force,
+        "restart": cmd_args.restart,
+        "no_install": cmd_args.no_install,
+        "active_experiment_detected": active_exp_present,
+        "dependency_graph_time": dependency_graph_time,
+        "total_time": total_time,
+        "phase": error.phase,
+        "error": {
+            "type": error.error_type,
+            "detail": error.message,
+        },
+        "captured_output": captured_output,
+        "message": error.message,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def run_experiment(mcm, console, dry_run=False, is_profile=False):
+    """Execute all model components included within the dependency graph.
+
+    Args:
+        mcm (ModelComponentManager): The manager used to execute the graph.
+        console (rich.console.Console): Console for displaying output.
+        dry_run (bool): Whether this is a dry run.
+        is_profile (bool): Whether execution should be profiled.
+
+    Returns:
+        list: Experimental results.
+
+    Raises:
+        ExperimentHelperError: If plugin arguments are invalid.
     """
     exp_result = []
     try:
-        # Check if the experiment should be profiled
         if is_profile:
             profile = cProfile.Profile()
             profile.enable()
 
-        # Build the experiment graph and execute model components
-        # per the dependency graph
         exp_result = mcm.build_experiment_graph(dry_run=dry_run)
 
-        # Stop the profiler (if any)
         if is_profile:
             profile.disable()
             profile.dump_stats("firewheel_profile.prof")
@@ -325,72 +654,238 @@ def run_experiment(mcm, console, dry_run=False, is_profile=False):
             "\n[error]ERROR:[/error] Invalid arguments to experiment graph plugin."
         )
         console.print(f"\nDetails: {exc_str}")
-        sys.exit(errno.EINVAL)
+        raise ExperimentHelperError(
+            "Invalid arguments to experiment graph plugin.",
+            "invalid_plugin_arguments",
+            "execution",
+        ) from None
+
     return exp_result
 
 
-def main():
+def determine_active_experiment(cmd_args):
+    """Determine whether an active experiment is present.
+
+    Args:
+        cmd_args (argparse.Namespace): Parsed arguments.
+
+    Returns:
+        bool: Whether an active experiment is present.
     """
-    Execute the main logic of this Helper.
-    """
-
-    console = Console(theme=cli_output_theme)
-
-    # Get the start time
-    total_start = datetime.now()
-
-    # Create the argparse parser and get CLI input
-    parser = create_cli_parser()
-    cmd_args = parser.parse_args()
-
-    # Execute various CLI options
     active_exp_present = False
     if cmd_args.restart:
         mm_api = minimegaAPI()
         if vrm_api.get_experiment_launch_time() is not None or mm_api.mm_vms():
             active_exp_present = True
+    return active_exp_present
 
+
+def maybe_restart_environment(cmd_args, console, active_exp_present):
+    """Restart the environment if requested.
+
+    Args:
+        cmd_args (argparse.Namespace): Parsed arguments.
+        console (rich.console.Console): Console for text output.
+        active_exp_present (bool): Whether an active experiment is present.
+
+    Raises:
+        ExperimentHelperError: If environment restart fails.
+    """
     if cmd_args.force is True or (cmd_args.restart and active_exp_present is True):
-        console.print("Cleaning up any running experiments.")
-        FirewheelCLI().onecmd("restart")
-        console.print("All running experiments have been cleared.")
+        try:
+            console.print("Cleaning up any running experiments.")
+            FirewheelCLI().onecmd("restart")
+            console.print("All running experiments have been cleared.")
+        except OSError as exc:
+            raise ExperimentHelperError(
+                f"Failed to restart the environment: {exc}",
+                "environment_restart_failed",
+                "environment_prepare",
+            ) from exc
 
-    # Get the MC names passed in via command line
-    initial_mc_list = get_mc_list(cmd_args.model_component, install_mcs=cmd_args.no_install)
 
-    # Build the model component dependency graph
-    ds = datetime.now()
-    mcm = ModelComponentManager(console=console)
-    try:
-        mcm.build_dependency_graph(initial_mc_list, install_mcs=cmd_args.no_install)
-    except UnsatisfiableDependenciesError:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        exc_str = "".join(
-            traceback.format_exception(exc_type, exc_value, exc_traceback)
+def initialize_captured_output():
+    """Initialize the phase-based captured output structure.
+
+    Returns:
+        dict: Empty stdout/stderr buckets for each phase.
+    """
+    return {
+        "environment_prepare": {"stdout": "", "stderr": ""},
+        "model_component_resolution": {"stdout": "", "stderr": ""},
+        "dependency_graph": {"stdout": "", "stderr": ""},
+        "execution": {"stdout": "", "stderr": ""},
+    }
+
+
+def append_phase_capture(captured_output, phase, stdout_text, stderr_text):
+    """Append captured output for a phase.
+
+    Args:
+        captured_output (dict): The aggregate captured output structure.
+        phase (str): Phase name.
+        stdout_text (str): Captured stdout text.
+        stderr_text (str): Captured stderr text.
+    """
+    captured_output[phase]["stdout"] += stdout_text
+    captured_output[phase]["stderr"] += stderr_text
+
+
+def main():
+    """Execute the main logic of the experiment helper."""
+    console = Console(theme=cli_output_theme)
+
+    total_start = datetime.now()
+    parser = create_cli_parser()
+    cmd_args = parser.parse_args()
+
+    json_mode = cmd_args.format == "json"
+
+    if json_mode and cmd_args.no_install is not False:
+        error = ExperimentHelperError(
+            "JSON output requires non-interactive execution. Re-run with --no-install.",
+            "interactive_install_possible",
+            "argument_validation",
         )
-        console.print(
-            "[error]ERROR:[/error] Unable to build model component dependency graph due to the "
-            f"following error:\n\n{exc_str}\n\nNo Model Components were evaluated and no restart is "
-            "required. "
+        result = build_json_error_result(
+            cmd_args=cmd_args,
+            active_exp_present=False,
+            error=error,
+            captured_output={},
         )
+        print(json.dumps(result, indent=2))
         sys.exit(1)
 
-    # Calculate the time it takes to generate the dependency graph
-    de = datetime.now()
-    dependency_time = (de - ds).total_seconds()
+    captured_output = initialize_captured_output()
 
-    # Execute the Model Components (i.e. run the experiment)
-    exp_result = run_experiment(mcm, console, cmd_args.dry_run, cmd_args.profile)
+    active_exp_present = False
+    dependency_graph_time = None
 
-    # Get the total experiment time
-    total_end = datetime.now()
-    total_time = (total_end - total_start).total_seconds()
+    try:
+        active_exp_present = determine_active_experiment(cmd_args)
 
-    # Print output for the user
-    exit_code = print_output(console, dependency_time, total_time, exp_result)
+        if json_mode:
+            _, stdout_text, stderr_text = run_phase_with_capture(
+                maybe_restart_environment,
+                cmd_args,
+                console,
+                active_exp_present,
+            )
+            append_phase_capture(
+                captured_output, "environment_prepare", stdout_text, stderr_text
+            )
+        else:
+            maybe_restart_environment(cmd_args, console, active_exp_present)
 
-    # Exit with the provided exit code
-    sys.exit(exit_code)
+        if json_mode:
+            initial_mc_list, stdout_text, stderr_text = run_phase_with_capture(
+                get_mc_list,
+                cmd_args.model_component,
+                install_mcs=cmd_args.no_install,
+            )
+            append_phase_capture(
+                captured_output, "model_component_resolution", stdout_text, stderr_text
+            )
+        else:
+            initial_mc_list = get_mc_list(
+                cmd_args.model_component,
+                install_mcs=cmd_args.no_install,
+            )
+
+        ds = datetime.now()
+        mcm = ModelComponentManager(console=console)
+
+        try:
+            if json_mode:
+                _, stdout_text, stderr_text = run_phase_with_capture(
+                    mcm.build_dependency_graph,
+                    initial_mc_list,
+                    install_mcs=cmd_args.no_install,
+                )
+                append_phase_capture(
+                    captured_output, "dependency_graph", stdout_text, stderr_text
+                )
+            else:
+                mcm.build_dependency_graph(
+                    initial_mc_list,
+                    install_mcs=cmd_args.no_install,
+                )
+        except UnsatisfiableDependenciesError:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            exc_str = "".join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback)
+            )
+            if json_mode:
+                raise ExperimentHelperError(
+                    exc_str,
+                    "unsatisfiable_dependencies",
+                    "dependency_graph",
+                ) from None
+
+            console.print(
+                "[error]ERROR:[/error] Unable to build model component dependency graph due to the "
+                f"following error:\n\n{exc_str}\n\nNo Model Components were evaluated and no restart is "
+                "required. "
+            )
+            sys.exit(1)
+
+        de = datetime.now()
+        dependency_graph_time = (de - ds).total_seconds()
+
+        if json_mode:
+            exp_result, stdout_text, stderr_text = run_phase_with_capture(
+                run_experiment,
+                mcm,
+                console,
+                cmd_args.dry_run,
+                cmd_args.profile,
+            )
+            append_phase_capture(captured_output, "execution", stdout_text, stderr_text)
+        else:
+            exp_result = run_experiment(mcm, console, cmd_args.dry_run, cmd_args.profile)
+
+        total_end = datetime.now()
+        total_time = (total_end - total_start).total_seconds()
+
+        if json_mode:
+            result = build_json_success_result(
+                cmd_args=cmd_args,
+                active_exp_present=active_exp_present,
+                dependency_graph_time=dependency_graph_time,
+                total_time=total_time,
+                exp_result=exp_result,
+                captured_output=captured_output,
+            )
+            print(json.dumps(result, indent=2))
+            exit_code = sum(1 for res in exp_result if res["errors"])
+            sys.exit(exit_code)
+
+        exit_code = render_table(
+            console,
+            dependency_graph_time,
+            total_time,
+            exp_result,
+        )
+        sys.exit(exit_code)
+
+    except ExperimentHelperError as exc:
+        total_end = datetime.now()
+        total_time = (total_end - total_start).total_seconds()
+
+        if json_mode:
+            result = build_json_error_result(
+                cmd_args=cmd_args,
+                active_exp_present=active_exp_present,
+                error=exc,
+                captured_output=captured_output,
+                dependency_graph_time=dependency_graph_time,
+                total_time=total_time,
+            )
+            print(json.dumps(result, indent=2))
+            sys.exit(1)
+
+        console.print(f"[error]ERROR:[/error] {exc.message}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

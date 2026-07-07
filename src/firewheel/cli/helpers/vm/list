@@ -9,6 +9,9 @@ of all filters. If multiple filters are used then anything that matches **all**
 of filters will be displayed. Filters will attempt substring matching so ensure that
 you provide enough of a substring to the filter to narrow down the displayed results.
 
+This Helper supports human-readable table output, CSV output, and machine-readable
+JSON output.
+
 Arguments
 +++++++++
 
@@ -21,9 +24,16 @@ Named Arguments
 
     Show help message and exit.
 
+.. option:: --format {table,json,csv}
+
+    :default: ``table``
+
+    Select the output format. ``table`` prints a human-readable table.
+    ``csv`` prints CSV-formatted output. ``json`` returns a structured JSON response.
+
 .. option:: --csv
 
-    Output in CSV format.
+    Backward-compatible alias for ``--format csv``.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
@@ -41,8 +51,8 @@ Positional Arguments
     ``name``       The name of the VM
     ``state``      State of VM QEMU process and vm_resource run status
     ``image``      Full name of the base image of the VM
-    ``hostname``   The hostname as it was assigned in the experiment
-    ``vnc``        The shortened port number used to connect to the VM through VNC. Note, the real port number is 5900 + that shown
+    ``hostname``   The hostname of the FIREWHEEL host currently running the VM
+    ``vnc``        The VNC port used to connect to the VM
     ``time``       If VM is configuring, this displays the time of the vm_resource currently running within a VM. If VM has not started configuring, this displays N/A. If VM is configured, this displays 0, unless an experiment start time has been determined, in which case all VMs return :)
     ``ip``         The VMs :ref:`control_network_mc` IP address, if the experiment included the :ref:`control_network_mc` MC
     =============  ==================================================================================================================================
@@ -60,12 +70,17 @@ Example
 
 ``firewheel vm list image=vyos state``
 
+``firewheel vm list --format json image=vyos state``
+
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
+import sys
+import json
 import argparse
 from collections import OrderedDict
+from datetime import datetime, timezone
 
 from rich.console import Console
 
@@ -74,43 +89,36 @@ from firewheel.cli.utils import RichDefaultTable
 from firewheel.lib.minimega.api import minimegaAPI
 
 
-def _parse_image(entity):
-    for dev in entity["devices"]:
-        if dev["name"] == "drive":
-            try:
-                return dev["db_path"]
-            except KeyError:
-                pass
-    return ""
-
-
-def _parse_vnc_port(entity):
-    for dev in entity["devices"]:
-        if dev["name"] == "vnc":
-            try:
-                return str(int(dev["port"]) + 5900)
-            except KeyError:
-                pass
-    return ""
-
-
-def vm_list(args):
-    """
-    List VMs, including the given fields in output. Possible fields are:
-        uuid
-        state
-        image
-        hostname
-        VNC port
-        name
-        time
-        ip
+class VmListError(Exception):
+    """Expected operational error for the vm list helper.
 
     Args:
-        args (argparse.Namespace): The arguments for ``vm list``.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
     """
-    # Figure out our filters for the database.
-    valid_db_filters = [
+
+    def __init__(self, message, error_type):
+        """Initialize the exception.
+
+        Args:
+            message (str): Human-readable error message.
+            error_type (str): Stable machine-readable error type.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+def parse_requested_fields(raw_fields):
+    """Parse requested fields and filters from CLI input.
+
+    Args:
+        raw_fields (list[str]): Raw positional field arguments.
+
+    Returns:
+        collections.OrderedDict: Ordered mapping of field name to optional filter value.
+    """
+    valid_fields = [
         "uuid",
         "state",
         "image",
@@ -120,195 +128,426 @@ def vm_list(args):
         "time",
         "ip",
     ]
-    filters = OrderedDict()
-    for field in args.fields:
+
+    parsed_fields = OrderedDict()
+    for field in raw_fields:
         field_vals = field.split("=")
-        if field_vals[0] in valid_db_filters:
+        field_name = field_vals[0]
+        if field_name in valid_fields:
             if len(field_vals) > 1:
-                filters[field_vals[0]] = field_vals[1]
-            elif field_vals[0] not in filters:
-                filters[field_vals[0]] = None
+                parsed_fields[field_name] = field_vals[1]
+            elif field_name not in parsed_fields:
+                parsed_fields[field_name] = None
 
-    # Get the basic info.
-    mm_api = minimegaAPI()
-    basic_dict = mm_api.mm_vms()
+    if len(parsed_fields) == 0:
+        parsed_fields = OrderedDict({"state": None})
 
-    # Build a list of basic fields to print (their list index value).
-    # Also build the table header while we do this.
-    # The code construction for this processing creates the table with the
-    #  columns in the order specified by the user as a deliberate side effect.
-    basic_fields = []
+    return parsed_fields
+
+
+def style_state_display(state_display):
+    """Apply Rich styling to a VM state display string.
+
+    Args:
+        state_display (str): Combined display string for state.
+
+    Returns:
+        str: Rich-styled state string.
+    """
+    if "configuring" in state_display.lower():
+        return f"[yellow]{state_display}"
+    if "configured" in state_display.lower():
+        return f"[green]{state_display}"
+    if "uninitialized" in state_display.lower():
+        return f"[yellow]{state_display}"
+    if "error" in state_display.lower():
+        return f"[red]{state_display}"
+    if "pause" in state_display.lower():
+        return f"[yellow]{state_display}"
+    if "run" in state_display.lower():
+        return f"[green]{state_display}"
+    return state_display
+
+
+def filter_basic_vm_data(basic_dict, requested_fields):
+    """Filter VMs using filters that can be applied directly to basic VM data.
+
+    Args:
+        basic_dict (dict): Raw VM dictionary from minimega.
+        requested_fields (collections.OrderedDict): Requested fields and optional filters.
+
+    Returns:
+        dict: Filtered VM dictionary.
+    """
     vm_resource_fields = {"state", "time"}
-    table_header = ["Name"]
-    # If state is in our included fields, get the vm_resource state info too.
+
+    if not requested_fields or all(value is None for value in requested_fields.values()):
+        return {vm: vm_dict.copy() for vm, vm_dict in basic_dict.items()}
+
     filtered_dict = {}
-    if not filters or all(value is None for value in filters.values()):
-        filtered_dict = basic_dict
-    else:
-        # Only add vms that contain all set filter values
-        for vm, vm_dict in basic_dict.items():
-            vm_obeys_filters = True
-            for key, value in filters.items():
-                if value is None:
-                    continue
-                if key not in vm_resource_fields:
-                    if value.lower() not in vm_dict[key].lower():
-                        vm_obeys_filters = False
-                        break
-            if vm_obeys_filters:
-                filtered_dict[vm] = vm_dict
+    for vm, vm_dict in basic_dict.items():
+        vm_obeys_filters = True
+        for key, value in requested_fields.items():
+            if value is None:
+                continue
+            if key not in vm_resource_fields:
+                if key == "ip":
+                    candidate = vm_dict.get("control_ip", "")
+                else:
+                    candidate = vm_dict.get(key, "")
+                if value.lower() not in str(candidate).lower():
+                    vm_obeys_filters = False
+                    break
+        if vm_obeys_filters:
+            filtered_dict[vm] = vm_dict.copy()
 
-    # Determine whether experiment has started.
+    return filtered_dict
+
+
+def enrich_time_data(filtered_dict, requested_fields):
+    """Add time data to filtered VM records.
+
+    Args:
+        filtered_dict (dict): Filtered VM dictionary.
+        requested_fields (collections.OrderedDict): Requested fields and optional filters.
+
+    Returns:
+        dict: Updated filtered VM dictionary with time fields populated.
+    """
+    if "time" not in requested_fields:
+        return filtered_dict
+
     experiment_time = vm_resource_api.get_experiment_start_time()
+    time_filter = requested_fields["time"]
+    vm_time_dict = vm_resource_api.get_vm_times(time_filter)
 
-    # Have a sensible default field if none are given.
-    if len(filters) == 0:
-        filters = {"state": None}
+    if time_filter:
+        filtered_dict = {k: v for k, v in filtered_dict.items() if k in vm_time_dict}
 
-    for field, filter_val in filters.items():
-        new_filtered_dict = None
+    for vm in filtered_dict:
+        if vm in vm_time_dict:
+            if not vm_time_dict[vm]:
+                filtered_dict[vm]["time"] = None
+                filtered_dict[vm]["time_display"] = "N/A"
+            elif experiment_time:
+                filtered_dict[vm]["time"] = vm_time_dict[vm]
+                filtered_dict[vm]["time_display"] = " :)"
+            else:
+                filtered_dict[vm]["time"] = vm_time_dict[vm]
+                filtered_dict[vm]["time_display"] = str(vm_time_dict[vm])
+        else:
+            filtered_dict[vm]["time"] = None
+            filtered_dict[vm]["time_display"] = "N/A"
 
-        if field == "time":
-            basic_fields.append("time")
-            table_header.append("Time")
+    return filtered_dict
 
-            vm_resource_dict = vm_resource_api.get_vm_times(filter_val)
-            if filter_val:
-                filtered_dict = {
-                    k: v for k, v in filtered_dict.items() if k in vm_resource_dict
-                }
-            for vm in filtered_dict:
-                if vm in vm_resource_dict:
-                    if not vm_resource_dict[vm]:
-                        filtered_dict[vm]["time"] = "N/A"
-                    elif experiment_time:
-                        # experiment has started, so we overwrite vm time.
-                        filtered_dict[vm]["time"] = " :)"
-                    else:
-                        # report time of most recently run vm_resource (should be negative).
-                        filtered_dict[vm]["time"] = vm_resource_dict[vm]
-                else:
-                    filtered_dict[vm]["time"] = "N/A"
 
-        if field == "uuid":
-            basic_fields.append("uuid")
-            table_header.append("UUID")
+def enrich_state_data(filtered_dict, requested_fields):
+    """Add state data to filtered VM records.
 
-        if field == "state":
-            basic_fields.append("state")
-            table_header.append("State")
+    Args:
+        filtered_dict (dict): Filtered VM dictionary.
+        requested_fields (collections.OrderedDict): Requested fields and optional filters.
 
-            if filter_val:
-                filtered_vm_resource_dict = vm_resource_api.get_vm_states(filter_val)
-                # By filtering on vm_resource state, we need to remove any vm
-                # in filtered_dict that is not returned in filtered_vm_resource_dict
-                filtered_dict = {
-                    k: v
-                    for k, v in filtered_dict.items()
-                    if k in filtered_vm_resource_dict or filter_val.lower() in v["state"].lower()
-                }
+    Returns:
+        dict: Updated filtered VM dictionary with state fields populated.
+    """
+    if "state" not in requested_fields:
+        return filtered_dict
 
-            # Format for printing
-            vm_resource_dict = vm_resource_api.get_vm_states()
-            for vm in filtered_dict:
-                if vm in vm_resource_dict:
-                    state_string = (
-                        f"{filtered_dict[vm]['state']}/{vm_resource_dict[vm]}"
-                    )
-                else:
-                    state_string = f"{filtered_dict[vm]['state']}/ERROR"
-                if "configuring" in state_string.lower():
-                    state_string = f"[yellow]{state_string}"
-                if "configured" in state_string.lower():
-                    state_string = f"[green]{state_string}"
-                if "uninitialized" in state_string.lower():
-                    state_string = f"[yellow]{state_string}"
-                if "error" in state_string.lower():
-                    state_string = f"[red]{state_string}"
-                filtered_dict[vm]["state"] = state_string
-        if field == "hostname":
-            basic_fields.append("hostname")
-            table_header.append("Hostname")
+    state_filter = requested_fields["state"]
 
-        if field == "vnc":
-            basic_fields.append("vnc")
-            table_header.append("VNC Port")
+    if state_filter:
+        filtered_vm_resource_dict = vm_resource_api.get_vm_states(state_filter)
+        filtered_dict = {
+            k: v
+            for k, v in filtered_dict.items()
+            if k in filtered_vm_resource_dict
+            or state_filter.lower() in v["state"].lower()
+        }
 
-        if field == "image":
-            basic_fields.append("image")
-            table_header.append("Image")
+    vm_resource_dict = vm_resource_api.get_vm_states()
+    for vm in filtered_dict:
+        power_state = filtered_dict[vm]["state"]
+        vm_resource_state = vm_resource_dict.get(vm, "ERROR")
 
-        if field == "ip":
-            basic_fields.append("control_ip")
-            table_header.append("Control IP")
+        filtered_dict[vm]["power_state"] = power_state
+        filtered_dict[vm]["vm_resource_state"] = vm_resource_state
+        filtered_dict[vm]["state_display"] = f"{power_state}/{vm_resource_state}"
 
-        # Must explicitly compare to None, otherwise this will also match an
-        # empty dictionary, causing us to find everything for queries that
-        # should return nothing.
-        if new_filtered_dict is not None:
-            filtered_dict = new_filtered_dict
+    return filtered_dict
 
-    # Build the table rows.
+
+def build_rows(filtered_dict, requested_fields):
+    """Build normalized result rows from filtered VM data.
+
+    Args:
+        filtered_dict (dict): Filtered and enriched VM dictionary.
+        requested_fields (collections.OrderedDict): Requested fields and optional filters.
+
+    Returns:
+        list[dict]: Normalized output rows.
+    """
     rows = []
+
     for vm in sorted(filtered_dict):
-        current_row = []
-        current_row.append(vm)
-        for field in basic_fields:
-            current_row.append(filtered_dict[vm][field])
-        rows.append(current_row)
+        row = {"name": vm}
 
-    # Print the result in either CSV format or in a table.
-    if args.csv:
-        console = Console(no_color=True)
-        console.print(",".join(table_header))
-        for row in rows:
-            console.print(",".join(row))
-    else:
-        _draw_table(table_header, rows, len(filtered_dict))
+        for field in requested_fields:
+            if field == "name":
+                continue
+            if field == "uuid":
+                row["uuid"] = filtered_dict[vm].get("uuid", "")
+            elif field == "state":
+                row["state"] = {
+                    "power_state": filtered_dict[vm].get("power_state", ""),
+                    "vm_resource_state": filtered_dict[vm].get("vm_resource_state", ""),
+                    "display": filtered_dict[vm].get("state_display", ""),
+                }
+            elif field == "image":
+                row["image"] = filtered_dict[vm].get("image", "")
+            elif field == "hostname":
+                row["hostname"] = filtered_dict[vm].get("hostname", "")
+            elif field == "vnc":
+                row["vnc"] = filtered_dict[vm].get("vnc", "")
+            elif field == "time":
+                row["time"] = {
+                    "value": filtered_dict[vm].get("time"),
+                    "display": filtered_dict[vm].get("time_display", "N/A"),
+                }
+            elif field == "ip":
+                row["ip"] = filtered_dict[vm].get("control_ip", "")
+
+        rows.append(row)
+
+    return rows
 
 
-def _draw_table(header, rows, num_vms):
-    console = Console()
+def collect_vm_list_data(raw_fields):
+    """Collect structured VM listing data.
+
+    Filtering behavior matches the legacy helper semantics.
+
+    Args:
+        raw_fields (list[str]): Raw positional field arguments from the CLI.
+
+    Returns:
+        dict: Structured VM list data.
+
+    Raises:
+        VmListError: If VM data collection fails.
+    """
+    requested_fields = parse_requested_fields(raw_fields)
+
+    try:
+        mm_api = minimegaAPI()
+        basic_dict = mm_api.mm_vms()
+    except OSError as exc:
+        raise VmListError(
+            f"Unable to retrieve VM data from minimega: {exc}",
+            "vm_data_unavailable",
+        ) from exc
+
+    filtered_dict = filter_basic_vm_data(basic_dict, requested_fields)
+    filtered_dict = enrich_time_data(filtered_dict, requested_fields)
+    filtered_dict = enrich_state_data(filtered_dict, requested_fields)
+    rows = build_rows(filtered_dict, requested_fields)
+
+    return {
+        "query": {
+            "fields": list(requested_fields.keys()),
+            "filters": dict(requested_fields),
+        },
+        "count": len(rows),
+        "rows": rows,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def get_console_fields(vm_list_data):
+    """Get ordered fields for console/table/csv rendering.
+
+    Args:
+        vm_list_data (dict): Structured VM list data.
+
+    Returns:
+        list[str]: Ordered output fields with ``name`` first.
+    """
+    console_fields = ["name"]
+    for field in vm_list_data["query"]["fields"]:
+        if field != "name":
+            console_fields.append(field)
+    return console_fields
+
+
+def build_vm_list_table(vm_list_data):
+    """Build a Rich table for VM list output.
+
+    Args:
+        vm_list_data (dict): Structured VM list data.
+
+    Returns:
+        RichDefaultTable: Rendered table.
+    """
+    console_fields = get_console_fields(vm_list_data)
+
+    label_map = {
+        "name": "Name",
+        "uuid": "UUID",
+        "state": "State",
+        "image": "Image",
+        "hostname": "Hostname",
+        "vnc": "VNC Port",
+        "time": "Time",
+        "ip": "Control IP",
+    }
+
     table = RichDefaultTable(
         title="Current VMs",
         caption_style="bold magenta",
-        caption=f"Found [cyan]{num_vms}[/] VMs",
+        caption=f"Found [cyan]{vm_list_data['count']}[/] VMs",
     )
-    for head in header:
-        table.add_column(head)
-    for row in rows:
-        table.add_row(*row)
-    console.print("\n", table, "\n")
+
+    for field in console_fields:
+        table.add_column(label_map[field])
+
+    for row in vm_list_data["rows"]:
+        rendered_row = [row["name"]]
+
+        for field in console_fields[1:]:
+            if field == "state":
+                rendered_row.append(style_state_display(row["state"]["display"]))
+            elif field == "time":
+                rendered_row.append(row["time"]["display"])
+            else:
+                rendered_row.append(str(row.get(field, "")))
+
+        table.add_row(*rendered_row)
+
+    return table
+
+
+def render_table(vm_list_data):
+    """Render human-readable table output.
+
+    Args:
+        vm_list_data (dict): Structured VM list data.
+    """
+    console = Console()
+    console.print("\n", build_vm_list_table(vm_list_data), "\n")
+
+
+def render_csv(vm_list_data):
+    """Render CSV output.
+
+    Args:
+        vm_list_data (dict): Structured VM list data.
+    """
+    console_fields = get_console_fields(vm_list_data)
+
+    header_map = {
+        "name": "Name",
+        "uuid": "UUID",
+        "state": "State",
+        "image": "Image",
+        "hostname": "Hostname",
+        "vnc": "VNC Port",
+        "time": "Time",
+        "ip": "Control IP",
+    }
+
+    console = Console(no_color=True)
+    console.print(",".join(header_map[field] for field in console_fields))
+
+    for row in vm_list_data["rows"]:
+        csv_row = [row["name"]]
+
+        for field in console_fields[1:]:
+            if field == "state":
+                csv_row.append(row["state"]["display"])
+            elif field == "time":
+                csv_row.append(row["time"]["display"])
+            else:
+                csv_row.append(str(row.get(field, "")))
+
+        console.print(",".join(csv_row))
+
+
+def render_json(vm_list_data):
+    """Render JSON output.
+
+    Args:
+        vm_list_data (dict): Structured VM list data.
+    """
+    print(json.dumps(vm_list_data, indent=2))
+
+
+def build_json_error_result(error):
+    """Build a structured JSON error payload.
+
+    Args:
+        error (VmListError): Helper error.
+
+    Returns:
+        dict: Structured error payload.
+    """
+    return {
+        "success": False,
+        "error": {
+            "type": error.error_type,
+            "detail": error.message,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def main():
-    """
-    List all virtual machines.
-
-    This function sets up a command-line interface for listing virtual machines.
-    It allows users to specify which fields to display and whether to output the
-    results in CSV format.
-    """
-    parser = argparse.ArgumentParser(description="List all virtual machines", prog="vm list")
-
-    # VMs
-    parser.set_defaults(command=vm_list)
+    """List all virtual machines."""
+    parser = argparse.ArgumentParser(
+        description="List all virtual machines",
+        prog="firewheel vm list",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["table", "json", "csv"],
+        default="table",
+        help="Output format. Defaults to table.",
+    )
     parser.add_argument(
         "--csv",
         action="store_true",
-        help="Print the result into CSV-formatted" " rows instead of a pretty table.",
+        help="Print the result into CSV-formatted rows instead of a pretty table.",
     )
     parser.add_argument(
         "fields",
         metavar="fields",
         nargs="*",
-        help="A field to display for each found VM, in the form field[=filter]."
-        " Available fields are: uuid, state, image, hostname, "
-        "vnc, name, time",
+        help=(
+            "A field to display for each found VM, in the form field[=filter]. "
+            "Available fields are: uuid, state, image, hostname, vnc, name, time, ip."
+        ),
     )
 
     args = parser.parse_args()
-    args.command(args)
+
+    if args.csv:
+        args.format = "csv"
+
+    try:
+        vm_list_data = collect_vm_list_data(args.fields)
+    except VmListError as exc:
+        if args.format == "json":
+            print(json.dumps(build_json_error_result(exc), indent=2))
+        else:
+            Console().print(f"[bold red]ERROR:[/bold red] {exc.message}")
+        sys.exit(1)
+
+    if args.format == "json":
+        render_json(vm_list_data)
+    elif args.format == "csv":
+        render_csv(vm_list_data)
+    else:
+        render_table(vm_list_data)
 
 
 if __name__ == "__main__":

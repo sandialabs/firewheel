@@ -2,28 +2,239 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
-
-List the image and vm_resource cache directories which are found in the
+List the image and vm_resource cache directories found in the
 :class:`FileStore <firewheel.lib.minimega.file_store.FileStore>`. This enables
-users to identify if a file was correctly cached.
+users to identify whether a file was correctly cached.
+
+This Helper supports both human-readable table output and machine-readable
+JSON output.
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show help message and exit.
+
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` displays human-readable cache tables with
+    file sizes rendered in a human-friendly format. ``json`` returns a structured
+    JSON response with raw byte counts.
 
 Examples
 ++++++++
 
 ``firewheel mm show_caches``
 
-DONE
-RUN Shell ON control
-#!/bin/bash
-MM_INSTALL_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.install_dir)"
-MM_BASE_DIR="$("$FIREWHEEL_PYTHON" "$FIREWHEEL" config get minimega.base_dir)"
-MINIMEGA_BIN="$MM_INSTALL_DIR/bin/minimega -base=$MM_BASE_DIR"
+``firewheel mm show_caches --format json``
 
-HOST=$(hostname)
-echo "Cache contents from $HOST:vm_resources"
-$MINIMEGA_BIN -e file list vm_resources
-echo
-echo "Cache contents from $HOST:images"
-$MINIMEGA_BIN -e file list images
-echo
+DONE
+RUN LocalPython ON control
+#!/usr/bin/env python
+
+import json
+import argparse
+from datetime import datetime, timezone
+
+from rich.console import Console
+
+from firewheel.cli.utils import RichDefaultTable
+from firewheel.lib.minimega.api import minimegaAPI
+
+
+def format_bytes(num_bytes):
+    """
+    Convert a byte count to a human-readable string.
+
+    Args:
+        num_bytes (int): Size in bytes.
+
+    Returns:
+        str: Human-readable size string.
+    """
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    size = float(num_bytes)
+
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+
+    return f"{num_bytes} B"
+
+
+def normalize_cache_rows(rows):
+    """
+    Normalize mmr_map() cache rows into a stable machine-readable structure.
+
+    Args:
+        rows (list[dict]): Rows for a single host from mmr_map(file_list(...)).
+
+    Returns:
+        list[dict]: Normalized cache rows.
+    """
+    normalized_rows = []
+    for row in rows:
+        normalized_rows.append(
+            {
+                "dir": row.get("dir", ""),
+                "name": row.get("name", ""),
+                "size": int(row["size"]) if row.get("size") not in (None, "") else 0,
+                "modified": row.get("modified", ""),
+            }
+        )
+    return normalized_rows
+
+
+def get_single_host_rows(mapped_rows):
+    """
+    Extract rows for the single expected host.
+
+    Args:
+        mapped_rows (dict): Output from mm_api.mmr_map(mm_api.mm.file_list(...)).
+
+    Returns:
+        tuple[str | None, list[dict]]: The host name and its rows.
+    """
+    if not mapped_rows:
+        return None, []
+
+    host, rows = next(iter(mapped_rows.items()))
+    return host, rows
+
+
+def collect_cache_data():
+    """
+    Collect image and vm_resource cache contents.
+
+    Returns:
+        dict: Structured cache listing data.
+    """
+    mm_api = minimegaAPI()
+
+    vm_resources_raw = mm_api.mmr_map(mm_api.mm.file_list("vm_resources"))
+    images_raw = mm_api.mmr_map(mm_api.mm.file_list("images"))
+
+    vm_resources_host, vm_resources_rows = get_single_host_rows(vm_resources_raw)
+    images_host, images_rows = get_single_host_rows(images_raw)
+
+    host = vm_resources_host or images_host or mm_api.get_head_node()
+
+    vm_resources_entries = sorted(normalize_cache_rows(vm_resources_rows), key=lambda r: r["name"])
+    images_entries = sorted(normalize_cache_rows(images_rows), key=lambda r: r["name"])
+
+    return {
+        "host": host,
+        "vm_resources": {
+            "count": len(vm_resources_entries),
+            "entries": vm_resources_entries,
+        },
+        "images": {
+            "count": len(images_entries),
+            "entries": images_entries,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def build_cache_table(title, host, rows):
+    """
+    Build a Rich table for one cache type.
+
+    Args:
+        title (str): Table title.
+        host (str): Host name.
+        rows (list[dict]): Cache rows.
+
+    Returns:
+        RichDefaultTable: The rendered table.
+    """
+    table = RichDefaultTable(
+        title=f"{title} ({host})",
+        caption=f"Found [cyan]{len(rows)}[/] entries",
+    )
+    table.add_column("Name")
+    table.add_column("Size", justify="right")
+    table.add_column("Modified")
+
+    if not rows:
+        table.add_row("N/A", "N/A", "0 B", "N/A")
+        return table
+
+    for row in rows:
+        table.add_row(
+            row["name"],
+            format_bytes(row["size"]),
+            row["modified"],
+        )
+
+    return table
+
+
+def render_text(cache_data):
+    """
+    Render human-readable cache output using Rich tables.
+    """
+    console = Console()
+
+    console.print(
+        build_cache_table(
+            "VM Resources Cache",
+            cache_data["host"],
+            cache_data["vm_resources"]["entries"],
+        )
+    )
+    console.print()
+
+    console.print(
+        build_cache_table(
+            "Images Cache",
+            cache_data["host"],
+            cache_data["images"]["entries"],
+        )
+    )
+    console.print()
+
+
+def render_json(cache_data):
+    """
+    Render machine-readable cache output.
+    """
+    print(json.dumps(cache_data, indent=2))
+
+
+def main():
+    """
+    List the image and vm_resource cache directories.
+    """
+    parser = argparse.ArgumentParser(
+        description="List the image and vm_resource cache directories.",
+        prog="firewheel mm show_caches",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
+    args = parser.parse_args()
+
+    cache_data = collect_cache_data()
+
+    if args.format == "json":
+        render_json(cache_data)
+    else:
+        render_text(cache_data)
+
+
+if __name__ == "__main__":
+    main()
 DONE

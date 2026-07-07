@@ -2,19 +2,41 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
+Generates a view of the VM image mix for the current experiment. The output
+includes the VM image, the VM power state, the VM resource state, and the
+count of VMs in each grouped combination.
 
-Generates a table showing the VM Images for a running experiment. The table also
-includes the power state of the VMs and the vm_resource state. Images that are the same
-and have the same power/vm_resource state are grouped. The count of the various VMs are
-provided. Additionally, the total number of scheduled VMs is shown at the bottom
-of the table.
+VMs with the same image, power state, and VM resource state are grouped
+together. The total number of scheduled VMs is also reported.
+
+This Helper supports both human-readable table output and machine-readable
+JSON output.
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show help message and exit.
+
+.. option:: --format {table,json}
+
+    :default: ``table``
+
+    Select the output format. ``table`` displays a live-updating human-readable
+    table. ``json`` returns a one-time structured JSON snapshot.
 
 Example
 +++++++
 
 ``firewheel vm mix``
 
-The output will look similar to the below table.::
+``firewheel vm mix --format json``
+
+The table output will look similar to the below.::
 
     +------------------------------------------------+-------------+----------------------+-------+
     |                    VM Image                    | Power State |  VM Resource State   | Count |
@@ -30,7 +52,10 @@ RUN LocalPython ON control
 #!/usr/bin/env python
 
 import sys
+import json
+import argparse
 from time import sleep
+from datetime import datetime, timezone
 
 from rich.live import Live
 from rich.console import Console
@@ -40,77 +65,109 @@ from firewheel.cli.utils import RichDefaultTable
 from firewheel.lib.minimega.api import minimegaAPI
 
 
-def vm_mix():
+def collect_vm_mix_data():
     """
-    Create a table showing the mix of VMs in the current experiment.
+    Collect structured VM mix data for the current experiment.
 
     Returns:
-        table (firewheel.cli.RichDefaultTable): A table giving the mix of VMs in the experiment.
+        dict: Structured VM mix data suitable for rendering as either a table
+            or JSON.
     """
     mm_api = minimegaAPI()
     mm_vms = mm_api.mm_vms()
 
     active_exp_present = False
-    # Check if an experiment is running
-    if vm_resource_api.get_experiment_launch_time() is not None or mm_api.mm_vms():
+    if vm_resource_api.get_experiment_launch_time() is not None or mm_vms:
         active_exp_present = True
 
-    mm_state_dict = {}
+    rows = []
+    total_scheduled = 0
+
     if active_exp_present:
         vm_resource_vms = vm_resource_api.get_vm_states()
 
+        grouped = {}
         for vm_name, vm_dict in mm_vms.items():
             mm_state = vm_dict["state"]
             vm_resource_state = vm_resource_vms.get(vm_name, "None")
+            image = vm_dict["image"]
 
-            if mm_state not in mm_state_dict:
-                mm_state_dict[mm_state] = {}
-            if vm_resource_state not in mm_state_dict[mm_state]:
-                mm_state_dict[mm_state][vm_resource_state] = []
-
-            mm_state_dict[mm_state][vm_resource_state].append(vm_dict["image"])
-
-    total_scheduled = 0
-    rows = []
-    for mm_state in sorted(mm_state_dict.keys()):
-        for vm_resource_state in sorted(mm_state_dict[mm_state].keys()):
             if vm_resource_state == "None":
                 continue
-            os_set = set(mm_state_dict[mm_state][vm_resource_state])
-            for op_sys in sorted(os_set):
-                count = mm_state_dict[mm_state][vm_resource_state].count(op_sys)
-                total_scheduled += count
-                mm_state_str = mm_state
-                vm_resource_state_str = vm_resource_state
-                if "run" in mm_state.lower():
-                    mm_state_str = f"[green]{mm_state}"
-                if "error" in mm_state.lower():
-                    mm_state_str = f"[red]{mm_state}"
-                if "configuring" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "configured" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[green]{vm_resource_state}"
-                if "uninitialized" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "error" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[red]{vm_resource_state}"
-                rows.append([op_sys, mm_state_str, vm_resource_state_str, str(count)])
 
-    table = build_table(rows, total_scheduled)
-    return table
+            key = (image, mm_state, vm_resource_state)
+            grouped[key] = grouped.get(key, 0) + 1
+
+        for image, mm_state, vm_resource_state in sorted(grouped.keys()):
+            count = grouped[(image, mm_state, vm_resource_state)]
+            total_scheduled += count
+            rows.append(
+                {
+                    "vm_image": image,
+                    "power_state": mm_state,
+                    "vm_resource_state": vm_resource_state,
+                    "count": count,
+                }
+            )
+
+    return {
+        "experiment_active": active_exp_present,
+        "total_scheduled": total_scheduled,
+        "rows": rows,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
-def build_table(rows, total_scheduled):
+def style_power_state(mm_state):
     """
-    Construct a table given rows of VM information.
+    Add Rich styling to a minimega power state for table output.
 
     Args:
-        rows (list): A list of information per set of VMs (each list element
-            representing one row in the output VM mix table).
-        total_scheduled (int): The total number of VMs scheduled in the experiment.
+        mm_state (str): The raw power state.
 
     Returns:
-        firewheel.cli.utils.RichDefaultTable: A table giving the mix of VMs in the experiment.
+        str: The styled power state string.
+    """
+    if "run" in mm_state.lower():
+        return f"[green]{mm_state}"
+    if "error" in mm_state.lower():
+        return f"[red]{mm_state}"
+    if "pause" in mm_state.lower():
+        return f"[yellow]{mm_state}"
+    return mm_state
+
+
+def style_vm_resource_state(vm_resource_state):
+    """
+    Add Rich styling to a VM resource state for table output.
+
+    Args:
+        vm_resource_state (str): The raw VM resource state.
+
+    Returns:
+        str: The styled VM resource state string.
+    """
+    if "configuring" in vm_resource_state.lower():
+        return f"[yellow]{vm_resource_state}"
+    if "configured" in vm_resource_state.lower():
+        return f"[green]{vm_resource_state}"
+    if "uninitialized" in vm_resource_state.lower():
+        return f"[yellow]{vm_resource_state}"
+    if "error" in vm_resource_state.lower():
+        return f"[red]{vm_resource_state}"
+    return vm_resource_state
+
+
+def build_table(vm_mix_data):
+    """
+    Construct a rich table given structured VM mix data.
+
+    Args:
+        vm_mix_data (dict): Structured VM mix data.
+
+    Returns:
+        firewheel.cli.utils.RichDefaultTable: A table giving the mix of VMs
+            in the experiment.
     """
     table = RichDefaultTable(
         title="VM Mix",
@@ -119,24 +176,75 @@ def build_table(rows, total_scheduled):
     table.add_column("VM Image")
     table.add_column("Power State")
     table.add_column("VM Resource State", footer="[b]Total Scheduled")
-    table.add_column("Count", footer=f"[b]{total_scheduled}")
-    # Add custom rows to the table
-    if not rows:
-        rows.append(["N/A", "N/A", "N/A", "0"])
-    for row in rows:
-        table.add_row(*row)
+    table.add_column("Count", footer=f"[b]{vm_mix_data['total_scheduled']}")
+
+    if not vm_mix_data["rows"]:
+        vm_mix_data["rows"] = [
+            {
+                "vm_image": "N/A",
+                "power_state": "N/A",
+                "vm_resource_state": "N/A",
+                "count": 0,
+            }
+        ]
+    for row in vm_mix_data["rows"]:
+        table.add_row(
+            row["vm_image"],
+            style_power_state(row["power_state"]),
+            style_vm_resource_state(row["vm_resource_state"]),
+            str(row["count"]),
+        )
+
     return table
+
+
+def output_json(vm_mix_data):
+    """
+    Print the structured VM mix data as JSON.
+
+    Args:
+        vm_mix_data (dict): Structured VM mix data.
+    """
+    print(json.dumps(vm_mix_data, indent=2, sort_keys=False))
+
+
+def create_parser():
+    """
+    Create the argparse parser for the vm mix helper.
+
+    Returns:
+        argparse.ArgumentParser: Parser for CLI arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Show the mix of VM images for the current experiment.",
+        prog="firewheel vm mix",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format. Defaults to table.",
+    )
+    return parser
 
 
 def main():
     """
     Provide the primary update functionality for VM Mix.
     """
+    parser = create_parser()
+    args = parser.parse_args()
+
+    if args.format == "json":
+        vm_mix_data = collect_vm_mix_data()
+        output_json(vm_mix_data)
+        return
+
     console = Console()
-    with Live(vm_mix(), console=console, screen=False, refresh_per_second=1) as live:
+    with Live(build_table(collect_vm_mix_data()), console=console, screen=False, refresh_per_second=1) as live:
         while True:
             sleep(2)
-            live.update(vm_mix())
+            live.update(build_table(collect_vm_mix_data()))
 
 
 if __name__ == "__main__":

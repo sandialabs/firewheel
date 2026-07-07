@@ -4,12 +4,16 @@ DONE
 DESCRIPTION
 
 List information about the currently installed model components.
-Model components can be grouped by repository (default), or any of the ``provides``, ``depends``, ``precedes``, ``model_component_depends``, ``model_component_precedes``.
-fields in the model component's manifest.
-Filters can be used to reduce the MCs that are shown. Filters are independent and
-are greedily matching. If multiple filters are used then anything that matches **all**
-filters will be displayed. Filters will attempt substring matching so ensure that
-you provide enough of a substring to the filter to narrow down the displayed results.
+Model components can be grouped by repository (default), or any of the
+``provides``, ``depends``, ``precedes``, ``model_component_depends``, or
+``model_component_precedes`` fields in the model component's manifest.
+
+Filters can be used to reduce the Model Components that are shown. Filters are
+independent and are greedily matching. If multiple filters are used then anything
+that matches **all** filters will be displayed. Filters attempt substring matching,
+so ensure that you provide enough of a substring to narrow down the displayed results.
+
+This Helper supports both human-readable text output and machine-readable JSON output.
 
 Arguments
 +++++++++
@@ -23,24 +27,33 @@ Named Arguments
 
     Show a help message and exit.
 
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints a grouped human-readable listing.
+    ``json`` returns a structured JSON response.
+
 .. option:: --paths, -p
 
-    Print additional paths information.
+    Print additional path information.
 
 .. option:: -g <group>, --group <group>
 
     :default: ``repository``
 
-    Group model components by one of: ``repository``, ``provides``, ``depends``, ``model_component_depends``.
-
-.. option:: -m
-
-    Print without color, i.e. monochromatic.
+    Group model components by one of:
+    ``repository``, ``provides``, ``depends``, ``precedes``,
+    ``model_component_depends``, or ``model_component_precedes``.
 
 .. option:: -k <FIELDS [FIELDS ...]>
 
-    Space separated list of additional MANIFEST fields to display for each found MC, in the form field[=filter] where filter is an optional substring of the results being filtered on.
-    Example fields are in the following table, but any manifest fields should be valid.
+    Space separated list of additional MANIFEST fields to display for each found MC,
+    in the form field[=filter] where filter is an optional substring of the results
+    being filtered on.
+
+    Example fields are shown in the following table, but any manifest fields
+    should be valid.
 
     .. tabularcolumns:: |\Y{.32}|\Y{.68}|
 
@@ -54,91 +67,157 @@ Named Arguments
     ``attributes``                 The dictionary of both provides and depends. Filters provided return true if found in either provides or depends.
     ``model_component_depends``    The model components depended on by the MC.
     ``model_component_precedes``   The model components preceded by the MC.
-    ``model_component_objects``    The model_component_objects provided by the MC.
-    ``vm_resources``               The VM Resources proved by the MC. This will not auto-expand any wildcards (e.g. ``vm_resources/**``).
+    ``vm_resources``               The VM Resources provided by the MC. This will not auto-expand any wildcards (e.g. ``vm_resources/**``).
     ============================   ==================================================================================================================================
-
 
 Examples
 ++++++++
+``firewheel mc list``
 
 ``firewheel mc list -p``
 
-``firewheel mc list -p -m -k provides=topology``
+``firewheel mc list -k provides=topology``
 
 ``firewheel mc list -p -g provides -k name=ubuntu``
 
 ``firewheel mc list -k vm_resources``
 
-
+``firewheel mc list --format json -g repository -k provides=topology``
 
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
 import sys
+import json
 import argparse
 from collections import OrderedDict
+from datetime import datetime, timezone
 
-import colorama
+from rich.console import Console
 
 from firewheel.control.repository_db import RepositoryDb
 from firewheel.control.model_component_iterator import ModelComponentIterator
 
 
+class McListError(Exception):
+    """Expected operational error for the mc list helper.
+
+    Args:
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+    """
+
+    def __init__(self, message, error_type):
+        """Initialize the exception.
+
+        Args:
+            message (str): Human-readable error message.
+            error_type (str): Stable machine-readable error type.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+def build_error_result(message, error_type):
+    """Build a structured error result.
+
+    Args:
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+
+    Returns:
+        dict: Structured error result.
+    """
+    return {
+        "success": False,
+        "error": {
+            "type": error_type,
+            "detail": message,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def parse_field_filters(args_fields):
+    """Parse requested fields and filters.
+
+    Args:
+        args_fields (list[str] | None): CLI field filter arguments.
+
+    Returns:
+        collections.OrderedDict: Ordered field filter mapping.
+    """
+    filters = OrderedDict()
+
+    if args_fields:
+        for argfield in args_fields:
+            field_vals = argfield.split("=")
+            field_name = field_vals[0]
+
+            if field_name in {"depends", "provides"} and "attributes" not in filters:
+                filters["attributes"] = None
+
+            if len(field_vals) > 1:
+                filters[field_name] = field_vals[1]
+            elif field_name not in filters:
+                filters[field_name] = None
+
+    return filters
+
+
 def check_field_filter(field_filter, elem):
     """Check if an element matches the specified field filter.
 
-    This function evaluates whether the given element meets the criteria
-    defined in the field filter. It checks both top-level keys and nested
-    attributes within the element.
+    It checks both top-level keys and nested attributes within the element.
 
     Args:
-        field_filter (dict): A dictionary containing the filter criteria
-            for the fields.
-        elem (dict): The element to be checked against the filter.
+        field_filter (dict): Field filter criteria.
+        elem (dict): Candidate element to check.
 
     Returns:
-        bool: True if the element matches the filter criteria, False otherwise.
+        bool: True if the element matches the filter, otherwise False.
     """
-    for k, v in elem.items():
-        if k == "attributes":
-            if field_filter[k] and field_filter[k] not in str(v):
+    for key, value in elem.items():
+        if key == "attributes":
+            if field_filter.get(key) and field_filter[key] not in str(value):
                 return False
-            for k2, v2 in v.items():
-                if (filter_k2 := field_filter.get(k2)) and filter_k2 not in "".join(v2):
+            for key2, value2 in value.items():
+                filter_value = field_filter.get(key2)
+                if filter_value and filter_value not in "".join(value2):
                     return False
-        elif k in field_filter and field_filter[k] and field_filter[k] not in v:
+        elif key in field_filter and field_filter[key] and field_filter[key] not in str(value):
             return False
     return True
 
 
-def group_by_key(group_key, paths=False, field_filter=None, fields=None):
-    """Group model components by a specified key.
-
-    This function iterates through a list of repositories and groups model
-    components based on the specified grouping key. It applies a field filter
-    to determine which elements to include in the grouping.
+def collect_grouped_model_components(repo_list, group_key, paths=False, field_filter=None, fields=None):
+    """Collect grouped model component data.
 
     Args:
-        group_key (str): The key by which to group the model components.
-            Possible values include "repository", "depends", "provides",
-            "precedes", "model_component_depends", and "model_component_precedes".
-        paths (bool, optional): If :py:data:`True`, include paths in the output.
-            Defaults to :py:data:`False`.
-        field_filter (dict, optional): A dictionary of field filters to apply
-            to the elements. Defaults to :py:data:`None`.
-        fields (list, optional): A list of fields to include in the output.
-            Defaults to :py:data:`None`.
+        repo_list (list[dict]): Installed repositories.
+        group_key (str): Grouping key.
+        paths (bool): Whether paths were requested.
+        field_filter (dict | None): Field filters to apply.
+        fields (list[str] | None): Requested fields to include.
+
+    Returns:
+        dict: Structured grouped MC data.
+
+    Raises:
+        McListError: If no matching model components are found.
     """
     group_key_dict = {}
-    max_elem_name_len = 0
+    total_count = 0
+
     for repo in repo_list:
         model_component_iter = ModelComponentIterator(iter([repo]))
         for mc_src in model_component_iter:
             elems = []
+
             if group_key == "repository":
-                group_val = repo
+                group_val = repo["path"]
                 elem = {
                     "repository": repo["path"],
                     "name": mc_src.name,
@@ -148,8 +227,10 @@ def group_by_key(group_key, paths=False, field_filter=None, fields=None):
                     for field in fields:
                         if field in mc_src.manifest:
                             elem[field] = mc_src.manifest[field]
+
                 if not check_field_filter(field_filter, elem):
                     continue
+
                 elems.append(elem)
 
             elif group_key in {
@@ -160,14 +241,13 @@ def group_by_key(group_key, paths=False, field_filter=None, fields=None):
                 "model_component_precedes",
             }:
                 if group_key in {"depends", "provides", "precedes"}:
-                    attribute_index = ["depends", "provides", "precedes"].index(
-                        group_key
-                    )
+                    attribute_index = ["depends", "provides", "precedes"].index(group_key)
                     group_vals = mc_src.get_attributes()[attribute_index]
                 elif group_key == "model_component_precedes":
                     group_vals = mc_src.get_model_component_precedes()
                 else:
                     group_vals = mc_src.get_model_component_depends()
+
                 for group_val in group_vals:
                     elem = {
                         group_key: group_val,
@@ -175,87 +255,113 @@ def group_by_key(group_key, paths=False, field_filter=None, fields=None):
                         "name": mc_src.name,
                         "path": mc_src.path,
                     }
+                    if fields:
+                        for field in fields:
+                            if field in mc_src.manifest and field not in elem:
+                                elem[field] = mc_src.manifest[field]
                     elems.append(elem)
+
             for elem in elems:
                 group_val = elem[group_key]
 
                 if not check_field_filter(field_filter, elem):
                     continue
 
-                max_elem_name_len = max(max_elem_name_len, len(elem["name"]))
                 if group_val not in group_key_dict:
-                    group_key_dict[group_val] = [elem]
-                else:
-                    group_key_dict[group_val].append(elem)
-    if max_elem_name_len == 0:
-        # No matching elements were found.
-        print("No model components found!")
-        sys.exit(1)
-    else:
-        print_output(group_key, group_key_dict, max_elem_name_len, paths, fields)
+                    group_key_dict[group_val] = []
+                group_key_dict[group_val].append(elem)
+                total_count += 1
+
+    if total_count == 0:
+        raise McListError("No model components found!", "no_model_components_found")
+
+    groups = []
+    for group_val in sorted(group_key_dict):
+        groups.append(
+            {
+                "group": group_val,
+                "items": group_key_dict[group_val],
+            }
+        )
+
+    return {
+        "success": True,
+        "group_by": group_key,
+        "paths": paths,
+        "fields": fields or [],
+        "filters": dict(field_filter or {}),
+        "count": total_count,
+        "groups": groups,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
-def print_output(
-    group_key, group_key_dict, max_elem_name_len, paths=False, fields=None,
-):
-    """Print the grouped output of model components.
-
-    This function formats and prints the grouped model components based on
-    the specified grouping key and selected fields. It handles both
-    repository and other grouping keys, providing options for including
-    paths in the output.
+def render_text(mc_data):
+    """Render grouped model component output in text form using Rich.
 
     Args:
-        group_key (str): The key by which the model components are grouped.
-        group_key_dict (dict): A dictionary containing the grouped model components.
-        max_elem_name_len (int): The maximum length of element names for formatting purposes.
-        paths (bool, optional): If :py:data:`True`, include paths in the output.
-            Defaults to :py:data:`False`.
-        fields (list, optional): A list of fields to include in the output.
-            Defaults to :py:data:`None`.
+        mc_data (dict): Structured grouped MC data.
     """
+    console = Console()
+
+    group_key = mc_data["group_by"]
+    fields = mc_data["fields"]
+    paths = mc_data["paths"]
+
     if group_key == "repository":
-        print_keys = [i for i in fields if i not in {"repository", "name"}]
+        print_keys = [field for field in fields if field not in {"repository", "name"}]
     else:
-        print_keys = [i for i in fields if i not in {group_key}]
+        print_keys = [field for field in fields if field != group_key]
+
     if paths and "path" in print_keys:
         print_keys.remove("path")
-    for group_val in sorted(group_key_dict):
-        style_index = 0
-        print(f"{BRIGHT}{YELLOW}{group_key} : {group_val}{RESET_ALL}")
-        for elem in group_key_dict[group_val]:
-            style_index = (style_index + 1) % len(colors)
+
+    for group in mc_data["groups"]:
+        console.print(f"[bold yellow]{group_key} : {group['group']}[/bold yellow]")
+
+        for item in group["items"]:
             if print_keys and group_key == "repository":
-                print(f"  {LIGHTBLUE_EX + BRIGHT}{elem['name']}")
-                print(RESET_ALL, end="")
+                console.print(f"  [bold bright_blue]{item['name']}[/bold bright_blue]")
+
                 if paths:
-                    print(f"    'path' : {elem['path']}")
+                    console.print(f"    path : {item['path']}")
 
                 for print_key in print_keys:
-                    if print_key in elem:
+                    if print_key in item:
                         if print_key == "attributes":
-                            print("    attributes:")
-                            attributes = elem[print_key]
-                            for k, v in attributes.items():
-                                print(f"      {k} : {v}")
+                            console.print("    attributes:")
+                            attributes = item[print_key]
+                            for attr_key, attr_value in attributes.items():
+                                console.print(f"      {attr_key} : {attr_value}")
                         else:
-                            print(f"    {print_key} : {elem[print_key]}")
+                            console.print(f"    {print_key} : {item[print_key]}")
             else:
-                print(RESET_ALL, end="")
-                if style_index % 2 == 0:
-                    print(LIGHTBLUE_EX + BRIGHT, end="")
                 if paths:
-                    # Left aligning the element name with some padding
-                    print(f"  {elem['name']:<{10 + max_elem_name_len}}\t{elem['path']}")
+                    console.print(f"  {item['name']}\t{item['path']}")
                 else:
-                    print(f"  {elem['name']:<{10 + max_elem_name_len}}")
-        print(RESET_ALL, end="")
+                    console.print(f"  {item['name']}")
 
 
-if __name__ == "__main__":
+def render_json(mc_data):
+    """Render grouped model component output as JSON.
+
+    Args:
+        mc_data (dict): Structured grouped MC data.
+    """
+    print(json.dumps(mc_data, indent=2))
+
+
+def main():
+    """Enumerate installed model components."""
     parser = argparse.ArgumentParser(
         description="Enumerate all installed model components!",
         prog="firewheel mc list",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
     )
     parser.add_argument(
         "--paths",
@@ -263,7 +369,7 @@ if __name__ == "__main__":
         required=False,
         action="store_true",
         dest="paths",
-        help="Print additional paths information.",
+        help="Print additional path information.",
         default=False,
     )
     parser.add_argument(
@@ -279,7 +385,7 @@ if __name__ == "__main__":
             "model_component_precedes",
         },
         dest="group",
-        help="Group model_components by.",
+        help="Group model components by.",
         default="repository",
     )
     parser.add_argument(
@@ -294,63 +400,49 @@ if __name__ == "__main__":
         default=None,
     )
 
-    parser.add_argument(
-        "-m",
-        required=False,
-        dest="monochromatic",
-        action="store_true",
-        help="Print without color",
-        default=False,
-    )
+    args = parser.parse_args()
 
     repo_db = RepositoryDb()
     repo_list = list(repo_db.list_repositories())
     if len(repo_list) == 0:
-        print(
-            (
-                "There are no model component repositories installed!\n"
-                "Install one with `firewheel repository install <path>`."
-            ),
-            file=sys.stderr,
+        error_message = (
+            "There are no model component repositories installed!\n"
+            "Install one with `firewheel repository install <path>`."
         )
+        if args.format == "json":
+            print(
+                json.dumps(
+                    build_error_result(error_message, "no_repositories_installed"),
+                    indent=2,
+                )
+            )
+        else:
+            print(error_message, file=sys.stderr)
         sys.exit(1)
 
-    TAB = "  "
-    args = parser.parse_args()
-    if not args.monochromatic:
-        RESET_ALL = colorama.Style.RESET_ALL
-        NORMAL = colorama.Style.NORMAL
-        BRIGHT = colorama.Style.BRIGHT
-        YELLOW = colorama.Fore.YELLOW
-        LIGHTBLUE_EX = colorama.Fore.LIGHTBLUE_EX
-        colors = [colorama.Fore.GREEN, colorama.Fore.BLUE]
-        styles = [colorama.Style.BRIGHT, colorama.Style.NORMAL]
-    else:
-        BRIGHT = ""
-        YELLOW = ""
-        RESET_ALL = ""
-        NORMAL = ""
-        LIGHTBLUE_EX = ""
-        colors = ["", ""]
-        styles = ["", ""]
+    filters = parse_field_filters(args.fields)
 
-    filters = OrderedDict()
-    if args.fields:
-        for argfield in args.fields:
-            field_vals = argfield.split("=")
-            field_name = field_vals[0]
-            if field_name in {"depends", "provides"}:
-                if "attributes" not in filters:
-                    filters["attributes"] = None
-            if len(field_vals) > 1:
-                filters[field_name] = field_vals[1]
-            elif field_name not in filters:
-                filters[field_name] = None
-    if args.group:
-        group_by_key(
-            args.group,
+    try:
+        mc_data = collect_grouped_model_components(
+            repo_list=repo_list,
+            group_key=args.group,
             paths=args.paths,
             field_filter=filters,
             fields=list(filters.keys()),
         )
+    except McListError as exc:
+        if args.format == "json":
+            print(json.dumps(build_error_result(exc.message, exc.error_type), indent=2))
+        else:
+            print(exc.message)
+        sys.exit(1)
+
+    if args.format == "json":
+        render_json(mc_data)
+    else:
+        render_text(mc_data)
+
+
+if __name__ == "__main__":
+    main()
 DONE

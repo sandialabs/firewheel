@@ -2,45 +2,121 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
-This informs a user if the testbed is available for use or occupied by
-an existing experiment.
+Report whether the FIREWHEEL testbed is ready for use or appears to be occupied
+by an existing experiment or existing minimega VMs.
+
+This Helper supports both human-readable text output and machine-readable
+JSON output.
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show help message and exit.
+
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints a human-readable status message.
+    ``json`` returns a structured JSON response.
 
 Example
 +++++++
 
 ``firewheel status``
 
+``firewheel status --format json``
+
 DONE
 RUN Python ON control
 #!/usr/bin/env python
+
+import json
+import argparse
+from datetime import datetime, timezone
 
 import firewheel.vm_resource_manager.api as vrm_api
 from firewheel.lib.minimega.api import minimegaAPI
 
 
-def main():
-    """Check the status of the FIREWHEEL experiment and Minimega VMs.
+def collect_status_data():
+    """Collect FIREWHEEL testbed status information.
 
     This function initializes the Minimega API and checks if there is an
     ongoing FIREWHEEL experiment or if any VMs are currently running in
-    Minimega. It prints appropriate messages based on the status of the
-    experiment and VMs.
+    Minimega.
+
+    Returns:
+        dict: Structured status information.
     """
     mm_api = minimegaAPI()
-    if vrm_api.get_experiment_launch_time() is not None:
-        msg = (
-            "There is already a FIREWHEEL experiment running. To reset"
-            " the testbed use the command: 'firewheel restart'."
+    experiment_running = vrm_api.get_experiment_launch_time() is not None
+    minimega_vms_present = bool(mm_api.mm_vms())
+
+    if experiment_running:
+        message = (
+            "There is already a FIREWHEEL experiment running. "
+            "To reset the testbed use the command: 'firewheel restart'."
         )
-        print(msg)
-    elif mm_api.mm_vms():
-        msg = (
-            "There are already VMs running in minimega. To reset"
-            " the testbed use the command: 'firewheel restart'."
+        state = "experiment_running"
+        ready = False
+    elif minimega_vms_present:
+        message = (
+            "There are already VMs running in minimega. "
+            "To reset the testbed use the command: 'firewheel restart'."
         )
-        print(msg)
+        state = "minimega_vms_present"
+        ready = False
     else:
-        print("The testbed is ready to use!")
+        message = "The testbed is ready to use!"
+        state = "ready"
+        ready = True
+
+    return {
+        "ready": ready,
+        "state": state,
+        "experiment_running": experiment_running,
+        "minimega_vms_present": minimega_vms_present,
+        "message": message,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def render_text(status_data):
+    """Render human-readable status output."""
+    print(status_data["message"])
+
+
+def render_json(status_data):
+    """Render machine-readable JSON status output."""
+    print(json.dumps(status_data, indent=2))
+
+
+def main():
+    """Check the status of the FIREWHEEL experiment and Minimega VMs."""
+    parser = argparse.ArgumentParser(
+        description="Check whether the FIREWHEEL testbed is available.",
+        prog="firewheel status",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
+    args = parser.parse_args()
+
+    status_data = collect_status_data()
+
+    if args.format == "json":
+        render_json(status_data)
+    else:
+        render_text(status_data)
 
 
 if __name__ == "__main__":
