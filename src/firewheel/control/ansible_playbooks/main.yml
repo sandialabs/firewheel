@@ -77,6 +77,32 @@
         msg: "All cache file methods have failed and system does not appear to be online. Please provide valid cache information."
       when: (ping_result.rc | default(0)) != 0
 
+    # Process each package in INSTALL/pkgs
+    - name: Check if pkgs_dir exists
+      ansible.builtin.stat:
+        path: "{{ mc_dir }}/INSTALL/pkgs"
+      register: pkgs_dir_status
+      failed_when: false
+
+    - name: Debug if pkgs_dir is missing or undefined
+      ansible.builtin.debug:
+        msg: "Skipping package processing because pkgs_dir is not defined or does not exist."
+      when: not pkgs_dir_status.stat.exists
+
+    - name: Find package files in INSTALL/pkgs
+      ansible.builtin.find:
+        paths: "{{ mc_dir }}/INSTALL/pkgs"
+        patterns: "*.yml"
+      register: pkg_files
+      when: pkgs_dir_status.stat.exists
+
+    - name: Process each package
+      ansible.builtin.include_tasks: roles/firewheel/tasks/pkgs_tasks.yml
+      vars:
+        pkg_file: "{{ item.path }}"
+      loop: "{{ pkg_files.files }}"
+      when: pkg_files.files is defined and pkg_files.files|length > 0
+
     # If we don't have any cached files and are online
     # then we need to run the MC Install tasks
     - name: "Include tasks (if needed) for: {{ mc_name }}"
