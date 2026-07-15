@@ -1,4 +1,6 @@
-FROM ghcr.io/sandia-minimega/minimega:master AS minimega
+# To specify an alternate base image: --build-arg BASE_IMAGE="some/other/image:tag"
+ARG MINIMEGA_BASE_IMAGE="ghcr.io/sandia-minimega/minimega:master"
+FROM $MINIMEGA_BASE_IMAGE AS minimega
 
 # --#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#-- #
 
