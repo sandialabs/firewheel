@@ -40,7 +40,7 @@
         loop_var: server
       vars:
         firewheel_url: "{{ server.url }}"
-        firewheel_cache_path: "{{ server.use_proxy }}"
+        firewheel_cache_path: "{{ server.cache_path }}"
         firewheel_validate_certs: "{{ server.validate_certs | default(true) }}"
         firewheel_use_proxy: "{{ server.use_proxy | default(true) }}"
 

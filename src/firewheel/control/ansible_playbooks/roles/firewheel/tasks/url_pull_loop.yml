@@ -39,5 +39,5 @@
   rescue:
     - name: Handle download failures
       ansible.builtin.debug:
-        msg: "Pulling file from {{ firewheel_url }}/{{ firewheel_url_cache_path }} failed. Continuing..."
+        msg: "Pulling file from {{ firewheel_url }}/{{ firewheel_cache_path }} failed. Continuing..."
       when: url_download_result is failed
