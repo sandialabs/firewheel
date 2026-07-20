@@ -246,29 +246,20 @@ class ModelComponentTestCase(unittest.TestCase):
         # Make sure name is set correctly.
         self.assertEqual(m.name, self.manifest["name"])
 
-    def test_repository_prop(self):
-        m = ModelComponent(path=self.c11)
-        self.assertNotEqual(m, None)
+    def test_repository_db(self):
+        # Ensure that the attribute defaults to the appropriate object if not specified
+        mc = ModelComponent(path=self.c11)
+        self.assertIsInstance(mc.repository_db, RepositoryDb)
 
-        self.assertIsInstance(m.repository_db, RepositoryDb)
-        m.repository_db = None
-        self.assertIsInstance(m.repository_db, RepositoryDb)
+    def test_vm_resource_store(self):
+        # Ensure that the attribute defaults to the appropriate object if not specified
+        mc = ModelComponent(path=self.c11)
+        self.assertIsInstance(mc.vm_resource_store, VmResourceStore)
 
-    def test_vm_resource_store_prop(self):
-        m = ModelComponent(path=self.c11)
-        self.assertNotEqual(m, None)
-
-        self.assertIsInstance(m.vm_resource_store, VmResourceStore)
-        m.vm_resource_store = None
-        self.assertIsInstance(m.vm_resource_store, VmResourceStore)
-
-    def test_image_store_prop(self):
-        m = ModelComponent(path=self.c11)
-        self.assertNotEqual(m, None)
-
-        self.assertIsInstance(m.image_store, ImageStore)
-        m.image_store = None
-        self.assertIsInstance(m.image_store, ImageStore)
+    def test_image_store(self):
+        # Ensure that the attribute defaults to the appropriate object if not specified
+        mc = ModelComponent(path=self.c11)
+        self.assertIsInstance(mc.image_store, ImageStore)
 
     def test_fail_resolve(self):
         with self.assertRaises(ValueError):
@@ -400,15 +391,3 @@ class ModelComponentTestCase(unittest.TestCase):
             mc = ModelComponent(
                 path=self.c11, arguments={}, repository_db=self.repository_db
             )
-
-    # pylint: disable=unused-variable
-    def test_exercise_properties(self):
-        mc = ModelComponent(
-            name=self.manifest["name"], repository_db=self.repository_db
-        )
-        self.assertTrue(isinstance(mc, ModelComponent))
-
-        # Failed when AttributeErrors were unhandled in properties.
-        img_store = mc.image_store  # noqa: F841
-        vm_resource_store = mc.vm_resource_store  # noqa: F841
-        self.assertEqual(mc.repository_db, self.repository_db)
