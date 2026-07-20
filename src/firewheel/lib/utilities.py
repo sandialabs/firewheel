@@ -6,10 +6,13 @@ import filecmp
 import hashlib
 import tarfile
 import traceback
+import multiprocessing
 from time import sleep
 from typing import Any, Tuple, Optional
 from pathlib import Path
 from functools import wraps as _wraps
+from contextlib import contextmanager
+from collections.abc import Generator
 
 from rich.console import Console
 
@@ -451,3 +454,38 @@ def retry(num_tries: int, exceptions: Optional[Tuple] = None, base_delay: int = 
         return f_retry
 
     return decorator
+
+
+@contextmanager
+def manage_queueing_process(
+    target: Any, *extra_args: Any
+) -> Generator[tuple[multiprocessing.Process, multiprocessing.Queue], None, None]:
+    """
+    Manages spawning, terminating, and cleaning up a multiprocessing task.
+
+    Args:
+        target (callable): The global worker function to execute in the
+            child process. This function must accept a queue as its
+            first argument.
+        *extra_args: Additional arguments to pass to the target
+            function.
+
+    Yields:
+        tuple[multiprocessing.Process, multiprocessing.Queue]: A pair
+            containing the spawned process instance and the queue
+            injected into the process.
+    """
+    context = multiprocessing.get_context()
+    task_queue = context.Queue()
+
+    # Launch a worker process to updae the queue
+    process = context.Process(target=target, args=(task_queue, *extra_args))
+
+    try:
+        process.start()
+        yield process, task_queue
+    finally:
+        # Ensure cleanup (regardless of timeouts or errors)
+        if process.is_alive():
+            process.terminate()
+            process.join()
