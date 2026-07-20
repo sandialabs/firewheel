@@ -91,7 +91,14 @@ RUN bash -c "python3.10 -m venv /fwpy \
     && source /fwpy/bin/activate \
     && python3 -m pip install --upgrade wheel setuptools pip \
     && python3 -m pip install --upgrade ${FW_PACKAGE_SRC} \
-    && python3 -m pip install --upgrade firewheel-repo-base firewheel-repo-linux firewheel-repo-vyos firewheel-repo-layer2 firewheel-repo-tutorials firewheel-repo-dns firewheel-repo-ntp \
+    && python3 -m pip install --upgrade firewheel-repo-base \
+                                        firewheel-repo-linux \
+                                        firewheel-repo-vyos \
+                                        firewheel-repo-layer2 \
+                                        firewheel-repo-tutorials \
+                                        firewheel-repo-dns \
+                                        firewheel-repo-ntp \
+                                        firewheel-repo-utilities \
     && ln -s /fwpy/bin/firewheel /usr/local/bin/firewheel" \
     || { echo "Firewheel installation failed"; exit 1; }
 
