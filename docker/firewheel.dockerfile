@@ -22,7 +22,7 @@ ARG BUILD_MM_LOGFILE=/var/log/minimega.log
 ## FIREWHEEL Arguments
 ARG BUILD_GRPC_HOSTNAME=localhost
 ARG BUILD_EXPERIMENT_INTERFACE=lo
-ARG BUILD_OUTPUT_DIR=/scratch/firewheel
+ARG BUILD_DEFAULT_OUTPUT_DIR=/scratch/firewheel
 ARG BUILD_LOGGING_ROOT_DIR=/scratch/firewheel
 ARG BUILD_FW_PACKAGE_SRC=firewheel
 
@@ -42,7 +42,7 @@ ENV USER=${BUILD_USER} \
     MM_LOGFILE=${BUILD_MM_LOGFILE} \
     GRPC_HOSTNAME=${BUILD_GRPC_HOSTNAME} \
     EXPERIMENT_INTERFACE=${BUILD_EXPERIMENT_INTERFACE} \
-    OUTPUT_DIR=${BUILD_OUTPUT_DIR} \
+    DEFAULT_OUTPUT_DIR=${BUILD_DEFAULT_OUTPUT_DIR} \
     LOGGING_ROOT_DIR=${BUILD_LOGGING_ROOT_DIR} \
     FW_PACKAGE_SRC=${BUILD_FW_PACKAGE_SRC}
 
@@ -106,12 +106,12 @@ RUN bash -c "python3.10 -m venv /fwpy \
 RUN bash -c "source /fwpy/bin/activate  && \
     mkdir -p \"${LOGGING_ROOT_DIR}\" && \
     mkdir -p \"${MM_FILEPATH}\" && \
-    mkdir -p \"${OUTPUT_DIR}\" && \
-    mkdir -p \"${OUTPUT_DIR}/vm_resource_logs\" && \
-    mkdir -p \"${OUTPUT_DIR}/transfers\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}/vm_resource_logs\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}/transfers\" && \
     firewheel config set -s system.default_group \"${USER}\" && \
     firewheel config set -s minimega.experiment_interface \"${EXPERIMENT_INTERFACE}\" && \
-    firewheel config set -s system.default_output_dir \"${OUTPUT_DIR}\" && \
+    firewheel config set -s system.default_output_dir \"${DEFAULT_OUTPUT_DIR}\" && \
     firewheel config set -s minimega.base_dir \"${MM_BASE}\" && \
     firewheel config set -s minimega.files_dir \"${MM_FILEPATH}\" && \
     firewheel config set -s python.venv /fwpy && \
