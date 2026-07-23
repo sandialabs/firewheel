@@ -5,26 +5,46 @@ FROM $MINIMEGA_BASE_IMAGE AS minimega
 # --#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#-- #
 
 ## User Arguments
-ARG USER=firewheel
-ARG USER_UID=1001750000
+ARG BUILD_USER=firewheel
+ARG BUILD_USER_UID=1001750000
 
 ## Minimega Arguments
-ARG MM_BASE=/tmp/minimega
-ARG MM_RUN_PATH=/tmp/minimega
-ARG MM_FILEPATH=/tmp/minimega/files
-ARG MM_PORT=9000
-ARG MM_DEGREE=1
-ARG MM_CONTEXT=firewheel
-ARG MM_FORCE=true
-ARG MM_LOGLEVEL=debug
-ARG MM_LOGFILE=/var/log/minimega.log
+ARG BUILD_MM_BASE=/tmp/minimega
+ARG BUILD_MM_RUN_PATH=/tmp/minimega
+ARG BUILD_MM_FILEPATH=/tmp/minimega/files
+ARG BUILD_MM_PORT=9000
+ARG BUILD_MM_DEGREE=1
+ARG BUILD_MM_CONTEXT=firewheel
+ARG BUILD_MM_FORCE=true
+ARG BUILD_MM_LOGLEVEL=debug
+ARG BUILD_MM_LOGFILE=/var/log/minimega.log
 
 ## FIREWHEEL Arguments
-ARG GRPC_HOSTNAME=localhost
-ARG EXPERIMENT_INTERFACE=lo
-ARG OUTPUT_DIR=/scratch/firewheel
-ARG LOGGING_ROOT_DIR=/scratch/firewheel
-ARG FW_PACKAGE_SRC=firewheel
+ARG BUILD_GRPC_HOSTNAME=localhost
+ARG BUILD_EXPERIMENT_INTERFACE=lo
+ARG BUILD_DEFAULT_OUTPUT_DIR=/scratch/firewheel
+ARG BUILD_LOGGING_ROOT_DIR=/scratch/firewheel
+ARG BUILD_FW_PACKAGE_SRC=firewheel
+
+
+# --#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#-- #
+
+ENV USER=${BUILD_USER} \
+    USER_UID=${BUILD_USER_UID} \
+    MM_BASE=${BUILD_MM_BASE} \
+    MM_RUN_PATH=${BUILD_MM_RUN_PATH} \
+    MM_FILEPATH=${BUILD_MM_FILEPATH} \
+    MM_PORT=${BUILD_MM_PORT} \
+    MM_DEGREE=${BUILD_MM_DEGREE} \
+    MM_CONTEXT=${BUILD_MM_CONTEXT} \
+    MM_FORCE=${BUILD_MM_FORCE} \
+    MM_LOGLEVEL=${BUILD_MM_LOGLEVEL} \
+    MM_LOGFILE=${BUILD_MM_LOGFILE} \
+    GRPC_HOSTNAME=${BUILD_GRPC_HOSTNAME} \
+    EXPERIMENT_INTERFACE=${BUILD_EXPERIMENT_INTERFACE} \
+    DEFAULT_OUTPUT_DIR=${BUILD_DEFAULT_OUTPUT_DIR} \
+    LOGGING_ROOT_DIR=${BUILD_LOGGING_ROOT_DIR} \
+    FW_PACKAGE_SRC=${BUILD_FW_PACKAGE_SRC}
 
 # --#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#--#-- #
 
@@ -71,33 +91,40 @@ RUN bash -c "python3.10 -m venv /fwpy \
     && source /fwpy/bin/activate \
     && python3 -m pip install --upgrade wheel setuptools pip \
     && python3 -m pip install --upgrade ${FW_PACKAGE_SRC} \
-    && python3 -m pip install --upgrade firewheel-repo-base firewheel-repo-linux firewheel-repo-vyos firewheel-repo-layer2 firewheel-repo-tutorials firewheel-repo-dns firewheel-repo-ntp \
+    && python3 -m pip install --upgrade firewheel-repo-base \
+                                        firewheel-repo-linux \
+                                        firewheel-repo-vyos \
+                                        firewheel-repo-layer2 \
+                                        firewheel-repo-tutorials \
+                                        firewheel-repo-dns \
+                                        firewheel-repo-ntp \
+                                        firewheel-repo-utilities \
     && ln -s /fwpy/bin/firewheel /usr/local/bin/firewheel" \
     || { echo "Firewheel installation failed"; exit 1; }
 
 # Configure Firewheel
 RUN bash -c "source /fwpy/bin/activate  && \
-    mkdir -p ${LOGGING_ROOT_DIR} && \
-    mkdir -p ${MM_FILEPATH} && \
-    mkdir -p ${OUTPUT_DIR} && \
-    mkdir -p ${OUTPUT_DIR}/vm_resource_logs && \
-    mkdir -p ${OUTPUT_DIR}/transfers && \
-    firewheel config set -s system.default_group ${USER} && \
-    firewheel config set -s minimega.experiment_interface ${EXPERIMENT_INTERFACE} && \
-    firewheel config set -s system.default_output_dir ${OUTPUT_DIR} && \
-    firewheel config set -s minimega.base_dir ${MM_BASE} && \
-    firewheel config set -s minimega.files_dir ${MM_FILEPATH} && \
+    mkdir -p \"${LOGGING_ROOT_DIR}\" && \
+    mkdir -p \"${MM_FILEPATH}\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}/vm_resource_logs\" && \
+    mkdir -p \"${DEFAULT_OUTPUT_DIR}/transfers\" && \
+    firewheel config set -s system.default_group \"${USER}\" && \
+    firewheel config set -s minimega.experiment_interface \"${EXPERIMENT_INTERFACE}\" && \
+    firewheel config set -s system.default_output_dir \"${DEFAULT_OUTPUT_DIR}\" && \
+    firewheel config set -s minimega.base_dir \"${MM_BASE}\" && \
+    firewheel config set -s minimega.files_dir \"${MM_FILEPATH}\" && \
     firewheel config set -s python.venv /fwpy && \
     firewheel config set -s python.bin python3 && \
-    firewheel config set -s grpc.hostname ${GRPC_HOSTNAME} && \
-    firewheel config set -s logging.root_dir ${LOGGING_ROOT_DIR}" \
+    firewheel config set -s grpc.hostname \"${GRPC_HOSTNAME}\" && \
+    firewheel config set -s logging.root_dir \"${LOGGING_ROOT_DIR}\"" \
     || { echo "Firewheel configuration failed"; exit 1; }
 
 # Set up Bash completion
 RUN bash -c "source /fwpy/bin/activate  && \
     prep_fw_tab_completion && \
     echo 'source \$(/fwpy/bin/prep_fw_tab_completion --print-path)' >> /root/.bashrc && \
-    echo 'source \$(/fwpy/bin/prep_fw_tab_completion --print-path)' >> /home/$USER/.bashrc" \
+    echo 'source \$(/fwpy/bin/prep_fw_tab_completion --print-path)' >> \"/home/$USER/.bashrc\"" \
     || { echo "Bash completion setup failed"; exit 1; } 
 
 
@@ -120,6 +147,6 @@ RUN chmod +x /usr/local/bin/entry && \
 # Change ownership of all files in the container to the new user
 # Note: This should be done after all files are copied to the image
 # (e.g., after COPY or ADD commands)
-RUN chown -R $USER_UID:$USER_UID /fwpy /start-minimega.sh /tmp /scratch /var/log /opt
+RUN chown -R "$USER_UID:$USER_UID" /fwpy /start-minimega.sh /tmp /scratch /var/log /opt
 
 ENTRYPOINT ["/usr/local/bin/entry"]
