@@ -483,7 +483,7 @@ def manage_queueing_process(
     context = multiprocessing.get_context()
     task_queue = context.Queue()
 
-    # Launch a worker process to updae the queue
+    # Launch a worker process to update the queue
     process = context.Process(target=target, args=(task_queue, *extra_args))
 
     try:
