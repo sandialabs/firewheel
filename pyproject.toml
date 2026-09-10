@@ -70,7 +70,7 @@ dependencies = [
     "python-dotenv<=1.2.2",
     "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
-    "requests==2.32.5",
+    "requests==2.34.2",
     "rich>=13.6.0,<15.1",
 ]
 
