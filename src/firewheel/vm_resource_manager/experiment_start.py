@@ -11,15 +11,16 @@ from firewheel.lib.grpc.firewheel_grpc_client import FirewheelGrpcClient
 
 class ExperimentStart:
     """
-    Interface to determine and report an experiment start time. Different start
-    times may reported as desired, but a consistent value will always be
-    reported as the start time. If no start times have yet been reported, a
-    value of None will be reported.
+    Interface to determine and report an experiment start time.
 
-    This is currently implemented using the GRPC database as a synchronization
-    mechanism: the current time is reported and recorded into the DB. When
-    determining the consistent start time value, the values from the DB are
-    sorted and the first-recorded returned.
+    A consistent value will always be reported as the experiment start time.
+    If no start time has yet been reported, a value of ``None`` will be
+    reported.
+
+    This is implemented using the gRPC database as a synchronization
+    mechanism. The gRPC server is responsible for atomically initializing the
+    experiment start time on first write and returning the stored value on
+    subsequent writes.
     """
 
     def __init__(
@@ -68,17 +69,20 @@ class ExperimentStart:
 
     def add_start_time(self, custom_time=None):
         """
-        Set the current time as a new start time for the database. May be
-        called arbitrary many times without affecting the consistency of the
-        time returned by `get_start_time()`.
+        Report the current time as a start time for the database.
+
+        This method may be called arbitrarily many times without affecting the
+        consistency of the time returned by `get_start_time()`. The gRPC server
+        atomically initializes the experiment start time on first write and
+        returns the already-stored value on subsequent calls.
 
         Arguments:
             custom_time (datetime.datetime): If provided, this time will be added
                 to the database as the start time instead of the current time.
 
         Returns:
-            datetime.datetime: A datetime object representing the time value as
-            added to the database: 1-second resolution, UTC.
+            datetime.datetime: A datetime object representing the stored start
+            time value: 1-second resolution, UTC.
         """
         if custom_time is not None:
             self.grpc_client.set_experiment_start_time(custom_time)
@@ -93,18 +97,16 @@ class ExperimentStart:
             seconds=int(config["vm_resource_manager"]["experiment_start_buffer_sec"])
         )
         new_time = datetime.now(timezone.utc) + delta
-        self.grpc_client.set_experiment_start_time(new_time)
-
-        return new_time
+        stored_time = self.grpc_client.set_experiment_start_time(new_time)
+        return stored_time
 
     def get_start_time(self):
         """
-        Return a consistent value for the experiment start time, as determined
-        by the reported times using `add_start_time()`.
+        Return the experiment start time.
 
         Returns:
             datetime.datetime: datetime object representing the start time
-            (in UTC), 1-second resolution or None is no start time has been
+            (in UTC), 1-second resolution or None if no start time has been
             reported yet.
         """
         start_time = self.grpc_client.get_experiment_start_time()
@@ -118,7 +120,6 @@ class ExperimentStart:
             datetime.datetime: A datetime object representing the time value as
             added to the database: 1-second resolution, UTC.
         """
-        # Check to make sure that it isn't already set
         current_time = datetime.now(timezone.utc)
         self.grpc_client.set_experiment_launch_time(current_time)
 
@@ -129,8 +130,8 @@ class ExperimentStart:
         Return the experiment launch time.
 
         Returns:
-            datetime.datetime: datetime object representing the start time
-            (in UTC), 1-second resolution or None is no launch time has been
+            datetime.datetime: datetime object representing the launch time
+            (in UTC), 1-second resolution or None if no launch time has been
             reported yet.
         """
         launch_time = self.grpc_client.get_experiment_launch_time()
@@ -142,7 +143,7 @@ class ExperimentStart:
         when it is configured.
 
         Returns:
-            int: The time in seconds from when the experiment launched to configured.
+            int: The time in seconds from when the experiment launched to configured,
             or None if experiment hasn't started yet.
         """
         launch_time = self.get_launch_time()
@@ -176,9 +177,11 @@ class ExperimentStart:
 
     def clear_start_time(self):
         """
-        Clear the current start time. The system is then uninitialized until
-        a new time is reported--after this call, `get_start_time()` returns None
-        until `add_start_time()` is called.
+        Clear the current experiment timing state.
+
+        The system is then uninitialized until a new time is reported--after
+        this call, `get_start_time()` returns None until `add_start_time()` is
+        called.
 
         Returns:
             dict: The response dictionary from GRPC initializing the start time.
