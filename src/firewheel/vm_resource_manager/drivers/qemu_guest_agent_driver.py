@@ -3,12 +3,26 @@ import time
 import base64
 import random
 import asyncio
+from pathlib import Path
 from contextlib import suppress
 
+from qemu.qmp.error import QMPError
 from qemu.qmp.legacy import QEMUMonitorProtocol
 from qemu.qmp.protocol import StateError
 
 from firewheel.vm_resource_manager.abstract_driver import AbstractDriver
+
+_QGA_COMMAND_ERRORS = (
+    OSError,
+    ConnectionError,
+    ConnectionResetError,
+    TimeoutError,
+    asyncio.TimeoutError,
+    QMPError,
+)
+_GUEST_FILE_WRITE_TIMEOUT_SEC = 30
+_GUEST_FILE_WRITE_PROGRESS_INTERVAL_SEC = 30
+_GUEST_FILE_WRITE_PROGRESS_INTERVAL_CHUNKS = 128
 
 
 class QemuGuestAgentDriver(AbstractDriver):
@@ -27,6 +41,18 @@ class QemuGuestAgentDriver(AbstractDriver):
         """
         self.qga = None
         super().__init__(config, log)
+
+    @staticmethod
+    def _get_qga_return(command, response):
+        if not isinstance(response, dict):
+            raise OSError(
+                f"QGA command {command!r} returned an invalid response type: "
+                f"{type(response).__name__}"
+            )
+        result = response.get("return", None)
+        if result is None:
+            raise OSError(f"QGA command {command!r} response did not contain 'return'")
+        return result
 
     def connect(self):
         """
@@ -206,6 +232,7 @@ class QemuGuestAgentDriver(AbstractDriver):
             bool: True on success, False on failure.
 
         Raises:
+            OSError: An indeterminate QGA write failure occurred.
             RuntimeError: An error occurred.
             RuntimeError: The file write didn't have a byte count.
             RuntimeError: The returned size does not match the read size.
@@ -216,62 +243,156 @@ class QemuGuestAgentDriver(AbstractDriver):
         # 1024000 (100KB - 1MB) has significant performance advantages over values
         # outside of that range (including no value).
         chunk_size = 1024000  # 1Mb
+        try:
+            total_size = Path(filename).stat().st_size
+        except OSError:
+            total_size = None
+        estimated_chunks = None
+        if total_size is not None:
+            estimated_chunks = (total_size + chunk_size - 1) // chunk_size
+        self.log.info(
+            "Starting QGA file write from %s: total_bytes=%s, chunk_size=%s, "
+            "timeout_sec=%s, estimated_chunks=%s",
+            filename,
+            total_size,
+            chunk_size,
+            _GUEST_FILE_WRITE_TIMEOUT_SEC,
+            estimated_chunks,
+        )
+
+        start_time = time.monotonic()
+        last_progress_time = start_time
+        bytes_written = 0
+        chunks_written = 0
         with open(filename, "rb") as fname:
             eof = False
             while not eof:
                 # Read a chunk of data from the file
                 content = fname.read(chunk_size)
+                if not content:
+                    break
+                chunk_index = chunks_written + 1
 
                 # Content is already a byte array, so pass straight into encoding
                 b64_content = base64.b64encode(content).decode(encoding="UTF-8")
-                attempt = 1
-                max_attempts = 30
-                while True:
-                    try:
-                        with self.lock:
-                            self.qga.settimeout(10)
-                            result = self.qga.cmd(
+                try:
+                    with self.lock:
+                        self.qga.settimeout(_GUEST_FILE_WRITE_TIMEOUT_SEC)
+                        try:
+                            response = self.qga.cmd(
                                 "guest-file-write",
                                 {
                                     "handle": handle,
                                     "buf-b64": b64_content,
                                     "count": len(content),
                                 },
-                            )["return"]
+                            )
+                            result = self._get_qga_return("guest-file-write", response)
+                        finally:
                             self.qga.settimeout(None)
-                        break
-                    # pylint: disable=broad-except
-                    except Exception as exp:
-                        self.log.exception(exp)
-                        with self.lock:
-                            self.qga.settimeout(None)
-                        if attempt >= max_attempts:
-                            self.log.error("FILE WRITE WITH CHUNK FAILED: %s", filename)
-                            return False
-                        attempt += 1
-                        return False
+                except _QGA_COMMAND_ERRORS as exp:
+                    elapsed = time.monotonic() - start_time
+                    self.log.error(
+                        "QGA file write failed for %s at chunk=%s, bytes_written=%s, "
+                        "elapsed_sec=%.2f",
+                        filename,
+                        chunk_index,
+                        bytes_written,
+                        elapsed,
+                    )
+                    self.log.exception(exp)
+                    raise OSError(str(exp)) from exp
 
                 # If error is in the dictionary returned then an error happened
                 if "error" in result:
+                    elapsed = time.monotonic() - start_time
+                    self.log.error(
+                        "QGA file write returned an error for %s at chunk=%s, "
+                        "bytes_written=%s, elapsed_sec=%.2f",
+                        filename,
+                        chunk_index,
+                        bytes_written,
+                        elapsed,
+                    )
                     raise RuntimeError(f"File write: {result['error']['desc']}")
 
                 # Make sure there is a byte count in the returned status
                 if "count" not in result:
+                    elapsed = time.monotonic() - start_time
+                    self.log.error(
+                        "QGA file write response did not include a count for %s at "
+                        "chunk=%s, bytes_written=%s, elapsed_sec=%.2f",
+                        filename,
+                        chunk_index,
+                        bytes_written,
+                        elapsed,
+                    )
                     raise RuntimeError("File write: Return didn't have byte count.")
 
                 # Make sure the returned written byte counts agrees with the amount
                 # of data that was intended to be written
                 if result["count"] != len(content):
-                    self.qga.settimeout(None)
+                    elapsed = time.monotonic() - start_time
+                    self.log.error(
+                        "QGA file write count mismatch for %s at chunk=%s, "
+                        "bytes_written=%s, elapsed_sec=%.2f, returned_count=%s, "
+                        "expected_count=%s",
+                        filename,
+                        chunk_index,
+                        bytes_written,
+                        elapsed,
+                        result["count"],
+                        len(content),
+                    )
                     raise RuntimeError(
                         f"File write: Returned size of {result['count']} does not "
                         f"match read size of {len(content)}"
                     )
 
+                bytes_written += len(content)
+                chunks_written += 1
+                current_time = time.monotonic()
+                elapsed = current_time - start_time
+                progress_interval_elapsed = (
+                    current_time - last_progress_time
+                    >= _GUEST_FILE_WRITE_PROGRESS_INTERVAL_SEC
+                )
+                progress_chunk_elapsed = (
+                    chunks_written % _GUEST_FILE_WRITE_PROGRESS_INTERVAL_CHUNKS == 0
+                )
+                if progress_interval_elapsed or progress_chunk_elapsed:
+                    throughput_mib_sec = (
+                        bytes_written / 1024 / 1024 / max(elapsed, 0.001)
+                    )
+                    self.log.info(
+                        "QGA file write progress for %s: chunks_written=%s, "
+                        "bytes_written=%s, total_bytes=%s, elapsed_sec=%.2f, "
+                        "throughput_mib_sec=%.2f",
+                        filename,
+                        chunks_written,
+                        bytes_written,
+                        total_size,
+                        elapsed,
+                        throughput_mib_sec,
+                    )
+                    last_progress_time = current_time
+
                 # Check if the entire file has been written
                 if len(content) < chunk_size:
                     eof = True
 
+        elapsed = time.monotonic() - start_time
+        throughput_mib_sec = bytes_written / 1024 / 1024 / max(elapsed, 0.001)
+        self.log.info(
+            "Completed QGA file write from %s: chunks_written=%s, bytes_written=%s, "
+            "total_bytes=%s, elapsed_sec=%.2f, throughput_mib_sec=%.2f",
+            filename,
+            chunks_written,
+            bytes_written,
+            total_size,
+            elapsed,
+            throughput_mib_sec,
+        )
         return True
 
     def file_write_content(self, handle, content):
@@ -776,27 +897,35 @@ class QemuGuestAgentDriver(AbstractDriver):
             OSError: If an issue occurs writing the file.
         """
 
+        handle = None
         try:
             with self.lock:
                 # it's annoying to recover from a timeout that occurs after the file is open,
                 # but before we receive the handle, so we leave the timeout here to `None`.
-                handle = self.qga.cmd(
+                response = self.qga.cmd(
                     "guest-file-open", {"path": filename, "mode": mode}
-                )["return"]
-        except (OSError, KeyError) as exp:
+                )
+                handle = self._get_qga_return("guest-file-open", response)
+        except _QGA_COMMAND_ERRORS as exp:
             self.log.exception(exp)
-            raise OSError from exp
+            raise OSError(str(exp)) from exp
 
         success = False
         try:
             success = self.file_write_from_file(handle, local_filename)
-        except OSError as exp:
+        except (OSError, RuntimeError) as exp:
             self.log.error("Error writing from file")
             self.log.exception(exp)
-            raise OSError from exp
-
-        with self.lock:
-            self.qga.cmd("guest-file-close", {"handle": handle})
+            raise OSError(str(exp)) from exp
+        finally:
+            if handle is not None:
+                try:
+                    with self.lock:
+                        self.qga.cmd("guest-file-close", {"handle": handle})
+                except _QGA_COMMAND_ERRORS as exp:
+                    self.log.exception(exp)
+                    if success:
+                        raise OSError(str(exp)) from exp
 
         return success
 

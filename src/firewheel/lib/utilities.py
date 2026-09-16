@@ -369,7 +369,12 @@ def hash_file(fname: str) -> str:
     return hash_func.hexdigest()
 
 
-def retry(num_tries: int, exceptions: Optional[Tuple] = None, base_delay: int = 10, exp_factor: int = 2):
+def retry(
+    num_tries: int,
+    exceptions: Optional[Tuple] = None,
+    base_delay: int = 10,
+    exp_factor: int = 2,
+):
     """
     This function provides a decorator which enables automatic retrying of
     functions which make connections to the FileStore and fail due to timeout errors.

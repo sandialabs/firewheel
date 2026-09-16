@@ -193,7 +193,10 @@ class VMResourceHandler:
             bool: True if the driver is connected, False otherwise.
         """
         if self.driver:
-            self.driver.close()
+            try:
+                self.driver.close()
+            except Exception as exp:  # noqa: BLE001
+                self.log.exception(exp)
         while True:
             try:
                 if not self.driver:
@@ -1034,7 +1037,7 @@ class VMResourceHandler:
                     self.log.exception(exp)
 
                 try:
-                    self.load_files_in_target(schedule_entry)
+                    preload_success = self.load_files_in_target(schedule_entry)
                 except socket.timeout:
                     self.log.warning(
                         "There was a timeout when loading in a schedule entry. "
@@ -1044,6 +1047,17 @@ class VMResourceHandler:
                     )
                     self.connect_to_driver()
                     self.prior_q.put((start_time, event))
+                    continue
+
+                if not preload_success:
+                    self.log.error(
+                        "There was an error preloading a schedule entry. "
+                        "Will reset the connection to the driver and try again. "
+                        "The `ScheduleEntry` was %s",
+                        event.get_data(),
+                    )
+                    self.connect_to_driver()
+                    temp_q.put((start_time, event))
                     continue
 
                 if schedule_entry.executable:
@@ -1297,27 +1311,47 @@ class VMResourceHandler:
                     )
                     return False
 
-                attempts = 1
-                while attempts < 10:
+                max_attempts = 10
+                failed_preload_paths = getattr(
+                    schedule_entry, "failed_preload_paths", set()
+                )
+                schedule_entry.failed_preload_paths = failed_preload_paths
+                target_path_str = str(target_path)
+                write_failed = target_path_str in failed_preload_paths
+                for attempt in range(max_attempts):
                     try:
-                        if not self.driver.file_exists(str(target_path)):
-                            self.log.debug(
-                                "Writing file from: %s to %s", local_path, target_path
-                            )
-                            ret_value = False
-                            while not ret_value:
-                                ret_value = self.driver.write_from_file(
-                                    str(target_path), str(local_path)
-                                )
-                                if not ret_value:
-                                    self.log.error("UNABLE TO WRITE FILE")
-                        else:
+                        if not write_failed and self.driver.file_exists(
+                            target_path_str
+                        ):
                             break
+
+                        self.log.debug(
+                            "Writing file from: %s to %s", local_path, target_path
+                        )
+                        ret_value = self.driver.write_from_file(
+                            target_path_str, str(local_path)
+                        )
+                        if ret_value:
+                            failed_preload_paths.discard(target_path_str)
+                            break
+
+                        write_failed = True
+                        failed_preload_paths.add(target_path_str)
+                        self.log.error(
+                            "Unable to write file from %s to %s on attempt %s/%s.",
+                            local_path,
+                            target_path,
+                            attempt + 1,
+                            max_attempts,
+                        )
                     except OSError:
+                        write_failed = True
+                        failed_preload_paths.add(target_path_str)
                         self.log.error(
                             "Unable to connect to the driver, reconnecting and trying again."
                         )
-                        attempts += 1
+
+                    if attempt < max_attempts - 1:
                         time.sleep(self.load_balance_factor * 2)
                         self.connect_to_driver()
                 else:
