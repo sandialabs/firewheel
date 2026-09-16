@@ -1,310 +1,368 @@
-import os
-import math
-import time
-import shutil
-import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock, patch
 
-import pytest
-
-from firewheel.config import config
 from firewheel.vm_resource_manager import api
-from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
-from firewheel.vm_resource_manager.schedule_db import ScheduleDb
-from firewheel.vm_resource_manager.experiment_start import ExperimentStart
-from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
+from firewheel.vm_resource_manager.vm_mapping import VMState
 
 
 class APITestCase(unittest.TestCase):
-    def setUp(self):
-        # Create valid and invalid repository directories
-        self.vmmapping_entries = [
-            {"server_name": "1", "control_ip": "2", "server_uuid": "1234"},
+    def test_get_vm_states_returns_legacy_shape(self):
+        mapping = Mock()
+        mapping.get_all.return_value = [
             {
-                "server_name": "2",
-                "control_ip": "3",
-                "state": VMState.TESTING,
-                "current_time": "0",
-                "server_uuid": "4321",
+                "server_name": "vm-1",
+                "state": VMState.CONFIGURED,
+                "has_execution_issues": True,
+                "execution_issue_count": 2,
+                "last_execution_issue": "warning text",
+            },
+            {
+                "server_name": "vm-2",
+                "state": VMState.UNINITIALIZED,
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
             },
         ]
 
-        # A database connections we'll use.
-        self.vmmapping = VMMapping(
-            hostname=config["grpc"]["hostname"],
-            port=config["grpc"]["port"],
-            db=config["test"]["grpc_db"],
+        states = api.get_vm_states(mapping=mapping)
+
+        self.assertEqual(
+            states,
+            {"vm-1": VMState.CONFIGURED, "vm-2": VMState.UNINITIALIZED},
+        )
+        mapping.get_all.assert_called_once_with(
+            filter_state=None,
+            project_dict={
+                "_id": 0,
+                "server_name": 1,
+                "state": 1,
+                "has_execution_issues": 1,
+                "execution_issue_count": 1,
+                "last_execution_issue": 1,
+            },
+        )
+        mapping.close.assert_not_called()
+
+    def test_get_vm_states_passes_filter_to_status_lookup(self):
+        mapping = Mock()
+        mapping.get_all.return_value = [
+            {
+                "server_name": "vm-1",
+                "state": VMState.TESTING,
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
+            }
+        ]
+
+        states = api.get_vm_states(filter_state=VMState.TESTING, mapping=mapping)
+
+        self.assertEqual(states, {"vm-1": VMState.TESTING})
+        mapping.get_all.assert_called_once_with(
+            filter_state=VMState.TESTING,
+            project_dict={
+                "_id": 0,
+                "server_name": 1,
+                "state": 1,
+                "has_execution_issues": 1,
+                "execution_issue_count": 1,
+                "last_execution_issue": 1,
+            },
         )
 
-        self.tmpdir = tempfile.mkdtemp()
-        self.cache_base = os.path.join(self.tmpdir, "base")
-        self.metadata_cache = os.path.join(self.cache_base, "vm_resources")
+    def test_get_vm_statuses_returns_execution_issue_metadata(self):
+        mapping = Mock()
+        mapping.get_all.return_value = [
+            {
+                "server_name": "vm-1",
+                "state": VMState.CONFIGURED,
+                "has_execution_issues": True,
+                "execution_issue_count": 2,
+                "last_execution_issue": "warning text",
+            }
+        ]
 
-        self.test_vmr_store_name = config["test"]["vm_resource_store_test_database"]
-        self.vm_resource_store = VmResourceStore(store=self.test_vmr_store_name)
-        self.metadata_cache = self.vm_resource_store.cache
-        self.test_schedule_db_name = config["test"]["schedule_test_database"]
-        self.schedule_db = ScheduleDb(cache_name=self.test_schedule_db_name)
-        self.fn_key = 1
+        statuses = api.get_vm_statuses(mapping=mapping)
 
-        self.experiment_start = ExperimentStart(
-            hostname=config["grpc"]["hostname"],
-            port=config["grpc"]["port"],
-            db=config["test"]["grpc_db"],
+        self.assertEqual(
+            statuses,
+            {
+                "vm-1": {
+                    "state": VMState.CONFIGURED,
+                    "has_execution_issues": True,
+                    "execution_issue_count": 2,
+                    "last_execution_issue": "warning text",
+                }
+            },
         )
 
-        self.vm_resource1_name = "vm_resource1.sh"
-        self.vm_resource1_path = os.path.join(self.tmpdir, self.vm_resource1_name)
-        self.vm_resource1 = """
-#!/bin/bash
-echo 'Hello, World!'
-"""
-        with open(self.vm_resource1_path, "w", encoding="utf8") as fname:
-            fname.write(self.vm_resource1)
+    def test_get_vm_statuses_closes_mapping_when_created_internally(self):
+        mapping = Mock()
+        mapping.get_all.return_value = []
+        mapping.close = Mock()
 
-    def tearDown(self):
-        self.vmmapping.destroy_all()
-        self.schedule_db.destroy_all()
-        self.experiment_start.clear_start_time()
+        with patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping):
+            statuses = api.get_vm_statuses()
 
-        self.vm_resource_store.remove_file("*")
+        self.assertEqual(statuses, {})
+        mapping.close.assert_called_once()
 
-        # remove the temp directories
-        shutil.rmtree(self.tmpdir)
+    def test_get_vm_times_returns_times_by_server_name(self):
+        mapping = Mock()
+        mapping.get_all.side_effect = [
+            [],
+            [
+                {"server_name": "vm-1", "current_time": "-50"},
+                {"server_name": "vm-2", "current_time": "0"},
+            ],
+        ]
 
-    def test_add_vm(self):
+        times = api.get_vm_times(mapping=mapping)
+
+        self.assertEqual(times, {"vm-1": "-50", "vm-2": "0"})
+        self.assertEqual(mapping.get_all.call_count, 2)
+        mapping.get_all.assert_any_call(filter_time=None)
+        mapping.get_all.assert_any_call(
+            filter_time=None,
+            project_dict={"_id": 0, "server_name": 1, "current_time": 1},
+        )
+
+    def test_get_vm_times_passes_filter(self):
+        mapping = Mock()
+        mapping.get_all.side_effect = [
+            [],
+            [{"server_name": "vm-1", "current_time": "0"}],
+        ]
+
+        times = api.get_vm_times(filter_time="0", mapping=mapping)
+
+        self.assertEqual(times, {"vm-1": "0"})
+        mapping.get_all.assert_any_call(filter_time="0")
+        mapping.get_all.assert_any_call(
+            filter_time="0",
+            project_dict={"_id": 0, "server_name": 1, "current_time": 1},
+        )
+
+    def test_add_vm_uses_uninitialized_when_vm_manager_enabled(self):
+        mapping = Mock()
+
         api.add_vm(
-            self.vmmapping_entries[0]["server_uuid"],
-            self.vmmapping_entries[0]["server_name"],
-            self.vmmapping_entries[0]["control_ip"],
-            mapping=self.vmmapping,
+            "uuid-1",
+            "vm-1",
+            "10.0.0.1",
+            use_vm_manager=True,
+            mapping=mapping,
         )
 
-        result = self.vmmapping.get(
-            server_uuid=self.vmmapping_entries[0]["server_uuid"]
-        )
-        self.assertEqual(
-            result["server_uuid"], self.vmmapping_entries[0]["server_uuid"]
-        )
-        self.assertEqual(
-            result["server_name"], self.vmmapping_entries[0]["server_name"]
-        )
-        self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
-        self.assertEqual(
-            result["state"], VMState.UNINITIALIZED
+        mapping.put.assert_called_once_with(
+            "uuid-1",
+            "vm-1",
+            state=VMState.UNINITIALIZED,
+            server_address="10.0.0.1",
         )
 
-    def test_add_vm_no_vm_resources(self):
+    def test_add_vm_uses_na_when_vm_manager_disabled(self):
+        mapping = Mock()
+
         api.add_vm(
-            self.vmmapping_entries[0]["server_uuid"],
-            self.vmmapping_entries[0]["server_name"],
-            self.vmmapping_entries[0]["control_ip"],
+            "uuid-1",
+            "vm-1",
+            "10.0.0.1",
             use_vm_manager=False,
-            mapping=self.vmmapping,
+            mapping=mapping,
         )
 
-        result = self.vmmapping.get(
-            server_uuid=self.vmmapping_entries[0]["server_uuid"]
-        )
-        self.assertEqual(
-            result["server_uuid"], self.vmmapping_entries[0]["server_uuid"]
-        )
-        self.assertEqual(
-            result["server_name"], self.vmmapping_entries[0]["server_name"]
-        )
-        self.assertEqual(result["control_ip"], self.vmmapping_entries[0]["control_ip"])
-        self.assertEqual(result["state"], VMState.NA)
-
-    def test_get_vm_times(self):
-        self.vmmapping.batch_put(self.vmmapping_entries)
-
-        times = api.get_vm_times(mapping=self.vmmapping)
-        self.assertEqual(len(times), len(self.vmmapping_entries))
-        for entry in self.vmmapping_entries:
-            self.assertTrue(entry["server_name"] in times)
-        self.assertEqual(
-            times[self.vmmapping_entries[1]["server_name"]],
-            self.vmmapping_entries[1]["current_time"],
+        mapping.put.assert_called_once_with(
+            "uuid-1",
+            "vm-1",
+            state=VMState.NA,
+            server_address="10.0.0.1",
         )
 
-    def test_get_vm_times_with_filter(self):
-        self.vmmapping.batch_put(self.vmmapping_entries)
+    def test_add_vm_creates_and_closes_mapping_when_needed(self):
+        mapping = Mock()
 
-        times = api.get_vm_times(
-            filter_time=self.vmmapping_entries[1]["current_time"],
-            mapping=self.vmmapping,
+        with patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping):
+            api.add_vm("uuid-1", "vm-1", "10.0.0.1")
+
+        mapping.put.assert_called_once_with(
+            "uuid-1",
+            "vm-1",
+            state=VMState.UNINITIALIZED,
+            server_address="10.0.0.1",
         )
-        self.assertEqual(len(times), 1)
-        self.assertTrue(self.vmmapping_entries[1]["server_name"] in times)
-        self.assertEqual(
-            self.vmmapping_entries[1]["current_time"],
-            times[self.vmmapping_entries[1]["server_name"]],
-        )
+        mapping.close.assert_called_once()
 
-    def test_get_vm_states(self):
-        self.vmmapping.batch_put(self.vmmapping_entries)
+    def test_destroy_all_clears_all_backends(self):
+        mapping = Mock()
+        schedule = Mock()
+        start = Mock()
 
-        states = api.get_vm_states(mapping=self.vmmapping)
-        self.assertEqual(len(states), len(self.vmmapping_entries))
-        for entry in self.vmmapping_entries:
-            self.assertTrue(entry["server_name"] in states)
-        self.assertEqual(
-            states[self.vmmapping_entries[1]["server_name"]],
-            self.vmmapping_entries[1]["state"],
-        )
-        self.assertEqual(
-            states[self.vmmapping_entries[0]["server_name"]],
-            VMState.UNINITIALIZED,
-        )
+        api.destroy_all(mapping=mapping, schedule=schedule, start=start)
 
-    def test_get_vm_states_with_filter(self):
-        self.vmmapping.batch_put(self.vmmapping_entries)
+        mapping.destroy_all.assert_called_once()
+        schedule.destroy_all.assert_called_once()
+        start.clear_start_time.assert_called_once()
+        schedule.close.assert_not_called()
 
-        states = api.get_vm_states(
-            filter_state=self.vmmapping_entries[1]["state"], mapping=self.vmmapping
-        )
-        self.assertEqual(len(states), 1)
-        self.assertTrue(self.vmmapping_entries[1]["server_name"] in states)
-        self.assertEqual(
-            states[self.vmmapping_entries[1]["server_name"]],
-            self.vmmapping_entries[1]["state"],
-        )
+    def test_destroy_all_ignores_mapping_connection_error_when_requested(self):
+        schedule = Mock()
+        start = Mock()
 
-    def test_get_start(self):
-        added_time = self.experiment_start.add_start_time()
+        with patch(
+            "firewheel.vm_resource_manager.api.VMMapping",
+            side_effect=ConnectionError("down"),
+        ):
+            api.destroy_all(
+                schedule=schedule,
+                start=start,
+                ignore_grpc_connection_errors=True,
+            )
 
-        found_time = api.get_experiment_start_time(start=self.experiment_start)
-        self.assertEqual(added_time, found_time)
+        schedule.destroy_all.assert_called_once()
+        start.clear_start_time.assert_called_once()
 
-    def test_destroy_all(self):
-        self.vmmapping.batch_put(self.vmmapping_entries)
+    def test_destroy_all_ignores_start_connection_error_when_requested(self):
+        mapping = Mock()
+        schedule = Mock()
 
-        sched_val = b""
-        for entry in self.vmmapping_entries:
-            self.schedule_db.put(entry["server_name"], sched_val, entry["control_ip"])
-        sched_result = self.schedule_db.get(self.vmmapping_entries[0]["server_name"])
-        self.assertEqual(sched_result, sched_val)
+        with patch(
+            "firewheel.vm_resource_manager.api.ExperimentStart",
+            side_effect=ConnectionError("down"),
+        ):
+            api.destroy_all(
+                mapping=mapping,
+                schedule=schedule,
+                ignore_grpc_connection_errors=True,
+            )
 
-        self.experiment_start.add_start_time()
+        mapping.destroy_all.assert_called_once()
+        schedule.destroy_all.assert_called_once()
 
-        api.destroy_all(
-            mapping=self.vmmapping,
-            schedule=self.schedule_db,
-            start=self.experiment_start,
-        )
+    def test_destroy_all_raises_mapping_connection_error_by_default(self):
+        with patch(
+            "firewheel.vm_resource_manager.api.VMMapping",
+            side_effect=ConnectionError("down"),
+        ):
+            with self.assertRaises(ConnectionError):
+                api.destroy_all()
 
-        self.assertEqual(self.experiment_start.get_start_time(), None)
-        sched_result = self.schedule_db.get(self.vmmapping_entries[0]["server_name"])
-        self.assertEqual(sched_result, None)
-        result = self.vmmapping.get(
-            server_uuid=self.vmmapping_entries[0]["server_uuid"]
-        )
-        self.assertEqual(result, None)
+    def test_destroy_all_creates_and_closes_schedule(self):
+        mapping = Mock()
+        schedule = Mock()
+        start = Mock()
 
-    def test_get_vm_states_empty(self):
-        result = api.get_vm_states(mapping=self.vmmapping)
-        self.assertEqual(result, {})
+        with (
+            patch("firewheel.vm_resource_manager.api.ScheduleDb", return_value=schedule),
+            patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start),
+        ):
+            api.destroy_all(mapping=mapping)
 
-    def test_get_vm_times_empty(self):
-        result = api.get_vm_times(mapping=self.vmmapping)
-        self.assertEqual(result, {})
+        mapping.destroy_all.assert_called_once()
+        schedule.destroy_all.assert_called_once()
+        schedule.close.assert_called_once()
+        start.clear_start_time.assert_called_once()
 
-    def test_get_start_empty(self):
-        result = api.get_experiment_start_time(start=self.experiment_start)
-        self.assertEqual(result, None)
+    def test_get_experiment_launch_time_wrapper(self):
+        start = Mock()
+        launch_time = datetime.now(timezone.utc)
+        start.get_launch_time.return_value = launch_time
 
-    def test_get_launch_empty(self):
-        result = api.get_experiment_launch_time(start=self.experiment_start)
-        self.assertEqual(result, None)
+        self.assertEqual(api.get_experiment_launch_time(start=start), launch_time)
+        start.get_launch_time.assert_called_once_with()
 
-    def test_set_launch_empty(self):
-        result = api.get_experiment_launch_time(start=self.experiment_start)
-        self.assertEqual(result, None)
+    def test_set_experiment_launch_time_wrapper(self):
+        start = Mock()
+        launch_time = datetime.now(timezone.utc)
+        start.set_launch_time.return_value = launch_time
 
-        result = api.set_experiment_launch_time(start=self.experiment_start)
-        determined_start_time = self.experiment_start.get_launch_time()
-        self.assertEqual(result, determined_start_time)
+        self.assertEqual(api.set_experiment_launch_time(start=start), launch_time)
+        start.set_launch_time.assert_called_once_with()
 
-    def test_set_start_empty(self):
-        result = api.get_experiment_start_time(start=self.experiment_start)
-        self.assertEqual(result, None)
+    def test_get_experiment_start_time_wrapper(self):
+        start = Mock()
+        start_time = datetime.now(timezone.utc)
+        start.get_start_time.return_value = start_time
 
-        result = api.add_experiment_start_time(start=self.experiment_start)
-        determined_start_time = self.experiment_start.get_start_time()
-        self.assertEqual(result, determined_start_time)
+        self.assertEqual(api.get_experiment_start_time(start=start), start_time)
+        start.get_start_time.assert_called_once_with()
 
-    def test_time_to_start(self):
-        # Set launch time
-        inserted_time = self.experiment_start.set_launch_time()
-        determined_launch_time = self.experiment_start.get_launch_time()
-        self.assertEqual(inserted_time, determined_launch_time)
+    def test_add_experiment_start_time_wrapper(self):
+        start = Mock()
+        start_time = datetime.now(timezone.utc)
+        start.add_start_time.return_value = start_time
 
-        # Should return none if the experiment hasn't started
-        delta = self.experiment_start.get_time_to_start()
-        self.assertEqual(None, delta)
+        self.assertEqual(api.add_experiment_start_time(start=start), start_time)
+        start.add_start_time.assert_called_once_with()
 
-        # Set the start time
-        inserted_time = self.experiment_start.add_start_time()
-        determined_start_time = self.experiment_start.get_start_time()
-        self.assertEqual(inserted_time, determined_start_time)
+    def test_get_experiment_time_to_start_wrapper(self):
+        start = Mock()
+        start.get_time_to_start.return_value = 60
 
-        # The time should be "close" to 60 seconds
-        delta = api.get_experiment_time_to_start(start=self.experiment_start)
-        self.assertTrue(math.isclose(delta, 60, rel_tol=0.05))
+        self.assertEqual(api.get_experiment_time_to_start(start=start), 60)
+        start.get_time_to_start.assert_called_once_with()
 
-    @pytest.mark.long
-    def test_get_time_since_start(self):
-        # Should return none if the experiment hasn't started
-        delta = self.experiment_start.get_time_since_start()
-        self.assertEqual(None, delta)
+    def test_get_experiment_time_since_start_wrapper(self):
+        start = Mock()
+        start.get_time_since_start.return_value = 5
 
-        # Set the start time
-        inserted_time = self.experiment_start.add_start_time()
-        determined_start_time = self.experiment_start.get_start_time()
-        self.assertEqual(inserted_time, determined_start_time)
+        self.assertEqual(api.get_experiment_time_since_start(start=start), 5)
+        start.get_time_since_start.assert_called_once_with()
 
-        time.sleep(65)
+    def test_experiment_time_wrappers_create_start_when_needed(self):
+        start = Mock()
+        launch_time = datetime.now(timezone.utc)
+        start_time = launch_time + timedelta(seconds=60)
+        start.get_launch_time.return_value = launch_time
+        start.set_launch_time.return_value = launch_time
+        start.get_start_time.return_value = start_time
+        start.add_start_time.return_value = start_time
+        start.get_time_to_start.return_value = 60
+        start.get_time_since_start.return_value = 5
 
-        # The time should be "close" to 5 seconds
-        delta = api.get_experiment_time_since_start(start=self.experiment_start)
-        self.assertTrue(math.isclose(delta, 5, rel_tol=0.05))
+        with patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start) as start_cls:
+            self.assertEqual(api.get_experiment_launch_time(), launch_time)
+            self.assertEqual(api.set_experiment_launch_time(), launch_time)
+            self.assertEqual(api.get_experiment_start_time(), start_time)
+            self.assertEqual(api.add_experiment_start_time(), start_time)
+            self.assertEqual(api.get_experiment_time_to_start(), 60)
+            self.assertEqual(api.get_experiment_time_since_start(), 5)
 
-    def test_add_vm_resource_file(self):
-        start_contents = self.vm_resource_store.list_contents()
-        for item in start_contents:
-            self.assertNotEqual(item[self.fn_key], self.vm_resource1_name)
+        self.assertEqual(start_cls.call_count, 6)
 
-        api.add_vm_resource_file(self.vm_resource1_path, store=self.vm_resource_store)
+    def test_vm_resource_list_returns_distinct_contents(self):
+        store = Mock()
+        store.list_distinct_contents.return_value = ["a.sh", "b.sh"]
 
-        end_contents = self.vm_resource_store.list_contents()
-        found_items = []
-        for item in end_contents:
-            if item[self.fn_key] == self.vm_resource1_name:
-                found_items.append(item)
-        self.assertEqual(len(found_items), 1)
+        contents = api.vm_resource_list(store=store)
 
-    def test_vm_resource_list(self):
-        self.vm_resource_store.add_file(self.vm_resource1_path)
-        store_contents = self.vm_resource_store.list_contents()
-        store_contents_list = []
-        for item in store_contents:
-            store_contents_list.append(item)
+        self.assertEqual(contents, ["a.sh", "b.sh"])
+        store.list_distinct_contents.assert_called_once_with()
+        store.close.assert_not_called()
 
-        api_contents = api.vm_resource_list(store=self.vm_resource_store)
+    def test_vm_resource_list_creates_and_closes_store(self):
+        store = Mock()
+        store.list_distinct_contents.return_value = ["a.sh"]
 
-        original_len = len(store_contents_list)
-        self.assertEqual(len(store_contents_list), len(api_contents))
-        for item in store_contents_list:
-            self.assertTrue(item[self.fn_key] in api_contents)
+        with patch("firewheel.vm_resource_manager.api.VmResourceStore", return_value=store):
+            contents = api.vm_resource_list()
 
-        # Re-add the file to make sure we only get unique entries
-        self.vm_resource_store.add_file(self.vm_resource1_path)
-        store_contents = self.vm_resource_store.list_contents()
-        store_contents_list = []
-        for item in store_contents:
-            store_contents_list.append(item)
+        self.assertEqual(contents, ["a.sh"])
+        store.close.assert_called_once()
 
-        api_contents = api.vm_resource_list(store=self.vm_resource_store)
-        self.assertEqual(len(api_contents), original_len)
-        for item in store_contents_list:
-            self.assertTrue(item[self.fn_key] in api_contents)
+    def test_add_vm_resource_file_delegates_to_store(self):
+        store = Mock()
+
+        api.add_vm_resource_file("/tmp/script.sh", store=store)
+
+        store.add_file.assert_called_once_with("/tmp/script.sh")
+
+    def test_add_vm_resource_file_creates_store_when_needed(self):
+        store = Mock()
+
+        with patch("firewheel.vm_resource_manager.api.VmResourceStore", return_value=store):
+            api.add_vm_resource_file("/tmp/script.sh")
+
+        store.add_file.assert_called_once_with("/tmp/script.sh")
