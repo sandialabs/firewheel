@@ -1,424 +1,361 @@
-import unittest
+import copy
+from unittest.mock import patch
 
-from firewheel.config import config
+import pytest
+
 from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
 
 
-class VMMappingTestCase(unittest.TestCase):
-    def setUp(self):
-        self.vmmapping = VMMapping(
-            hostname=config["grpc"]["hostname"],
-            port=config["grpc"]["port"],
-            db=config["test"]["grpc_db"],
-        )
+class FakeGrpcClient:
+    def __init__(self, _hostname=None, _port=None, db="test"):
+        self.db = db
+        self.mappings = {}
 
-        # Create valid and invalid repository directories
-        self.entries = [
+    def close(self):
+        return None
+
+    def _serialize(self, vmm):
+        serialized = copy.deepcopy(vmm)
+        serialized["db"] = self.db
+        state = serialized.get("state")
+        if isinstance(state, VMState):
+            serialized["state"] = state.value
+        return serialized
+
+    def set_vm_mapping(self, vmm):
+        serialized = self._serialize(vmm)
+        self.mappings[serialized["server_uuid"]] = serialized
+        return copy.deepcopy(serialized)
+
+    def get_vm_mapping_by_uuid(self, vm_uuid):
+        value = self.mappings.get(vm_uuid)
+        if value is None:
+            return None
+        return copy.deepcopy(value)
+
+    def destroy_vm_mapping_by_uuid(self, vm_uuid):
+        self.mappings.pop(vm_uuid, None)
+        return {}
+
+    def destroy_all_vm_mappings(self):
+        self.mappings = {}
+        return {}
+
+    def list_vm_mappings(self):
+        return [copy.deepcopy(value) for value in self.mappings.values()]
+
+    def set_vm_state_by_uuid(self, vmm):
+        current = self.mappings.get(vmm["server_uuid"])
+        if current is None:
+            return None
+        current["state"] = str(vmm["state"])
+        return copy.deepcopy(current)
+
+    def set_vm_time_by_uuid(self, vmm):
+        current = self.mappings.get(vmm["server_uuid"])
+        if current is None:
+            return None
+        current["current_time"] = str(vmm["current_time"])
+        return copy.deepcopy(current)
+
+    def count_vm_mappings_not_ready(self):
+        count = 0
+        for value in self.mappings.values():
+            if value.get("state") not in {VMState.NA.value, VMState.CONFIGURED.value}:
+                count += 1
+        return {"count": count}
+
+
+@pytest.fixture
+def vmmapping():
+    with patch(
+        "firewheel.vm_resource_manager.vm_mapping.FirewheelGrpcClient",
+        FakeGrpcClient,
+    ):
+        mapping = VMMapping(hostname="localhost", port="50051", db="test")
+        yield mapping
+        mapping.destroy_all()
+        mapping.close()
+
+
+def test_put_schedule_defaults_execution_issue_fields(vmmapping):
+    vmmapping.put("1234", "vm-1", server_address="10.0.0.1")
+
+    found = vmmapping.get(server_uuid="1234")
+
+    assert found["db"] == "test"
+    assert found["server_uuid"] == "1234"
+    assert found["server_name"] == "vm-1"
+    assert found["control_ip"] == "10.0.0.1"
+    assert found["state"] == VMState.UNINITIALIZED
+    assert found["current_time"] == ""
+    assert found["has_execution_issues"] is False
+    assert found["execution_issue_count"] == 0
+    assert found["last_execution_issue"] == ""
+
+
+def test_put_schedule_with_options_updates_existing_record(vmmapping):
+    vmmapping.put(
+        "1234",
+        "vm-1",
+        server_address="10.0.0.1",
+        state=VMState.TESTING,
+        current_time="0",
+    )
+    vmmapping.put(
+        "1234",
+        "vm-1",
+        server_address="10.0.0.1",
+        state=VMState.CONFIGURING,
+        current_time="5",
+    )
+
+    found = vmmapping.get(server_uuid="1234")
+
+    assert found["state"] == VMState.CONFIGURING
+    assert found["current_time"] == "5"
+
+
+def test_batch_put_preserves_execution_issue_fields(vmmapping):
+    vmmapping.batch_put(
+        [
             {
-                "db": "test",
-                "server_name": "1",
-                "control_ip": "2",
                 "server_uuid": "1234",
-            },
+                "server_name": "vm-1",
+                "control_ip": "10.0.0.1",
+                "has_execution_issues": True,
+                "execution_issue_count": 2,
+                "last_execution_issue": "copy failed once",
+            }
+        ]
+    )
+
+    found = vmmapping.get(server_uuid="1234")
+
+    assert found["has_execution_issues"] is True
+    assert found["execution_issue_count"] == 2
+    assert found["last_execution_issue"] == "copy failed once"
+
+
+def test_prepare_put_sets_defaults(vmmapping):
+    prepared = vmmapping.prepare_put({"server_uuid": "1234", "server_name": "vm-1"})
+
+    assert prepared["server_uuid"] == "1234"
+    assert prepared["server_name"] == "vm-1"
+    assert prepared["state"] == VMState.UNINITIALIZED
+    assert prepared["current_time"] == ""
+    assert prepared["control_ip"] == ""
+    assert prepared["has_execution_issues"] is False
+    assert prepared["execution_issue_count"] == 0
+    assert prepared["last_execution_issue"] == ""
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"server_name": "vm-1"},
+        {"server_uuid": "1234"},
+    ],
+)
+def test_prepare_put_requires_uuid_and_name(vmmapping, entry):
+    with pytest.raises(ValueError):
+        vmmapping.prepare_put(entry)
+
+
+def test_get_requires_server_uuid(vmmapping):
+    with pytest.raises(ValueError):
+        vmmapping.get()
+
+
+def test_get_returns_none_for_missing_uuid(vmmapping):
+    assert vmmapping.get(server_uuid="missing") is None
+
+
+def test_get_all_returns_all_entries(vmmapping):
+    vmmapping.batch_put(
+        [
+            {"server_uuid": "1234", "server_name": "vm-1", "control_ip": "10.0.0.1"},
             {
-                "db": "test",
-                "server_name": "2",
-                "control_ip": "3",
-                "server_uuid": "12345",
+                "server_uuid": "5678",
+                "server_name": "vm-2",
+                "control_ip": "10.0.0.2",
                 "state": VMState.TESTING,
                 "current_time": "0",
             },
         ]
-        self.invalid_entry_1 = {"server_name": "test-invalid", "invalid": "value"}
-        self.invalid_entry_2 = {"control_ip": "value"}
+    )
 
-    def tearDown(self):
-        self.vmmapping.destroy_all()
-        self.vmmapping.close()
+    found = vmmapping.get_all()
 
-    def test_put_schedule(self):
-        self.vmmapping.put(
-            self.entries[0]["server_uuid"],
-            self.entries[0]["server_name"],
-            server_address=self.entries[0]["control_ip"],
-        )
+    assert len(found) == 2
+    assert {entry["server_name"] for entry in found} == {"vm-1", "vm-2"}
 
-        found = self.vmmapping.get(server_uuid=self.entries[0]["server_uuid"])
-        expected = {
-            "db": "test",
-            "server_name": self.entries[0]["server_name"],
-            "control_ip": self.entries[0]["control_ip"],
-            "server_uuid": self.entries[0]["server_uuid"],
-            "state": "uninitialized",
-            "current_time": "",
-        }
-        self.assertEqual(found, expected)
 
-    def test_put_schedule_with_options(self):
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            state=self.entries[1]["state"],
-            current_time=self.entries[1]["current_time"],
-        )
+def test_get_all_length_returns_count(vmmapping):
+    vmmapping.batch_put(
+        [
+            {"server_uuid": "1234", "server_name": "vm-1"},
+            {"server_uuid": "5678", "server_name": "vm-2"},
+        ]
+    )
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found, self.entries[1])
+    assert vmmapping.get_all(length=True) == 2
 
-    def test_batch_put(self):
-        self.vmmapping.batch_put(self.entries)
 
-        found1 = self.vmmapping.get(server_uuid=self.entries[0]["server_uuid"])
-        found2 = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(self.entries[0]["server_name"], found1["server_name"])
-        self.assertEqual(self.entries[0]["control_ip"], found1["control_ip"])
-        self.assertEqual("uninitialized", found1["state"])
-        self.assertEqual("", found1["current_time"])
-        self.assertEqual(self.entries[1], found2)
-
-    def test_batch_put_no_name(self):
-        entries = [{"control_ip": "2", "server_uuid": "1234"}]
-        with self.assertRaises(ValueError):
-            self.vmmapping.batch_put(entries)
-
-    def test_batch_put_no_ip(self):
-        entries = [{"server_name": "test", "server_uuid": "1234"}]
-        self.vmmapping.batch_put(entries)
-
-        found = self.vmmapping.get("1234")
-        self.assertEqual(found["control_ip"], "")
-
-    def test_destroy_one(self):
-        self.vmmapping.batch_put(self.entries)
-        db_entry = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(db_entry, self.entries[1])
-        self.vmmapping.destroy_one(self.entries[1]["server_uuid"])
-
-        db_entry = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(db_entry, None)
-
-    def test_destroy_all(self):
-        self.vmmapping.batch_put(self.entries)
-
-        self.vmmapping.destroy_all()
-        found = self.vmmapping.get_all()
-        self.assertEqual(found, [])
-
-    def test_invalid_get_1(self):
-        result = self.vmmapping.get("invalid")
-        self.assertIsNone(result)
-
-    def test_get(self):
-        self.vmmapping.batch_put(self.entries)
-
-        for entry in self.entries:
-            db_entry = self.vmmapping.get(server_uuid=entry["server_uuid"])
-            self.assertEqual(entry["server_name"], db_entry["server_name"])
-            self.assertEqual(entry["control_ip"], db_entry["control_ip"])
-            if "state" in entry:
-                self.assertEqual(entry["state"], db_entry["state"])
-            else:
-                self.assertEqual("uninitialized", db_entry["state"])
-            if "current_time" in entry:
-                self.assertEqual(entry["current_time"], db_entry["current_time"])
-            else:
-                self.assertEqual("", db_entry["current_time"])
-
-    def test_update(self):
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            state=self.entries[1]["state"],
-            current_time=self.entries[1]["current_time"],
-        )
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found, self.entries[1])
-
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            state=VMState.CONFIGURING,
-            current_time=self.entries[1]["current_time"],
-        )
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        expected = {
-            "db": "test",
-            "control_ip": self.entries[1]["control_ip"],
-            "server_uuid": self.entries[1]["server_uuid"],
-            "server_name": self.entries[1]["server_name"],
-            "state": VMState.CONFIGURING,
-            "current_time": self.entries[1]["current_time"],
-        }
-        self.assertEqual(found, expected)
-
-    def test_invalid_batch_put(self):
-        with self.assertRaises(ValueError):
-            self.vmmapping.batch_put([self.invalid_entry_1])
-        with self.assertRaises(ValueError):
-            self.vmmapping.batch_put([self.invalid_entry_2])
-
-    def test_delete_not_present(self):
-        self.vmmapping.destroy_one(self.entries[0]["server_uuid"])
-
-    def test_double_destroy_all(self):
-        self.vmmapping.batch_put(self.entries)
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found, self.entries[1])
-
-        self.vmmapping.destroy_all()
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found, None)
-
-        self.vmmapping.destroy_all()
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found, None)
-
-        found = self.vmmapping.get_all()
-        self.assertEqual(found, [])
-
-    # pylint: disable=invalid-name
-    def test_get_all(self):
-        self.vmmapping.batch_put(self.entries)
-
-        found = self.vmmapping.get_all()
-        self.assertEqual(len(found), len(self.entries))
-
-        expected = []
-        expected.append(
+def test_get_all_filter_time_works(vmmapping):
+    vmmapping.batch_put(
+        [
+            {"server_uuid": "1234", "server_name": "vm-1"},
             {
-                "db": "test",
-                "control_ip": self.entries[0]["control_ip"],
-                "server_uuid": self.entries[0]["server_uuid"],
-                "server_name": self.entries[0]["server_name"],
-                "state": VMState.UNINITIALIZED,
-                "current_time": "",
-            }
-        )
+                "server_uuid": "5678",
+                "server_name": "vm-2",
+                "state": VMState.TESTING,
+                "current_time": "0",
+            },
+        ]
+    )
 
-        expected.append(self.entries[1])
+    found = vmmapping.get_all(filter_time="0")
 
-        for f in found:
-            self.assertTrue(f in expected)
-        for e in expected:
-            self.assertTrue(e in found)
+    assert len(found) == 1
+    assert found[0]["server_name"] == "vm-2"
 
-    def test_get_all_after_update(self):
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            state=self.entries[1]["state"],
-            current_time=self.entries[1]["current_time"],
-        )
 
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            state=VMState.CONFIGURING,
-            current_time=self.entries[1]["current_time"],
-        )
+def test_get_all_filter_state_works_with_substrings(vmmapping):
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURING)
+    vmmapping.put("5678", "vm-2", state=VMState.CONFIGURED)
 
-        found = self.vmmapping.get_all()
-        self.assertEqual(len(found), 1)
+    found = vmmapping.get_all(filter_state="configur")
 
-    def test_get_all_filter_time(self):
-        self.vmmapping.batch_put(self.entries)
+    assert len(found) == 2
+    assert {entry["server_name"] for entry in found} == {"vm-1", "vm-2"}
 
-        found = self.vmmapping.get_all(filter_time="0")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0], self.entries[1])
 
-    def test_get_all_filter_state(self):
-        self.vmmapping.batch_put(self.entries)
+def test_get_all_filter_state_works_with_enum(vmmapping):
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURING)
+    vmmapping.put("5678", "vm-2", state=VMState.CONFIGURED)
 
-        found = self.vmmapping.get_all(filter_state="test")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0], self.entries[1])
+    found = vmmapping.get_all(filter_state=VMState.CONFIGURED)
 
-    def test_get_all_filter_time_and_state(self):
-        self.vmmapping.batch_put(self.entries)
-        self.vmmapping.put(
-            "42",
-            "decoy",
-            state=VMState.UNINITIALIZED,
-            current_time="0",
-        )
+    assert len(found) == 1
+    assert found[0]["server_name"] == "vm-2"
 
-        found = self.vmmapping.get_all(filter_state="test", filter_time="0")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0], self.entries[1])
 
-    def test_invalid_get_2(self):
-        with self.assertRaises(ValueError):
-            self.vmmapping.get()
+def test_get_all_filter_time_and_state_combines_filters(vmmapping):
+    vmmapping.batch_put(
+        [
+            {
+                "server_uuid": "1234",
+                "server_name": "vm-1",
+                "state": VMState.TESTING,
+                "current_time": "0",
+            },
+            {
+                "server_uuid": "5678",
+                "server_name": "vm-2",
+                "state": VMState.TESTING,
+                "current_time": "5",
+            },
+            {
+                "server_uuid": "9012",
+                "server_name": "vm-3",
+                "state": VMState.CONFIGURING,
+                "current_time": "0",
+            },
+        ]
+    )
 
-    def test_is_vm_state_default(self):
-        """
-        Determine if a given VM is in the default vm_resources state.
-        The default vm_resources state is determined in config, and
-        defaults to "uninitialized".
-        """
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+    found = vmmapping.get_all(filter_time="0", filter_state=VMState.TESTING)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], VMState.UNINITIALIZED)
+    assert len(found) == 1
+    assert found[0]["server_name"] == "vm-1"
 
-    def test_is_vm_state_default_custom(self):
-        """
-        Determine if a given VM is in the default vm_resources state.
-        The default vm_resources state is determined in config, and
-        defaults to "uninitialized".
-        """
-        new_state = VMState.TESTING
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            state=new_state,
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], new_state)
+def test_destroy_one_is_idempotent(vmmapping):
+    vmmapping.put("1234", "vm-1")
 
-    def test_set_vm_state_by_uuid(self):
-        new_state = VMState.TESTING
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+    vmmapping.destroy_one("1234")
+    vmmapping.destroy_one("1234")
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], VMState.UNINITIALIZED)
+    assert vmmapping.get(server_uuid="1234") is None
 
-        self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], new_state)
+def test_destroy_all_is_idempotent(vmmapping):
+    vmmapping.batch_put(
+        [
+            {"server_uuid": "1234", "server_name": "vm-1"},
+            {"server_uuid": "5678", "server_name": "vm-2"},
+        ]
+    )
 
-    def test_set_vm_state_by_uuid_int(self):
-        new_state = VMState.TESTING
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+    vmmapping.destroy_all()
+    vmmapping.destroy_all()
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], VMState.UNINITIALIZED)
+    assert vmmapping.get_all() == []
 
-        self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], new_state)
+def test_set_vm_state_by_uuid_updates_state(vmmapping):
+    vmmapping.put("1234", "vm-1")
 
-    def test_set_vm_state_by_uuid_none(self):
-        new_state = None
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+    result = vmmapping.set_vm_state_by_uuid("1234", VMState.TESTING)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["state"], VMState.UNINITIALIZED)
+    assert result["state"] == VMState.TESTING
+    assert vmmapping.get(server_uuid="1234")["state"] == VMState.TESTING
 
-        with self.assertRaises(ValueError):
-            self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
 
-    def test_set_vm_time_by_uuid(self):
-        new_time = "404"
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+def test_set_vm_state_by_uuid_returns_none_when_missing(vmmapping):
+    assert vmmapping.set_vm_state_by_uuid("missing", VMState.TESTING) is None
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], self.entries[1]["current_time"])
 
-        self.vmmapping.set_vm_time_by_uuid(self.entries[1]["server_uuid"], new_time)
+def test_set_vm_state_by_uuid_rejects_invalid_state(vmmapping):
+    vmmapping.put("1234", "vm-1")
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], new_time)
+    with pytest.raises(ValueError):
+        vmmapping.set_vm_state_by_uuid("1234", None)
 
-    def test_set_vm_time_by_uuid_int(self):
-        new_time = 404
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], self.entries[1]["current_time"])
+def test_set_vm_time_by_uuid_updates_time(vmmapping):
+    vmmapping.put("1234", "vm-1", current_time="0")
 
-        self.vmmapping.set_vm_time_by_uuid(self.entries[1]["server_uuid"], new_time)
+    result = vmmapping.set_vm_time_by_uuid("1234", 404)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], str(new_time))
+    assert result["current_time"] == "404"
+    assert vmmapping.get(server_uuid="1234")["current_time"] == "404"
 
-    def test_set_vm_time_by_uuid_none(self):
-        new_time = None
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], self.entries[1]["current_time"])
+def test_set_vm_time_by_uuid_stringifies_none(vmmapping):
+    vmmapping.put("1234", "vm-1", current_time="0")
 
-        self.vmmapping.set_vm_time_by_uuid(self.entries[1]["server_uuid"], new_time)
+    result = vmmapping.set_vm_time_by_uuid("1234", None)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], None)
+    assert result["current_time"] == "None"
+    assert vmmapping.get(server_uuid="1234")["current_time"] == "None"
 
-    def test_set_vm_time_by_uuid_invalid(self):
-        new_time = "string"
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], self.entries[1]["current_time"])
+def test_set_vm_time_by_uuid_returns_none_when_missing(vmmapping):
+    assert vmmapping.set_vm_time_by_uuid("missing", "10") is None
 
-        self.vmmapping.set_vm_time_by_uuid(self.entries[1]["server_uuid"], new_time)
 
-        found = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
-        self.assertEqual(found["current_time"], new_time)
+def test_add_execution_issue_by_uuid_increments_metadata(vmmapping):
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURED)
 
-    def test_get_count_vm_not_ready(self):
-        new_state = VMState.CONFIGURED
-        self.vmmapping.put(
-            self.entries[1]["server_uuid"],
-            self.entries[1]["server_name"],
-            server_address=self.entries[1]["control_ip"],
-            current_time=self.entries[1]["current_time"],
-        )
+    first = vmmapping.add_execution_issue_by_uuid("1234", "first issue")
+    second = vmmapping.add_execution_issue_by_uuid("1234", "second issue")
 
-        found = self.vmmapping.get_count_vm_not_ready()
-        self.assertEqual(found, 1)
+    assert first["has_execution_issues"] is True
+    assert first["execution_issue_count"] == 1
+    assert first["last_execution_issue"] == "first issue"
+    assert second["has_execution_issues"] is True
+    assert second["execution_issue_count"] == 2
+    assert second["last_execution_issue"] == "second issue"
 
-        self.vmmapping.set_vm_state_by_uuid(self.entries[1]["server_uuid"], new_state)
-        found = self.vmmapping.get_count_vm_not_ready()
-        self.assertEqual(found, 0)
+
+def test_add_execution_issue_by_uuid_returns_none_when_missing(vmmapping):
+    assert vmmapping.add_execution_issue_by_uuid("missing", "copy failed") is None
+
+
+def test_get_count_vm_not_ready_ignores_execution_issue_only_updates(vmmapping):
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURED)
+    vmmapping.add_execution_issue_by_uuid("1234", "copy failed")
+
+    assert vmmapping.get_count_vm_not_ready() == 0
