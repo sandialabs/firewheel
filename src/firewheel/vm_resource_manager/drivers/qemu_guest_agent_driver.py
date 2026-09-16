@@ -560,7 +560,9 @@ class QemuGuestAgentDriver(AbstractDriver):
             if "stdout" not in cache:
                 cache["stdout"] = ""
             cache["stdout"] += str(
-                base64.b64decode(output["out-data"]), sys.getdefaultencoding()
+                base64.b64decode(output["out-data"]),
+                sys.getdefaultencoding(),
+                errors="backslashreplace",
             )
 
         if "out-truncated" in output:
@@ -570,7 +572,9 @@ class QemuGuestAgentDriver(AbstractDriver):
             if "stderr" not in cache:
                 cache["stderr"] = ""
             cache["stderr"] += str(
-                base64.b64decode(output["err-data"]), sys.getdefaultencoding()
+                base64.b64decode(output["err-data"]),
+                sys.getdefaultencoding(),
+                errors="backslashreplace",
             )
 
         if "err-truncated" in output:

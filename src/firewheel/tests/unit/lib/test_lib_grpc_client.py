@@ -204,10 +204,42 @@ def test_set_vm_mapping() -> None:
                 "control_ip": "1.2.3.4",
                 "state": "READY",
                 "current_time": "10",
+                "has_execution_issues": True,
+                "execution_issue_count": 2,
+                "last_execution_issue": "warning text",
             }
         )
 
     assert result["server_uuid"] == "uuid"
+    mapping = client.stub.SetVMMapping.call_args.args[0]
+    assert mapping.has_execution_issues is True
+    assert mapping.execution_issue_count == 2
+    assert mapping.last_execution_issue == "warning text"
+
+
+def test_set_vm_mapping_uses_execution_issue_defaults_when_fields_missing() -> None:
+    """Verify VM mapping defaults execution issue metadata when omitted."""
+    client = _build_client_without_init()
+    client.stub.SetVMMapping.return_value = object()
+
+    with patch(
+        "firewheel.lib.grpc.firewheel_grpc_client.msg_to_dict",
+        return_value={"server_uuid": "uuid"},
+    ):
+        client.set_vm_mapping(
+            {
+                "server_uuid": "uuid",
+                "server_name": "vm",
+                "control_ip": "1.2.3.4",
+                "state": "READY",
+                "current_time": "10",
+            }
+        )
+
+    mapping = client.stub.SetVMMapping.call_args.args[0]
+    assert mapping.has_execution_issues is False
+    assert mapping.execution_issue_count == 0
+    assert mapping.last_execution_issue == ""
 
 
 def test_get_vm_mapping_by_uuid_success() -> None:

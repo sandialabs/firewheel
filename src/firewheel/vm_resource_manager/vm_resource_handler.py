@@ -224,6 +224,9 @@ class VMResourceHandler:
         except Exception as exp:  # noqa: BLE001
             self.log.info("VmResourceHandler: Stopping due to an exception.")
             self.log.exception(exp)
+            self._best_effort_set_failed_state(
+                "VMResourceHandler stopped due to an unexpected exception"
+            )
         finally:
             self.log.info("VmResourceHandler: Exiting.")
 
@@ -280,6 +283,10 @@ class VMResourceHandler:
                             if not schedule_entry.ignore_failure:
                                 self.set_state(VMState.FAILED)
                                 sys.exit(1)
+
+                            self._record_execution_issue(
+                                f"Unable to load files into VM for {schedule_entry.executable}"
+                            )
 
                     if not schedule_entry.executable:
                         # No executable means that we're done
@@ -454,6 +461,10 @@ class VMResourceHandler:
             self._run_vm_resource_host(schedule_entry)
         except (RuntimeError, ValueError) as exp:  # noqa: BLE001
             self.log.exception(exp)
+            executable = getattr(schedule_entry, "executable", "unknown vm_resource")
+            self._best_effort_set_failed_state(
+                f"host vm_resource {executable} raised an unexpected exception"
+            )
 
     def _run_vm_resource_host(self, schedule_entry):
         """
@@ -603,6 +614,38 @@ class VMResourceHandler:
 
             break
 
+    def _record_execution_issue(self, issue_message):
+        """
+        Record a non-fatal vm_resource execution issue for the current VM.
+
+        Args:
+            issue_message (str): A short description of the execution issue.
+        """
+        try:
+            utils.add_execution_issue(
+                self.config["vm_uuid"],
+                issue_message,
+                mapping=self.vm_mapping,
+                log=self.log,
+            )
+        except Exception as exp:  # noqa: BLE001
+            self.log.error("Unable to record vm_resource execution issue: %s", issue_message)
+            self.log.exception(exp)
+
+    def _best_effort_set_failed_state(self, reason):
+        """
+        Attempt to record a fatal VM resource handler failure.
+
+        Args:
+            reason (str): Short description of why the VM is being marked failed.
+        """
+        self.log.error("Marking VM as failed: %s", reason)
+        try:
+            self.set_state(VMState.FAILED)
+        except Exception as exp:  # noqa: BLE001
+            self.log.error("Unable to set failed VM state after fatal error")
+            self.log.exception(exp)
+
     def run_vm_resource(self, schedule_entry, queue=None):
         """
         Wrapper around the logic of running an vm_resource.
@@ -622,6 +665,10 @@ class VMResourceHandler:
             self._run_vm_resource(schedule_entry, queue)
         except Exception as exp:  # noqa: BLE001
             self.log.exception(exp)
+            executable = getattr(schedule_entry, "executable", "unknown vm_resource")
+            self._best_effort_set_failed_state(
+                f"{executable} raised an unexpected exception"
+            )
 
     def _run_vm_resource(self, schedule_entry, queue=None):
         """
@@ -745,6 +792,11 @@ class VMResourceHandler:
                 )
                 time.sleep(self.load_balance_factor * 5)
                 continue
+
+            if exitcode != 0:
+                self._record_execution_issue(
+                    f"{schedule_entry.executable} exited with code {exitcode}"
+                )
 
             # Handle stdout and stderr
             self.print_output(schedule_entry, pid)
@@ -984,11 +1036,10 @@ class VMResourceHandler:
             self._print_stream(output, stderr, "stderr")
 
     def _print_stream(self, output, stream, stream_name):
-        stream_text = stream.encode(sys.getdefaultencoding())
         output["fd"] = stream_name
-        output["output"] = rf"{stream_text}"
+        output["output"] = stream
         self.log.info(output["output"])
-        self.log_json(stream_text)
+        self.log_json(stream.encode(sys.getdefaultencoding(), errors="backslashreplace"))
 
     def preload_files(self):
         """

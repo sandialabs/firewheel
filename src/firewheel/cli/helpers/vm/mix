@@ -40,6 +40,51 @@ from firewheel.cli.utils import RichDefaultTable
 from firewheel.lib.minimega.api import minimegaAPI
 
 
+def _state_text(state):
+    return state.value if hasattr(state, "value") else str(state)
+
+
+def _execution_issue_label(vm_resource_status):
+    if vm_resource_status and vm_resource_status.get("has_execution_issues", False):
+        return " (execution issues)"
+    return ""
+
+
+def _display_vmr_state(vm_resource_status):
+    vm_resource_state = "status missing"
+    if vm_resource_status:
+        vm_resource_state = _state_text(vm_resource_status["state"])
+    return f"{vm_resource_state}{_execution_issue_label(vm_resource_status)}"
+
+
+def _style_power_state(power_state):
+    if "run" in power_state.lower():
+        return f"[green]{power_state}[/green]"
+    if "error" in power_state.lower():
+        return f"[red]{power_state}[/red]"
+    return power_state
+
+
+def _style_vmr_state(vmr_state):
+    lowered = vmr_state.lower()
+    if (
+        "failed" in lowered
+        or "error" in lowered
+        or "unknown" in lowered
+        or "missing" in lowered
+    ):
+        return f"[red]{vmr_state}[/red]"
+    if "execution issues" in lowered:
+        return f"[yellow]{vmr_state}[/yellow]"
+    if "testing" in lowered:
+        return f"[cyan]{vmr_state}[/cyan]"
+    if "configuring" in lowered or "uninitialized" in lowered:
+        return f"[yellow]{vmr_state}[/yellow]"
+    if "configured" in lowered:
+        return f"[green]{vmr_state}[/green]"
+    return vmr_state
+
+
 def vm_mix():
     """
     Create a table showing the mix of VMs in the current experiment.
@@ -57,11 +102,12 @@ def vm_mix():
 
     mm_state_dict = {}
     if active_exp_present:
-        vm_resource_vms = vm_resource_api.get_vm_states()
+        vm_resource_vms = vm_resource_api.get_vm_statuses()
 
         for vm_name, vm_dict in mm_vms.items():
             mm_state = vm_dict["state"]
-            vm_resource_state = vm_resource_vms.get(vm_name, "None")
+            vm_resource_status = vm_resource_vms.get(vm_name)
+            vm_resource_state = _display_vmr_state(vm_resource_status)
 
             if mm_state not in mm_state_dict:
                 mm_state_dict[mm_state] = {}
@@ -74,26 +120,12 @@ def vm_mix():
     rows = []
     for mm_state in sorted(mm_state_dict.keys()):
         for vm_resource_state in sorted(mm_state_dict[mm_state].keys()):
-            if vm_resource_state == "None":
-                continue
             os_set = set(mm_state_dict[mm_state][vm_resource_state])
             for op_sys in sorted(os_set):
                 count = mm_state_dict[mm_state][vm_resource_state].count(op_sys)
                 total_scheduled += count
-                mm_state_str = mm_state
-                vm_resource_state_str = vm_resource_state
-                if "run" in mm_state.lower():
-                    mm_state_str = f"[green]{mm_state}"
-                if "error" in mm_state.lower():
-                    mm_state_str = f"[red]{mm_state}"
-                if "configuring" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "configured" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[green]{vm_resource_state}"
-                if "uninitialized" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[yellow]{vm_resource_state}"
-                if "error" in vm_resource_state.lower():
-                    vm_resource_state_str = f"[red]{vm_resource_state}"
+                mm_state_str = _style_power_state(mm_state)
+                vm_resource_state_str = _style_vmr_state(vm_resource_state)
                 rows.append([op_sys, mm_state_str, vm_resource_state_str, str(count)])
 
     table = build_table(rows, total_scheduled)

@@ -94,6 +94,69 @@ def _parse_vnc_port(entity):
     return ""
 
 
+def _state_text(state):
+    return state.value if hasattr(state, "value") else str(state)
+
+
+def _execution_issue_suffix(vm_resource_status, show_count=True):
+    if not vm_resource_status or not vm_resource_status.get(
+        "has_execution_issues", False
+    ):
+        return ""
+
+    issue_count = int(vm_resource_status.get("execution_issue_count", 0))
+    if show_count and issue_count > 1:
+        return f" (execution issues: {issue_count})"
+    return " (execution issues)"
+
+
+def _style_power_state(power_state):
+    if "run" in power_state.lower():
+        return f"[green]{power_state}[/green]"
+    if "error" in power_state.lower():
+        return f"[red]{power_state}[/red]"
+    return power_state
+
+
+def _style_vmr_state(vmr_state):
+    lowered = vmr_state.lower()
+    if (
+        "failed" in lowered
+        or "error" in lowered
+        or "unknown" in lowered
+        or "missing" in lowered
+    ):
+        return f"[red]{vmr_state}[/red]"
+    if "testing" in lowered:
+        return f"[cyan]{vmr_state}[/cyan]"
+    if "configuring" in lowered or "uninitialized" in lowered:
+        return f"[yellow]{vmr_state}[/yellow]"
+    if "configured" in lowered:
+        return f"[green]{vmr_state}[/green]"
+    return vmr_state
+
+
+def _plain_state_string(power_state, vm_resource_status):
+    vm_resource_state = "status missing"
+    if vm_resource_status:
+        vm_resource_state = _state_text(vm_resource_status["state"])
+
+    return f"{power_state}/{vm_resource_state}{_execution_issue_suffix(vm_resource_status)}"
+
+
+def _formatted_state_string(power_state, vm_resource_status):
+    styled_power_state = _style_power_state(power_state)
+    vm_resource_state = "status missing"
+    if vm_resource_status:
+        vm_resource_state = _state_text(vm_resource_status["state"])
+    styled_vmr_state = _style_vmr_state(vm_resource_state)
+    execution_issue_suffix = _execution_issue_suffix(vm_resource_status)
+    if execution_issue_suffix:
+        execution_issue_suffix = f"[yellow]{execution_issue_suffix}[/yellow]"
+
+    return f"{styled_power_state}/{styled_vmr_state}{execution_issue_suffix}"
+
+
 def vm_list(args):
     """
     List VMs, including the given fields in output. Possible fields are:
@@ -132,6 +195,7 @@ def vm_list(args):
     # Get the basic info.
     mm_api = minimegaAPI()
     basic_dict = mm_api.mm_vms()
+    vm_resource_statuses = vm_resource_api.get_vm_statuses()
 
     # Build a list of basic fields to print (their list index value).
     # Also build the table header while we do this.
@@ -199,33 +263,20 @@ def vm_list(args):
             table_header.append("State")
 
             if filter_val:
-                filtered_vm_resource_dict = vm_resource_api.get_vm_states(filter_val)
-                # By filtering on vm_resource state, we need to remove any vm
-                # in filtered_dict that is not returned in filtered_vm_resource_dict
                 filtered_dict = {
-                    k: v
-                    for k, v in filtered_dict.items()
-                    if k in filtered_vm_resource_dict or filter_val.lower() in v["state"].lower()
+                    vm_name: vm_dict
+                    for vm_name, vm_dict in filtered_dict.items()
+                    if filter_val.lower()
+                    in _plain_state_string(
+                        vm_dict["state"], vm_resource_statuses.get(vm_name)
+                    ).lower()
                 }
 
             # Format for printing
-            vm_resource_dict = vm_resource_api.get_vm_states()
-            for vm in filtered_dict:
-                if vm in vm_resource_dict:
-                    state_string = (
-                        f"{filtered_dict[vm]['state']}/{vm_resource_dict[vm]}"
-                    )
-                else:
-                    state_string = f"{filtered_dict[vm]['state']}/ERROR"
-                if "configuring" in state_string.lower():
-                    state_string = f"[yellow]{state_string}"
-                if "configured" in state_string.lower():
-                    state_string = f"[green]{state_string}"
-                if "uninitialized" in state_string.lower():
-                    state_string = f"[yellow]{state_string}"
-                if "error" in state_string.lower():
-                    state_string = f"[red]{state_string}"
-                filtered_dict[vm]["state"] = state_string
+            for vm_name, vm_dict in filtered_dict.items():
+                vm_dict["state"] = _formatted_state_string(
+                    vm_dict["state"], vm_resource_statuses.get(vm_name)
+                )
         if field == "hostname":
             basic_fields.append("hostname")
             table_header.append("Hostname")
@@ -254,7 +305,7 @@ def vm_list(args):
         current_row = []
         current_row.append(vm)
         for field in basic_fields:
-            current_row.append(filtered_dict[vm][field])
+            current_row.append(str(filtered_dict[vm][field]))
         rows.append(current_row)
 
     # Print the result in either CSV format or in a table.

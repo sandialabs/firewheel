@@ -42,13 +42,13 @@ config edit
 
 usage: firewheel config edit [-e EDITOR]
 
-Edit the FIREWHEEL configuration with a text editor. The user must set either the VISUAL or EDITOR
-environment variable or use the provided flag to override these environment variables.
+Edit the FIREWHEEL configuration with a text editor. The user must set either
+the VISUAL or EDITOR environment variable or use the provided flag to override
+these environment variables.
 
 options:
 
-  -e EDITOR, --editor EDITOR
-                        Use the specified text editor.
+  -e, --editor EDITOR  Use the specified text editor.
 
 
 
@@ -105,17 +105,17 @@ usage: firewheel config set (-f FILE | -j JSON | -s SETTING [VALUE ...])
 Set a FIREWHEEL configuration.
 
 options:
-  -f FILE, --file FILE  Add config from a file.
+  -f, --file FILE       Add config from a file.
 
 
-  -j JSON, --json JSON  Pass in a JSON string that can set/replace a subset of the configuration.
+  -j, --json JSON       Pass in a JSON string that can set/replace a subset of the configuration.
                         This should include the top-level config key as well as any sub-keys.
                         Any keys or sub-keys not present will not be impacted.
                         For example, to change the value for the config key ``logging.level``, you
                         can use the command:
                         ``firewheel config set -j '{"logging":{"level":"INFO"}}'``.
 
-  -s SETTING [VALUE ...], --single SETTING [VALUE ...]
+  -s, --single SETTING [VALUE ...]
                         Set (or create) a particular configuration value. Nested settings
                         can be used with a period separating them. For example, to change
                         the value for the config key ``{'logging':{'level':'DEBUG'}}``, you
@@ -260,8 +260,8 @@ init static
 
 Do not check if any services are running any only check if they exist.
 
-        Args:
-            _args (str): This is unused in this method.
+Args:
+    _args (str): This is unused in this method.
 
 
 
@@ -314,23 +314,23 @@ run
 
 Runs the scripts found in the specified Helper file.
 
-        This command is functionally equivalent to running the same
-        Helper without the keyword `run` in front of it. It is largely
-        useful when using interactive mode.
+This command is functionally equivalent to running the same
+Helper without the keyword `run` in front of it. It is largely
+useful when using interactive mode.
 
-        Args:
-            args (str): Name of the Helper to execute.
+Args:
+    args (str): Name of the Helper to execute.
 
-        Returns:
-            int: The result of :py:meth:`firewheel.cli.firewheel_cli.FirewheelCLI.handle_run`
-            which is the number of executable sections in the Helper that encountered
-            errors. 0 on success. Negative (e.g. -1) on other errors.
+Returns:
+    int: The result of :py:meth:`firewheel.cli.firewheel_cli.FirewheelCLI.handle_run`
+    which is the number of executable sections in the Helper that encountered
+    errors. 0 on success. Negative (e.g. -1) on other errors.
 
-        Examples:
-            .. code-block:: bash
+Examples:
+    .. code-block:: bash
 
-                $ firewheel run start_time
-                Experiment start time: 03-25-2020 16:19:38 UTC
+        $ firewheel run start_time
+        Experiment start time: 03-25-2020 16:19:38 UTC
 
 
 

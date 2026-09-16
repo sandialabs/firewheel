@@ -247,6 +247,9 @@ class FirewheelGrpcClient:
             control_ip=vmm["control_ip"],
             state=vmm["state"],
             current_time=vmm["current_time"],
+            has_execution_issues=vmm.get("has_execution_issues", False),
+            execution_issue_count=vmm.get("execution_issue_count", 0),
+            last_execution_issue=vmm.get("last_execution_issue", ""),
             db=self.db,
         )
         resp = self.stub.SetVMMapping(mapping)

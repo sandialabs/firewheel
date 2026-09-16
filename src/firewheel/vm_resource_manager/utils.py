@@ -76,6 +76,38 @@ def set_vm_time(vm_uuid, new_time, mapping=None, log=None):
         log.debug("Set VM %s to time %s", vm_uuid, new_time)
 
 
+def add_execution_issue(vm_uuid, issue_message, mapping=None, log=None):
+    """
+    Record a non-fatal vm_resource execution issue for a VM.
+
+    Args:
+        vm_uuid (str): The UUID of the VM to update.
+        issue_message (str): A short execution issue description.
+        mapping (firewheel.vm_resource_manager.vm_mapping.VMMapping): VMMapping instance
+            to use as a database. Present for unit testing, safely ignored.
+        log (logging.Logger): An optional logger that can to output results.
+
+    Raises:
+        RuntimeError: If the VMMapping database could not be created.
+    """
+    close = False
+    if mapping is None:
+        close = True
+        mapping = VMMapping()
+
+    current_record = mapping.add_execution_issue_by_uuid(vm_uuid, issue_message)
+    if current_record is None:
+        raise RuntimeError(
+            "Unexpected lack of database entry while updating execution issue metadata!"
+        )
+
+    if close:
+        mapping.close()
+
+    if log:
+        log.debug("Recorded vm_resource execution issue on VM %s: %s", vm_uuid, issue_message)
+
+
 def get_vm_count_not_ready(mapping=None, log=None):
     """
     Returns the number of VMs not in the "configured" or "N/A" states. These
