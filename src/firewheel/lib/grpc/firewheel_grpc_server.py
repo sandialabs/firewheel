@@ -3,9 +3,9 @@ import copy
 import json
 import time
 import contextlib
-from typing import Iterable
 from datetime import datetime, timezone
 from concurrent import futures
+from collections.abc import Iterable
 from importlib.metadata import version
 
 import grpc

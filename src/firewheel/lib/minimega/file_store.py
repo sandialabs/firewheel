@@ -7,10 +7,10 @@ import tarfile
 from io import BufferedReader
 from lzma import LZMAError, LZMADecompressor
 from types import TracebackType
-from typing import Generator
 from logging import Logger
 from datetime import datetime, timezone
 from contextlib import contextmanager
+from collections.abc import Generator
 
 from minimega import Error as MinimegaError  # type: ignore[import-untyped]
 

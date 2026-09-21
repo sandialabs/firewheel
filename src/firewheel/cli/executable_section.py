@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 import importlib
 from uuid import UUID
@@ -86,7 +84,7 @@ class ExecutableSection(Section):
 
     def _load_executor(
         self, name: str
-    ) -> type[Helpers] | type[LocalPython] | type[Python] | type[Shell]:
+    ) -> type["Helpers"] | type["LocalPython"] | type["Python"] | type["Shell"]:
         """
         Initialize and return the given executor.
 

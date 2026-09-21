@@ -1,5 +1,5 @@
-from typing import Set, Iterator
 from pathlib import Path
+from collections.abc import Iterator
 
 from firewheel.lib.log import Log
 
@@ -19,7 +19,7 @@ class ModelComponentPathIterator:
             repositories (list_iterator): The list of repositories.
         """
         self.log = Log(name="ModelComponentPathIterator").log
-        self._mc_paths: Set[Path] = set()
+        self._mc_paths: set[Path] = set()
         for repo in repositories:
             repo_mc_paths = self.walk_repository_for_model_component_paths(repo["path"])
             self._mc_paths.update(repo_mc_paths)

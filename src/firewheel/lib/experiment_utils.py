@@ -1,7 +1,5 @@
 """Utilities for FIREWHEEL save/load archive layout handling."""
 
-from __future__ import annotations
-
 import sys
 import json
 import math
