@@ -274,7 +274,6 @@ class ADBDriver(AbstractDriver):
             raise RuntimeError("Failed to acquire date")
         final_line = output.strip().splitlines()[-1]
         return float(int(final_line))
-         
 
     def set_time(self):
         """
