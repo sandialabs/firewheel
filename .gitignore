@@ -221,6 +221,50 @@ tags
 
 # End of https://www.toptal.com/developers/gitignore/api/python,vim,macos
 
+# ==========================================
+# AI Coding Assistants & Editors
+# ==========================================
+
+# Codex & OpenCode
+.codex/
+.opencode/
+codex_config.*
+opencode_config.*
+
+# Cursor Editor
+.cursor/
+.cursorrules
+cursor_mcp.json
+
+# Windsurf Editor
+.windsurf/
+.windsurfrules
+
+# VS Code & GitHub Copilot
+.github/copilot-instructions.md
+
+# Aider AI
+.aider*
+
+# Claude Code CLI
+.claude/
+.claudecode/
+
+# Cline / Roo Cline (VS Code Extensions)
+.cline/
+.roocline/
+cline_tasks/
+
+# Open Interpreter
+.interpreter/
+
+# Codex & OpenCode
+.codex/
+.opencode/
+.opencode-workspace
+*.opencode-workspace
+codex_config.*
+opencode_config.*
 
 # Start FIREWHEEL specific ignore
 
