@@ -16,7 +16,7 @@
     checksum_algorithm: "{{ item.checksum_algorithm | default(item.checksum_algo | default('sha1')) }}"
     get_checksum: true
   register: required_files_check
-  loop: "{{ required_files }}"
+  loop: "{{ required_files | default([]) }}"
 
 - name: Verifying checksums for required files (if needed)
   ansible.builtin.set_fact:
@@ -25,7 +25,7 @@
     - item.stat.exists
     - item.item.checksum is defined
     - item.stat.checksum != item.item.checksum
-  loop: "{{ required_files_check.results }}"
+  loop: "{{ required_files_check.results | default([]) }}"
   loop_control:
     index_var: index
 
@@ -34,7 +34,7 @@
     all_files_valid: false
   when:
     - not required_files_check.results[index].stat.exists
-  loop: "{{ required_files }}"
+  loop: "{{ required_files | default([]) }}"
   loop_control:
     index_var: index
 
@@ -42,7 +42,7 @@
   ansible.builtin.file:
     path: "{{ install_flag }}"
     state: touch
-    mode: "660"
+    mode: "0660"
   when: all_files_valid
 
 - name: Exit successfully if there are no issues with required files
