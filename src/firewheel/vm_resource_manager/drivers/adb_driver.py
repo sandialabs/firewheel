@@ -270,8 +270,11 @@ class ADBDriver(AbstractDriver):
         Returns:
             float: Seconds since epoch.
         """
-        output = self._shell("date +%s").strip()
-        return float(int(output.splitlines()[-1]))
+        if not (output := self._shell("date +%s")):
+            raise RuntimeError("Failed to acquire date")
+        final_line = output.strip().splitlines()[-1]
+        return float(int(final_line))
+         
 
     def set_time(self):
         """
@@ -650,8 +653,8 @@ class ADBDriver(AbstractDriver):
         call_arguments = (
             f"#!{self.ANDROID_SHELL}\n"
             'CURRENT_DIR="$(dirname "$0")"\n'
-            f"cd {schedule_entry.working_dir}\n"
-            f"{schedule_entry.exec_path!s}"
+            f"cd {self._quote_path(schedule_entry.working_dir)}\n"
+            f"{self._quote_path(schedule_entry.exec_path)!s}"
         )
 
         if schedule_entry.arguments:
