@@ -15,12 +15,12 @@ def mock_driver():
     mock_config = MagicMock(name="config")
     mock_log = Mock(name="log")
     # Mock the driver to omit QMP/sync interactions
-    # Note: In Python 3.10, we can stack these context managers
-    #       https://docs.python.org/3/whatsnew/3.10.html#parenthesized-context-managers
-    with patch(f"{QGA_DRIVER_MODULE}.QEMUMonitorProtocol", spec=True):
-        with patch.object(QemuGuestAgentDriver, "sync"):
-            with patch("time.sleep"):
-                yield QemuGuestAgentDriver(mock_config, mock_log)
+    with (
+        patch(f"{QGA_DRIVER_MODULE}.QEMUMonitorProtocol", spec=True),
+        patch.object(QemuGuestAgentDriver, "sync"),
+        patch("time.sleep"),
+    ):
+        yield QemuGuestAgentDriver(mock_config, mock_log)
 
 
 class TestQemuGuestAgentDriver:

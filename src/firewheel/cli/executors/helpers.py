@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 from decimal import Decimal
 
 from firewheel.cli import utils
@@ -19,9 +17,9 @@ class Helpers(AbstractExecutor):
 
     def __init__(
         self,
-        host_list_path: List[str],
-        content: List[str],
-        helper_dict: Optional[Dict[str, Helper]] = None,
+        host_list_path: list[str],
+        content: list[str],
+        helper_dict: dict[str, Helper] | None = None,
     ) -> None:
         """
         Initialize.
@@ -57,8 +55,8 @@ class Helpers(AbstractExecutor):
     def execute(
         self,
         _cache_file: str,
-        session: Dict[str, Decimal],
-        arguments: Optional[List[str]],
+        session: dict[str, Decimal],
+        arguments: list[str] | None,
     ) -> int:
         """
         Execute Helpers specified in the content list.

@@ -154,7 +154,7 @@ Tests for a module should ideally cover all code in that module, i.e., statement
 
 To measure the test coverage, install FIREWHEEL with development dependencies and then run::
 
-  tox -e py39
+  tox -e py310
 
 This will generate a `coverage <https://coverage.readthedocs.io/en/latest/>`_ report and also exit if the tests fail.
 

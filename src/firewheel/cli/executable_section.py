@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import re
 import importlib
 from uuid import UUID
-from typing import TYPE_CHECKING, Dict, List, Type, Union, Optional
+from typing import TYPE_CHECKING
 from decimal import Decimal
 
 from firewheel.lib.log import Log
@@ -37,8 +35,8 @@ class ExecutableSection(Section):
 
     def __init__(
         self,
-        content: Union[int, List[str]],
-        arguments: Optional[Union[List[str], str, List[Union[str, List[str]]]]],
+        content: int | list[str],
+        arguments: list[str] | str | list[str | list[str]] | None,
     ) -> None:
         """
         Constructor, invokes Section (superclass) constructor.
@@ -86,7 +84,7 @@ class ExecutableSection(Section):
 
     def _load_executor(
         self, name: str
-    ) -> Union[Type[Helpers], Type[LocalPython], Type[Python], Type[Shell]]:
+    ) -> type[Helpers] | type[LocalPython] | type[Python] | type[Shell]:
         """
         Initialize and return the given executor.
 
@@ -127,8 +125,8 @@ class ExecutableSection(Section):
     def execute(
         self,
         cache_file: str,
-        session: Dict[str, Union[Decimal, int, UUID]],
-        arguments: Optional[List[str]],
+        session: dict[str, Decimal | int | UUID],
+        arguments: list[str] | None,
     ) -> int:
         """
         Try to create the correct Executor and have it run our content.
