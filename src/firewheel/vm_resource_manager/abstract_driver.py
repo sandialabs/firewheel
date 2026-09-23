@@ -53,20 +53,13 @@ class AbstractDriver(ABC):
                 The output cache is cleared on system reboot.
 
         Args:
-            config (dict): vm config which is used to find the
-                Virtio serial port socket that the guest agent uses
-                to communicate to the VM with.
-            log (logging.Logger): A logger which can be used by this class.
-
-        Raises:
-            FileNotFoundError: If no path was given to the QGA serial device.
+            config (dict): Driver-specific VM Resource Handler configuration.
+            log (logging.Logger): Logger used by this driver.
         """
         self.log = log
         self.config = config
-        if not config.get("path"):
-            raise FileNotFoundError("Was not given path to QGA serial device")
 
-        self.lock = threading.Condition()
+        self.lock = threading.Condition(threading.RLock())
 
         sync = self.connect()
         while sync is None:
@@ -142,7 +135,7 @@ class AbstractDriver(ABC):
     @abstractmethod
     def get_engine():
         """
-        Get the virtualization engine that this driver supports.
+        Get the VM Resource Handler communication engine that this driver supports.
 
         Raises:
             NotImplementedError: This should be implemented by a subclass.
@@ -152,7 +145,7 @@ class AbstractDriver(ABC):
     @abstractmethod
     def get_time(self):
         """
-        Get the time inside the VM in nanoseconds since the epoch.
+        Get the time inside the VM in seconds since the epoch.
 
         Raises:
             NotImplementedError: This should be implemented by a subclass.
@@ -531,14 +524,12 @@ class AbstractDriver(ABC):
             timeout (int): Timeout in seconds to wait for a response from the VM.
 
         Returns:
-            dict: Empty dictionary on success, throws an exception on timeout.
-
-        Raises:
-            Exception: Happens on timeout.
+            bool: True if connected, otherwise False.
         """
 
-        # Must lock here since ping is used in startup syncing which
-        # does not allow it to lock since the lock isn't created at that point
+        # Keep the lock here for drivers whose ping() implementation expects the caller
+        # to serialize access. The underlying lock is reentrant, so drivers that also
+        # lock internally, such as the ADB driver, will not deadlock.
         with self.lock:
             result = self.ping(timeout)
         return result

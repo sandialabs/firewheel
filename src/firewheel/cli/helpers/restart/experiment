@@ -8,32 +8,29 @@ DONE
 
 RUN Python ON compute
 #!/usr/bin/env python
-import os
+from pathlib import Path
 
 from firewheel.config import config
 
-vm_resource_logs = os.path.join(
-    config["logging"]["root_dir"], config["logging"]["vmr_log_dir"]
-)
+vm_resource_logs = Path(config["logging"]["root_dir"]) / config["logging"]["vmr_log_dir"]
 
 # Create the vm_resource_log dir if it doesn't exist.
-os.makedirs(vm_resource_logs, exist_ok=True)
+vm_resource_logs.mkdir(parents=True, exist_ok=True)
 
 # Identify logs to delete.
-to_delete = []
-for log in os.scandir(vm_resource_logs):
-    if log.is_file:
-        to_delete.append(log.path)
+# Delete log files.
+for log in vm_resource_logs.iterdir():
+    if not log.is_file():
+        continue
 
-# Delete logs
-for log in to_delete:
     try:
-        os.remove(log)
+        log.unlink()
     except FileNotFoundError:
         pass
     except PermissionError as exp:
         print(f"Cannot remove {log}.")
         raise exp
+
 DONE
 
 RUN Helpers ON compute
