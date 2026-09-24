@@ -2,15 +2,22 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
-
 Pull a file or directory from a VM using the VM resource handler. This does not require that
-the VM is running a SSH server. Also, unlike :ref:`helper_scp`, there is no need
+the VM is running an SSH server. Also, unlike :ref:`helper_scp`, there is no need
 to use the :ref:`control_network_mc` model component since the VM resource handler has access to
 the VM through a serial port.
 
 All files get placed at the location specified on the command line.
 
-**Usage:**  ``firewheel pull file [-h] <filename> <vm hostname> <destination>``
+.. note::
+
+    When pulling from a Windows VM, if the requested path does not include an
+    explicit drive letter, FIREWHEEL assumes the path is on the ``C:`` drive.
+
+This Helper supports both human-readable text output and machine-readable
+JSON output.
+
+**Usage:**  ``firewheel pull file [-h] [--format {text,json}] [--attempts ATTEMPTS] <filename> <vm hostname> <destination>``
 
 Arguments
 +++++++++
@@ -22,26 +29,34 @@ Named Arguments
 
     Show help message and exit.
 
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints a human-readable summary and shows
+    progress while waiting for the transferred file to become available.
+    ``json`` returns a structured JSON response.
+
 .. option:: --attempts
 
     :default: 24
 
-    Number of 5 second attempts to try before giving up
+    Number of 5 second attempts to try before giving up.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
 .. option:: <filename>
 
-    The name of the file or directory on the VM to extract
+    The name of the file or directory on the VM to extract.
 
 .. option:: <vm hostname>
 
-    The hostname of the VM within the experiment from which to pull the files
+    The hostname of the VM within the experiment from which to pull the files.
 
 .. option:: <destination>
 
-    Local destination path for the files that were extracted from the VM
+    Local destination path for the files that were extracted from the VM.
 
 Example
 +++++++
@@ -50,17 +65,21 @@ Example
 
 ``firewheel pull file /tmp/test host.root.net /tmp/mydir``
 
+``firewheel pull file --format json /tmp/test.txt host.root.net /tmp/myfile.txt``
+
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
 import sys
+import json
 import shlex
 import pickle
 import argparse
 import subprocess
 from time import sleep
 from pathlib import Path, PureWindowsPath
+from datetime import datetime, timezone
 
 from rich.console import Console
 from rich.progress import Progress, TextColumn, SpinnerColumn, TimeElapsedColumn
@@ -71,159 +90,203 @@ from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 
-def handle_schedule_entry(name, file_name):
-    """Add a file transfer entry to the schedule for a specified VM.
+DEFAULT_ATTEMPTS = 24
+POLL_INTERVAL_SECONDS = 5
 
-    This function retrieves the schedule for a given virtual machine (VM)
-    from the database, creates a new schedule entry for transferring a
-    specified file, and updates the schedule in the database.
+class PullFileError(Exception):
+    """Expected operational error for the pull file helper.
 
     Args:
-        name (str): The name of the VM for which the schedule is being updated.
-        file_name (str): The name of the file to be transferred.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
     """
-    con = Console()
-    schedule_db = ScheduleDb()
-    pickled_schedule = schedule_db.get(name)
-    if not pickled_schedule:
-        con.print(f"[b red]Unable to get schedule for VM: [cyan]{name}")
-        sys.exit(1)
-    schedule = pickle.loads(pickled_schedule)
 
-    # ScheduleEntry will have been loaded prior to this point automatically.
+    def __init__(self, message, error_type):
+        """Initialize the exception.
+
+        Args:
+            message (str): Human-readable error message.
+            error_type (str): Stable machine-readable error type.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+def build_error_result(filename, vm_name, destination, attempts, message, error_type):
+    """Build a structured error result.
+
+    Args:
+        filename (str): Requested VM file or directory path.
+        vm_name (str): VM hostname.
+        destination (str): Local destination path.
+        attempts (int): Maximum readiness check attempts requested.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+
+    Returns:
+        dict: Structured error result.
+    """
+    return {
+        "success": False,
+        "vm_name": vm_name,
+        "host_found": False,
+        "windows_vm": False,
+        "host": None,
+        "requested_source": filename,
+        "destination": destination,
+        "resolved_transfer_path": None,
+        "attempts_requested": attempts,
+        "attempts_used": 0,
+        "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+        "file_ready": False,
+        "schedule_entry_added": False,
+        "copied": False,
+        "cleanup_performed": False,
+        "message": message,
+        "error": {
+            "type": error_type,
+            "detail": message,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def schedule_pull_transfer(name, file_name):
+    """Add a file transfer entry to the schedule for a specified VM.
+
+    Args:
+        name (str): The VM name whose schedule should be updated.
+        file_name (str): The file or directory name to pull from the VM.
+
+    Returns:
+        dict: Structured scheduling result information.
+
+    Raises:
+        PullFileError: If schedule lookup, decoding, or storage fails.
+    """
+    schedule_db = ScheduleDb()
+
+    try:
+        pickled_schedule = schedule_db.get(name)
+    except OSError as exc:
+        raise PullFileError(
+            f"Unable to access schedule database for VM '{name}': {exc}",
+            "schedule_db_error",
+        ) from exc
+
+    if not pickled_schedule:
+        raise PullFileError(
+            f"Unable to get schedule for VM: {name}",
+            "schedule_unavailable",
+        )
+
+    try:
+        schedule = pickle.loads(pickled_schedule)
+    except (pickle.PickleError, pickle.UnpicklingError, EOFError, ValueError, TypeError) as exc:
+        raise PullFileError(
+            f"Unable to decode schedule for VM '{name}': {exc}",
+            "schedule_decode_error",
+        ) from exc
+
     se = ScheduleEntry(-100000)
     se.add_file_transfer(file_name, interval=None)
     schedule.append(se)
-    schedule_db.put(name, pickle.dumps(schedule), None)
+
+    try:
+        schedule_db.put(name, pickle.dumps(schedule), None)
+    except (pickle.PickleError, OSError, TypeError, ValueError) as exc:
+        raise PullFileError(
+            f"Unable to store updated schedule for VM '{name}': {exc}",
+            "schedule_store_error",
+        ) from exc
+
+    return {
+        "schedule_entry_added": True,
+    }
 
 
-def call_scp(hostname, src, dest, max_attempts=24):
-    """Transfer a file from a remote host to a local destination using SCP.
-
-    This function checks if the specified file is ready for transfer on the
-    remote host and then uses SCP to copy the file to the local destination.
-    If the file is not ready, it will retry up to a specified number of
-    attempts.
+def resolve_vm_context(vm_name):
+    """Resolve VM host and platform context.
 
     Args:
-        hostname (str): The hostname or IP address of the remote host.
-        src (Path): The source file path on the remote host.
-        dest (Path): The destination path on the local machine.
-        max_attempts (int, optional): The maximum number of attempts to check
-            if the file is ready. Defaults to 24.
+        vm_name (str): VM hostname.
+
+    Returns:
+        dict: Structured VM context information.
+
+    Raises:
+        PullFileError: If the VM cannot be found.
     """
-    con = Console()
-    count = 1
-    num_sec = 5
-    lockfile = src.parent / f"{src.name}-lock"
-    with Progress(
-        TextColumn(
-            "[yellow]Checking if the file is ready..."
-        ),
-        SpinnerColumn(spinner_name="line"),
-        TimeElapsedColumn(),
-        console=con,
-    ) as progress:
-        progress.add_task(description="check file")
-        while True:
-            ex = subprocess.run(  # noqa: S602
-                shlex.split(
-                    "ssh -o LogLevel=error -o UserKnownHostsFile=/dev/null "
-                    f'-o StrictHostKeyChecking=no {hostname} "if [ -e {src} ] && '
-                    f'[ ! -e {lockfile} ]; then echo True; fi"'
-                ),
-                capture_output=True,
-                check=True,
-            )
-            out = ex.stdout.decode("utf-8").strip()
-            if out == "True":
-                break
-            if count >= max_attempts:
-                console.print(str(
-                    f"[b red]Unable to get file: [cyan]{src}[/cyan] from host "
-                    f"[cyan]{hostname}[/cyan]. If the file is very large, you may need "
-                    "to increase the [magenta]--attempts[/magenta]. "
-                    f"Each attempt waits for [cyan]{num_sec}[/cyan] seconds."
-                ))
-                sys.exit(1)
-            count += 1
-            sleep(num_sec)
-    subprocess.run(  # noqa: S602
-        "scp -r -o LogLevel=error -o UserKnownHostsFile=/dev/null "
-        f"-o StrictHostKeyChecking=no {hostname}:{src} {dest}",
-        shell=True,
-        check=True,
-    )
-    subprocess.run(  # noqa: S602
-        "ssh -o LogLevel=error -o UserKnownHostsFile=/dev/null "
-        f'-o StrictHostKeyChecking=no {hostname} "rm -rf {src}"',
-        shell=True,
-        check=True,
-    )
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-
-    # Set the arguments
-    parser = argparse.ArgumentParser(
-        description="Extract files from VMs within a FIREWHEEL experiment",
-        prog="firewheel pull file",
-    )
-
-    parser.add_argument(
-        "--attempts",
-        type=int,
-        default=24,
-        help="Number of 5 second attempts to try before giving up",
-    )
-
-    parser.add_argument(
-        "filename",
-        help="The name of the file or directory on the VM to extract",
-    )
-
-    parser.add_argument(
-        "vm_name",
-        help="The hostname of the VM within the experiment from which to pull the files",
-    )
-
-    parser.add_argument(
-        "destination",
-        help="Local destination path for the files that were extracted from the VM",
-    )
-
-    args = parser.parse_args()
-
-    filename = args.filename
-    vm_name = args.vm_name
-    destination = args.destination
-
-    local_dest = Path(destination)
-    if not local_dest.exists():
-        local_dest.parent.mkdir(parents=True, exist_ok=True)
-
-    handle_schedule_entry(vm_name, filename)
-
     mm_api = minimegaAPI()
     mm_dict = mm_api.mm_vms()
-    host = mm_dict[vm_name]["hostname"]
 
-    console = Console()
+    if vm_name not in mm_dict:
+        raise PullFileError(
+            f"No VM '{vm_name}' found.",
+            "vm_not_found",
+        )
+
+    vm_info = mm_dict[vm_name]
+    windows_vm = "windows" in vm_info["image"]
+
+    return {
+        "host_found": True,
+        "windows_vm": windows_vm,
+        "host": vm_info["hostname"],
+        "vm_info": vm_info,
+    }
+
+
+def ensure_local_destination(destination):
+    """Ensure the local destination path can be used.
+
+    Args:
+        destination (str): Local destination path.
+
+    Returns:
+        Path: Local destination as a ``Path``.
+
+    Raises:
+        PullFileError: If the destination directory cannot be prepared.
+    """
+    local_dest = Path(destination)
+
+    try:
+        if not local_dest.exists():
+            local_dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PullFileError(
+            f"Unable to prepare local destination '{local_dest}': {exc}",
+            "destination_prepare_error",
+        ) from exc
+
+    return local_dest
+
+
+def build_transfer_path(vm_name, filename, windows_vm):
+    """Build the expected local transfer path on the FIREWHEEL host.
+
+    For Windows VMs, if the requested path does not include an explicit drive,
+    this function assumes the file is on the ``C:`` drive.
+
+    Args:
+        vm_name (str): VM hostname.
+        filename (str): Requested file or directory path on the VM.
+        windows_vm (bool): Whether the VM is a Windows VM.
+
+    Returns:
+        Path: Resolved transfer path on the FIREWHEEL host.
+    """
     path = None
-    # Check if the VM is a Windows VM based on image name
-    if "windows" in mm_dict[vm_name]["image"]:
-        if not PureWindowsPath(filename.strip("/")).drive:
-            console.print(
-                f"[b red]Path from Windows VM [cyan]{vm_name}[/cyan] does not have a drive. "
-                "Assuming [magenta]C:[/magenta]"
-            )
-            path = (
-                Path(config["logging"]["root_dir"])
-                / "transfers"
-                / vm_name
-                / PureWindowsPath("C:", filename).as_posix()
-            )
+
+    if windows_vm and not PureWindowsPath(filename.strip("/")).drive:
+        path = (
+            Path(config["logging"]["root_dir"])
+            / "transfers"
+            / vm_name
+            / PureWindowsPath("C:", filename).as_posix()
+        )
 
     if path is None:
         path = (
@@ -233,5 +296,325 @@ if __name__ == "__main__":
             / PureWindowsPath(filename.strip("/")).as_posix()
         )
 
-    call_scp(host, path, local_dest, max_attempts=args.attempts)
+    return path
+
+
+def wait_for_transfer_ready(
+    hostname,
+    src,
+    max_attempts=DEFAULT_ATTEMPTS,
+    poll_interval_seconds=POLL_INTERVAL_SECONDS,
+    show_progress=True,
+):
+    """Wait until the extracted file is ready on the remote host.
+
+    Args:
+        hostname (str): Remote host where the transferred file will appear.
+        src (Path): Path to the transferred file on the remote host.
+        max_attempts (int): Maximum readiness-check attempts.
+        poll_interval_seconds (int): Seconds between readiness checks.
+        show_progress (bool): Whether to display a Rich spinner.
+
+    Returns:
+        dict: Structured readiness result metadata.
+
+    Raises:
+        PullFileError: If readiness checking fails or times out.
+    """
+    count = 1
+    lockfile = src.parent / f"{src.name}-lock"
+    total_wait_seconds = max_attempts * poll_interval_seconds
+
+    readiness_command = shlex.split(
+        "ssh -o LogLevel=error -o UserKnownHostsFile=/dev/null "
+        f'-o StrictHostKeyChecking=no {hostname} "if [ -e {src} ] && '
+        f'[ ! -e {lockfile} ]; then echo True; fi"'
+    )
+
+    if show_progress:
+        con = Console()
+        with Progress(
+            TextColumn("[yellow]Checking if the file is ready..."),
+            SpinnerColumn(spinner_name="line"),
+            TimeElapsedColumn(),
+            console=con,
+        ) as progress:
+            progress.add_task(description="check file")
+            while True:
+                try:
+                    ex = subprocess.run(
+                        readiness_command,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as exc:
+                    raise PullFileError(
+                        f"Unable to check readiness of '{src}' on host '{hostname}': {exc}",
+                        "readiness_check_failed",
+                    ) from exc
+
+                out = ex.stdout.strip()
+                if out == "True":
+                    return {
+                        "attempts_used": count,
+                        "file_ready": True,
+                        "poll_interval_seconds": poll_interval_seconds,
+                    }
+
+                if count >= max_attempts:
+                    raise PullFileError(
+                        f"Unable to get file '{src}' from host '{hostname}'. "
+                        f"Timed out after {max_attempts} attempts "
+                        f"({total_wait_seconds} seconds total wait time). "
+                        "If the file is very large, you may need to increase --attempts.",
+                        "file_ready_timeout",
+                    )
+
+                count += 1
+                sleep(poll_interval_seconds)
+
+    while True:
+        try:
+            ex = subprocess.run(
+                readiness_command,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise PullFileError(
+                f"Unable to check readiness of '{src}' on host '{hostname}': {exc}",
+                "readiness_check_failed",
+            ) from exc
+
+        out = ex.stdout.strip()
+        if out == "True":
+            return {
+                "attempts_used": count,
+                "file_ready": True,
+                "poll_interval_seconds": poll_interval_seconds,
+            }
+
+        if count >= max_attempts:
+            raise PullFileError(
+                f"Unable to get file '{src}' from host '{hostname}'. "
+                f"Timed out after {max_attempts} attempts "
+                f"({total_wait_seconds} seconds total wait time). "
+                "If the file is very large, you may need to increase --attempts.",
+                "file_ready_timeout",
+            )
+
+        count += 1
+        sleep(poll_interval_seconds)
+
+
+def perform_transfer(hostname, src, dest):
+    """Copy the transferred file back locally and clean it up remotely.
+
+    Args:
+        hostname (str): Remote host where the transferred file exists.
+        src (Path): Path to the transferred file on the remote host.
+        dest (Path): Local destination path.
+
+    Returns:
+        dict: Structured transfer result metadata.
+
+    Raises:
+        PullFileError: If SCP or remote cleanup fails.
+    """
+    try:
+        subprocess.run(
+            shlex.split(
+                "scp -r -o LogLevel=error -o UserKnownHostsFile=/dev/null "
+                f"-o StrictHostKeyChecking=no {hostname}:{src} {dest}"
+            ),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise PullFileError(
+            f"Unable to copy '{src}' from host '{hostname}' to '{dest}': {exc}",
+            "scp_failed",
+        ) from exc
+
+    try:
+        subprocess.run(
+            shlex.split(
+                "ssh -o LogLevel=error -o UserKnownHostsFile=/dev/null "
+                f'-o StrictHostKeyChecking=no {hostname} "rm -rf {src}"'
+            ),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise PullFileError(
+            f"Unable to remove remote transfer path '{src}' from host '{hostname}': {exc}",
+            "remote_cleanup_failed",
+        ) from exc
+
+    return {
+        "copied": True,
+        "cleanup_performed": True,
+    }
+
+
+def collect_pull_file_result(filename, vm_name, destination, attempts, show_progress=True):
+    """Execute validation, scheduling, polling, and transfer for pull file.
+
+    Args:
+        filename (str): File or directory path on the VM.
+        vm_name (str): VM hostname.
+        destination (str): Local destination path.
+        attempts (int): Maximum readiness-check attempts.
+        show_progress (bool): Whether to show human progress UI.
+
+    Returns:
+        dict: Structured result information.
+
+    Raises:
+        PullFileError: For expected operational failures.
+    """
+    vm_context = resolve_vm_context(vm_name)
+    local_dest = ensure_local_destination(destination)
+    schedule_result = schedule_pull_transfer(vm_name, filename)
+    transfer_path = build_transfer_path(vm_name, filename, vm_context["windows_vm"])
+    readiness_result = wait_for_transfer_ready(
+        vm_context["host"],
+        transfer_path,
+        max_attempts=attempts,
+        show_progress=show_progress,
+    )
+    transfer_result = perform_transfer(vm_context["host"], transfer_path, local_dest)
+
+    result = {
+        "success": True,
+        "vm_name": vm_name,
+        "host_found": vm_context["host_found"],
+        "windows_vm": vm_context["windows_vm"],
+        "host": vm_context["host"],
+        "requested_source": filename,
+        "destination": str(local_dest),
+        "resolved_transfer_path": str(transfer_path),
+        "attempts_requested": attempts,
+        "attempts_used": readiness_result["attempts_used"],
+        "poll_interval_seconds": readiness_result["poll_interval_seconds"],
+        "file_ready": readiness_result["file_ready"],
+        "schedule_entry_added": schedule_result["schedule_entry_added"],
+        "copied": transfer_result["copied"],
+        "cleanup_performed": transfer_result["cleanup_performed"],
+        "message": "Successfully pulled file from VM.",
+        "error": None,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return result
+
+
+def render_text(result):
+    """Render human-readable output using Rich.
+
+    Args:
+        result (dict): Structured pull file result.
+    """
+    console = Console()
+
+    if not result["success"]:
+        console.print("[bold red]Pull failed[/bold red]")
+        console.print(f"[red]{result['message']}[/red]")
+        console.print(f"[cyan]VM:[/cyan] {result['vm_name']}")
+        console.print(f"[cyan]Source:[/cyan] {result['requested_source']}")
+        console.print(f"[cyan]Destination:[/cyan] {result['destination']}")
+        return
+
+    console.print("[bold green]Pull completed successfully[/bold green]")
+    console.print(f"[cyan]VM:[/cyan] {result['vm_name']}")
+    console.print(f"[cyan]Host:[/cyan] {result['host']}")
+    console.print(f"[cyan]Source:[/cyan] {result['requested_source']}")
+    console.print(f"[cyan]Destination:[/cyan] {result['destination']}")
+    console.print(
+        f"[cyan]Attempts used:[/cyan] "
+        f"{result['attempts_used']}/{result['attempts_requested']}"
+    )
+    console.print(f"\n[green]{result['message']}[/green]")
+
+
+def render_json(result):
+    """Render machine-readable JSON output.
+
+    Args:
+        result (dict): Structured pull file result.
+    """
+    print(json.dumps(result, indent=2))
+
+
+def main():
+    """Parse command-line arguments and execute pull file."""
+    parser = argparse.ArgumentParser(
+        description="Extract files from VMs within a FIREWHEEL experiment",
+        prog="firewheel pull file",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=DEFAULT_ATTEMPTS,
+        help=(
+            f"Number of {POLL_INTERVAL_SECONDS} second attempts to try before giving up. "
+            f"Defaults to {DEFAULT_ATTEMPTS}."
+        ),
+    )
+    parser.add_argument(
+        "filename",
+        help="The name of the file or directory on the VM to extract",
+    )
+    parser.add_argument(
+        "vm_name",
+        help="The hostname of the VM within the experiment from which to pull the files",
+    )
+    parser.add_argument(
+        "destination",
+        help="Local destination path for the files that were extracted from the VM",
+    )
+
+    args = parser.parse_args()
+    
+    if args.attempts < 1:
+        parser.error("--attempts must be at least 1")
+
+    try:
+        result = collect_pull_file_result(
+            args.filename,
+            args.vm_name,
+            args.destination,
+            args.attempts,
+            show_progress=(args.format == "text"),
+        )
+    except PullFileError as exc:
+        result = build_error_result(
+            args.filename,
+            args.vm_name,
+            args.destination,
+            args.attempts,
+            exc.message,
+            exc.error_type,
+        )
+
+    if args.format == "json":
+        render_json(result)
+    else:
+        render_text(result)
+
+    sys.exit(0 if result["success"] else 1)
+
+
+if __name__ == "__main__":
+    main()
 DONE

@@ -2,23 +2,98 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
-Show all installed repositories.
+Show all installed Model Component repositories.
+
+This Helper supports both human-readable text output and machine-readable
+JSON output.
+
+Arguments
++++++++++
+
+Named Arguments
+^^^^^^^^^^^^^^^
+
+.. option:: -h, --help
+
+    Show help message and exit.
+
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints repository paths in a simple list.
+    ``json`` returns a structured JSON response.
 
 Example
 +++++++
 
 ``firewheel repository list``
 
+``firewheel repository list --format json``
+
 DONE
 RUN Python ON control
 #!/usr/bin/env python
 
+import json
+import argparse
+from datetime import datetime, timezone
+
 from firewheel.control.repository_db import RepositoryDb
 
-repo_db = RepositoryDb()
-repo_list = repo_db.list_repositories()
 
-print("Installed Model Component Repositories:")
-for entry in repo_list:
-    print(f"{entry['path']}")
+def collect_repository_list_data():
+    """Collect installed repository information.
+
+    Returns:
+        dict: Structured repository listing data.
+    """
+    repo_db = RepositoryDb()
+    repo_list = list(repo_db.list_repositories())
+
+    repositories = [{"path": entry["path"]} for entry in repo_list]
+
+    return {
+        "count": len(repositories),
+        "repositories": repositories,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def render_text(repo_data):
+    """Render human-readable repository list output."""
+    print("Installed Model Component Repositories:")
+    for entry in repo_data["repositories"]:
+        print(entry["path"])
+
+
+def render_json(repo_data):
+    """Render machine-readable repository list output."""
+    print(json.dumps(repo_data, indent=2))
+
+
+def main():
+    """List installed repositories."""
+    parser = argparse.ArgumentParser(
+        description="Show all installed repositories.",
+        prog="firewheel repository list",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
+    args = parser.parse_args()
+
+    repo_data = collect_repository_list_data()
+
+    if args.format == "json":
+        render_json(repo_data)
+    else:
+        render_text(repo_data)
+
+
+if __name__ == "__main__":
+    main()
 DONE

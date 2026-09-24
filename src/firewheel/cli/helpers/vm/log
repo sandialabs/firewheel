@@ -7,8 +7,17 @@ Retrieve a log for the given VM. This enables users to easily access log files f
 without intimate knowledge of where the VM resource logs are stored. Additionally, it enables
 easy parsing and data analysis of logs.
 
-All log output is directly piped to standard out and can be further examined using common
-command line tools such as ``less``, ``tail``, or ``grep``, just to name a few.
+By default, this Helper retrieves the standard VM resource log and writes it directly to
+standard output. This makes it easy to further examine the log using common command line
+tools such as ``less``, ``tail``, or ``grep``.
+
+This Helper can retrieve either the standard VM resource log or the JSON log artifact,
+and can return either raw text output or a structured JSON response.
+
+.. note::
+
+    The JSON log artifact is not necessarily a complete representation of the standard
+    VM resource log. It is a separate log stream intended for structured log messages.
 
 Arguments
 +++++++++
@@ -20,9 +29,23 @@ Named Arguments
 
     Show help message and exit.
 
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format for this Helper. ``text`` writes the selected log artifact
+    directly to standard output. ``json`` returns a structured JSON response.
+
+.. option:: --log-type {text,json}
+
+    :default: ``text``
+
+    Select which VM log artifact to retrieve. ``text`` retrieves the standard VM resource
+    log. ``json`` retrieves the JSON log artifact.
+
 .. option:: -j, --json
 
-    Retrieve the JSON log rather than the standard log.
+    Backward-compatible alias for ``--log-type json``.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
@@ -31,13 +54,16 @@ Positional Arguments
 
     The name of the VM for which the log should be retrieved.
 
-
 Example
 +++++++
 
 ``firewheel vm log host.root.net``
 
-``firewheel vm log --json host.root.net``
+``firewheel vm log --log-type json host.root.net``
+
+``firewheel vm log --format json host.root.net``
+
+``firewheel vm log --format json --log-type json host.root.net``
 
 ``firewheel vm log host.root.net | less``
 
@@ -45,69 +71,362 @@ DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
+import sys
+import re
+import json
 import argparse
 import subprocess
 from pathlib import Path
+from datetime import datetime, timezone
+
+from rich.console import Console
 
 from firewheel.config import Config
 from firewheel.lib.minimega.api import minimegaAPI
 
 
-def vm_log(args):
-    """
-    Get the log from the specified VM.
-    This is typically in text format, but can also be in JSON format.
+TEXT_LOG_TYPE = "text"
+JSON_LOG_TYPE = "json"
+
+LOG_LINE_RE = re.compile(
+    r"^\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [A-Z]+) "
+    r"(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)\] "
+    r"(?P<message>.*)$"
+)
+
+
+class VmLogError(Exception):
+    """Expected operational error for the vm log helper.
 
     Args:
-        args (argparse.Namespace): The arguments for ``vm log``.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+    """
+
+    def __init__(self, message, error_type):
+        """Initialize the exception.
+
+        Args:
+            message (str): Human-readable error message.
+            error_type (str): Stable machine-readable error type.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+def build_error_result(vm_name, log_type, message, error_type):
+    """Build a structured error result.
+
+    Args:
+        vm_name (str): VM hostname.
+        log_type (str): Requested log artifact type.
+        message (str): Human-readable error message.
+        error_type (str): Stable machine-readable error type.
+
+    Returns:
+        dict: Structured error result.
+    """
+    return {
+        "success": False,
+        "vm_name": vm_name,
+        "log_type": log_type,
+        "host_found": False,
+        "host": None,
+        "log_path": None,
+        "log_artifact_complete": None,
+        "content": None,
+        "message": message,
+        "error": {
+            "type": error_type,
+            "detail": message,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def parse_text_log_entries(text):
+    """Parse vm_resource_handler text logs into structured multiline entries.
+
+    A new log entry begins whenever a line matches the FIREWHEEL VM resource
+    handler log prefix format. Any non-matching line is treated as a continuation
+    of the previous log entry.
+
+    Args:
+        text (str): Raw text log contents.
+
+    Returns:
+        list[dict]: Structured parsed log entries.
+    """
+    entries = []
+    current_entry = None
+
+    for line in text.splitlines():
+        match = LOG_LINE_RE.match(line)
+        if match:
+            if current_entry is not None:
+                current_entry["raw_message"] = "\n".join(
+                    [current_entry["message"], *current_entry["continuation"]]
+                )
+                entries.append(current_entry)
+
+            current_entry = {
+                "timestamp": match.group("timestamp"),
+                "level": match.group("level"),
+                "message": match.group("message"),
+                "continuation": [],
+            }
+        else:
+            if current_entry is None:
+                current_entry = {
+                    "timestamp": None,
+                    "level": None,
+                    "message": line,
+                    "continuation": [],
+                }
+            else:
+                current_entry["continuation"].append(line)
+
+    if current_entry is not None:
+        current_entry["raw_message"] = "\n".join(
+            [current_entry["message"], *current_entry["continuation"]]
+        )
+        entries.append(current_entry)
+
+    return entries
+
+
+def parse_json_log_entries(text):
+    """Parse line-oriented JSON log artifact entries.
+
+    Args:
+        text (str): Raw JSON log artifact contents.
+
+    Returns:
+        list[dict]: Parsed JSON log entries.
 
     Raises:
-        RuntimeError: If the provided VM does not exist.
+        VmLogError: If a JSON log line cannot be parsed.
     """
-    # Get the basic info.
+    entries = []
+
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entries.append(json.loads(stripped))
+        except json.JSONDecodeError as exc:
+            raise VmLogError(
+                f"Unable to parse JSON log line {line_number}: {exc}",
+                "json_log_parse_error",
+            ) from exc
+
+    return entries
+
+
+def resolve_vm_log_context(vm_name):
+    """Resolve VM host and log path context.
+
+    Args:
+        vm_name (str): VM hostname.
+
+    Returns:
+        dict: Structured VM log context.
+
+    Raises:
+        VmLogError: If the VM cannot be found.
+    """
     mm_api = minimegaAPI()
     basic_dict = mm_api.mm_vms()
 
-    if args.vm not in basic_dict:
-        raise RuntimeError(
-            f"No VM with name {args.vm} is found. " "Ensure a VM with that name exists."
+    if vm_name not in basic_dict:
+        raise VmLogError(
+            f"No VM with name {vm_name} is found. Ensure a VM with that name exists.",
+            "vm_not_found",
         )
 
     config = Config().get_config()
-    pathname = Path(config["logging"]["root_dir"]) / Path(
+    log_directory = Path(config["logging"]["root_dir"]) / Path(
         config["logging"]["vmr_log_dir"]
     )
-    filename = f"{args.vm}.log"
-    if args.json:
-        filename = f"{args.vm}.json"
-    pathname /= filename
 
-    command = ["ssh", basic_dict[args.vm]["hostname"], f"cat {pathname!s}"]
-    subprocess.run(command, check=True)
+    return {
+        "host_found": True,
+        "host": basic_dict[vm_name]["hostname"],
+        "log_directory": log_directory,
+    }
+
+
+def get_log_path(log_directory, vm_name, log_type):
+    """Build the remote log file path for the requested log type.
+
+    Args:
+        log_directory (Path): Directory containing VM resource logs.
+        vm_name (str): VM hostname.
+        log_type (str): Requested log type.
+
+    Returns:
+        Path: Full remote log path.
+    """
+    suffix = ".json" if log_type == JSON_LOG_TYPE else ".log"
+    return log_directory / f"{vm_name}{suffix}"
+
+
+def fetch_remote_log_content(host, log_path):
+    """Fetch remote VM log content using SSH.
+
+    Args:
+        host (str): Remote FIREWHEEL host.
+        log_path (Path): Full remote log path.
+
+    Returns:
+        str: Remote log content.
+
+    Raises:
+        VmLogError: If the log cannot be retrieved.
+    """
+    command = ["ssh", host, f"cat {log_path!s}"]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise VmLogError(
+            f"Unable to retrieve log from host '{host}' at path '{log_path}': {exc}",
+            "log_retrieval_failed",
+        ) from exc
+
+    return result.stdout
+
+
+def collect_vm_log_result(vm_name, log_type):
+    """Collect structured VM log data.
+
+    Args:
+        vm_name (str): VM hostname.
+        log_type (str): Requested backing log artifact type.
+
+    Returns:
+        dict: Structured VM log result.
+
+    Raises:
+        VmLogError: For expected operational failures.
+    """
+    context = resolve_vm_log_context(vm_name)
+    log_path = get_log_path(context["log_directory"], vm_name, log_type)
+    raw_content = fetch_remote_log_content(context["host"], log_path)
+
+    if log_type == JSON_LOG_TYPE:
+        parsed_content = parse_json_log_entries(raw_content)
+        log_artifact_complete = False
+        message = (
+            "Retrieved VM JSON log artifact. This artifact may not contain all "
+            "information present in the standard log."
+        )
+    else:
+        parsed_content = parse_text_log_entries(raw_content)
+        log_artifact_complete = True
+        message = "Retrieved VM text log."
+
+    return {
+        "success": True,
+        "vm_name": vm_name,
+        "log_type": log_type,
+        "host_found": context["host_found"],
+        "host": context["host"],
+        "log_path": str(log_path),
+        "log_artifact_complete": log_artifact_complete,
+        "content": parsed_content,
+        "raw_content": raw_content,
+        "message": message,
+        "error": None,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def render_text(result):
+    """Render human-readable log output.
+
+    Args:
+        result (dict): Structured VM log result.
+    """
+    if not result["success"]:
+        Console().print(f"[bold red]ERROR:[/bold red] {result['message']}")
+        return
+
+    if result["log_type"] == JSON_LOG_TYPE:
+        print(result["raw_content"], end="")
+    else:
+        print(result["raw_content"], end="")
+
+
+def render_json(result):
+    """Render machine-readable JSON output.
+
+    Args:
+        result (dict): Structured VM log result.
+    """
+    json_result = dict(result)
+    json_result.pop("raw_content", None)
+    print(json.dumps(json_result, indent=2))
 
 
 def main():
-    """
-    Develop the CLI options and call the primary logging functions
-    for `vm log`.
-    """
+    """Parse CLI arguments and retrieve a VM log."""
     parser = argparse.ArgumentParser(
-        description="Get the log for a given VM", prog="vm log"
+        description="Get the log for a given VM",
+        prog="firewheel vm log",
     )
-
-    # VMs
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
+    parser.add_argument(
+        "--log-type",
+        choices=[TEXT_LOG_TYPE, JSON_LOG_TYPE],
+        default=TEXT_LOG_TYPE,
+        help="Which VM log artifact to retrieve. Defaults to text.",
+    )
     parser.add_argument(
         "-j",
         "--json",
         action="store_true",
-        help="Get the JSON log for the given VM.",
+        default=False,
+        help="Backward-compatible alias for retrieving the JSON log artifact.",
     )
     parser.add_argument(
-        "vm", help="The name of the VM for which the logs are requested."
+        "vm",
+        help="The name of the VM for which the logs are requested.",
     )
 
     args = parser.parse_args()
-    vm_log(args)
+
+    if args.json:
+        args.log_type = JSON_LOG_TYPE
+
+    try:
+        result = collect_vm_log_result(args.vm, args.log_type)
+    except VmLogError as exc:
+        result = build_error_result(
+            args.vm,
+            args.log_type,
+            exc.message,
+            exc.error_type,
+        )
+
+    if args.format == "json":
+        render_json(result)
+    else:
+        render_text(result)
+
+    sys.exit(0 if result["success"] else 1)
 
 
 if __name__ == "__main__":

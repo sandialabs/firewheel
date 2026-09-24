@@ -10,6 +10,9 @@ use the command ``date --utc``.
 If the experiment has started, the number of seconds since the experiment
 started is also printed.
 
+This Helper supports both human-readable text output and machine-readable
+JSON output.
+
 Arguments
 +++++++++
 All arguments are optional.
@@ -21,92 +24,144 @@ Named Arguments
 
     Show help message and exit.
 
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints a human-readable summary.
+    ``json`` returns a structured JSON response.
+
 .. option:: --json
 
-    Dump output as JSON-formatted dictionary in the form of ``{start_time: <datetime>, seconds_since_start: <int>}``
+    Backward-compatible alias for ``--format json``.
 
 Example
 +++++++
 
 ``firewheel time``
 
-``firewheel time --json``
+``firewheel time --format json``
 
 DONE
-RUN Python ON control
+RUN LocalPython ON control
 #!/usr/bin/env python
 
 import json
 import argparse
+from datetime import datetime, timezone
+
+from rich.console import Console
 
 import firewheel.vm_resource_manager.api as vm_resource_api
 
 
-def start_time(args):
-    """Display the start time of the experiment and the elapsed time since it started.
+def collect_time_data():
+    """
+    Collect experiment time information.
 
-    This function retrieves the experiment's start time and the number of seconds
-    since the experiment began. It prints the information in either a human-readable
-    format or as a JSON object, depending on the command-line arguments provided.
-
-    Args:
-        args (argparse.Namespace): The command-line arguments parsed by the
-            argparse module. Should include a flag ``--json`` to determine
-            the output format.
+    Returns:
+        dict: Structured experiment time data.
     """
     experiment_time = vm_resource_api.get_experiment_start_time()
     seconds_since_start = vm_resource_api.get_experiment_time_since_start()
 
-    # Time zone is UTC by definition.
-    if experiment_time:
-        experiment_time = experiment_time.strftime("%m-%d-%Y %H:%M:%S")
+    start_time_iso = None
+    start_time_display = None
+    experiment_time_known = experiment_time is not None
+    experiment_started = False
+    message = "Experiment start time not yet determined."
 
-    if seconds_since_start:
+    if experiment_time is not None:
+        experiment_time_utc = experiment_time.astimezone(timezone.utc)
+        start_time_iso = experiment_time_utc.isoformat()
+        start_time_display = experiment_time_utc.strftime("%m-%d-%Y %H:%M:%S UTC")
+
+    if seconds_since_start is not None:
         seconds_since_start = int(seconds_since_start)
+        experiment_started = seconds_since_start > 0
 
-    if args.json:
-        print_obj = {"start_time": None, "seconds_since_start": None}
-        if experiment_time is not None:
-            print_obj["start_time"] = f"{experiment_time} UTC"
-        if seconds_since_start is not None:
-            print_obj["seconds_since_start"] = seconds_since_start
-        print(json.dumps(print_obj, indent=0))
-    else:
-        if experiment_time is not None:
-            print(f"Experiment start time: {experiment_time} UTC")
-        if seconds_since_start is not None:
-            if seconds_since_start > 0:
-                print(f"Experiment started {seconds_since_start} seconds ago")
-            else:
-                print(f"Experiment will start in {abs(seconds_since_start)} seconds")
+        if seconds_since_start > 0:
+            message = f"Experiment started {seconds_since_start} seconds ago"
         else:
-            print("Experiment start time not yet determined.")
+            message = f"Experiment will start in {abs(seconds_since_start)} seconds"
+    elif experiment_time is not None:
+        message = "Experiment start time determined, but elapsed time is not available."
+
+    return {
+        "start_time": start_time_iso,
+        "start_time_display": start_time_display,
+        "seconds_since_start": seconds_since_start,
+        "experiment_time_known": experiment_time_known,
+        "experiment_started": experiment_started,
+        "message": message,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def render_text(time_data):
+    """
+    Render human-readable experiment time output using Rich.
+    """
+    console = Console()
+
+    if time_data["start_time_display"] is not None:
+        console.print(
+            f"[green]Experiment start time:[/green] "
+            f"[cyan]{time_data['start_time_display']}[/cyan]"
+        )
+
+    if time_data["seconds_since_start"] is not None:
+        if time_data["seconds_since_start"] > 0:
+            console.print(f"[green]{time_data['message']}[/green]")
+        else:
+            console.print(f"[yellow]{time_data['message']}[/yellow]")
+    elif time_data["start_time_display"] is None:
+        console.print("[yellow]Experiment start time not yet determined.[/yellow]")
+    else:
+        console.print(f"[yellow]{time_data['message']}[/yellow]")
+
+
+def render_json(time_data):
+    """
+    Render machine-readable JSON output.
+    """
+    json_data = dict(time_data)
+    json_data.pop("start_time_display", None)
+    print(json.dumps(json_data, indent=2))
 
 
 def main():
-    """Parse command-line arguments and execute the start_time function.
-
-    This function sets up the command-line interface for the FIREWHEEL
-    Experiment Start Time tool. It defines the available arguments, including
-    an option to output results in JSON format. Upon parsing the arguments,
-    it calls the `start_time` function with the parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="FIREWHEEL Experiment Start Time")
-
-    # VMs
-    parser.set_defaults(command=start_time)
+    Parse command-line arguments and display experiment time information.
+    """
+    parser = argparse.ArgumentParser(
+        description="FIREWHEEL Experiment Start Time",
+        prog="firewheel time",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
+    )
     parser.add_argument(
         "--json",
         action="store_true",
         default=False,
-        help=(
-            "Dump output as JSON-formatted dictionary in the form "
-            "of ``{start_time: <datetime>, seconds_since_start: <int>}``"  # noqa: FS003
-        ),
+        help=argparse.SUPPRESS,
     )
 
     args = parser.parse_args()
-    args.command(args)
+
+    if args.json:
+        args.format = "json"
+
+    time_data = collect_time_data()
+
+    if args.format == "json":
+        render_json(time_data)
+    else:
+        render_text(time_data)
 
 
 if __name__ == "__main__":
