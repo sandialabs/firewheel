@@ -166,7 +166,7 @@ def build_cache_table(title, host, rows):
     table.add_column("Modified")
 
     if not rows:
-        table.add_row("N/A", "N/A", "0 B", "N/A")
+        table.add_row("N/A", "N/A",  "N/A")
         return table
 
     for row in rows:

@@ -379,6 +379,16 @@ def get_console_fields(vm_list_data):
             console_fields.append(field)
     return console_fields
 
+LABEL_MAP = {
+    "name": "Name",
+    "uuid": "UUID",
+    "state": "State",
+    "image": "Image",
+    "hostname": "Hostname",
+    "vnc": "VNC Port",
+    "time": "Time",
+    "ip": "Control IP",
+}
 
 def build_vm_list_table(vm_list_data):
     """Build a Rich table for VM list output.
@@ -391,17 +401,6 @@ def build_vm_list_table(vm_list_data):
     """
     console_fields = get_console_fields(vm_list_data)
 
-    label_map = {
-        "name": "Name",
-        "uuid": "UUID",
-        "state": "State",
-        "image": "Image",
-        "hostname": "Hostname",
-        "vnc": "VNC Port",
-        "time": "Time",
-        "ip": "Control IP",
-    }
-
     table = RichDefaultTable(
         title="Current VMs",
         caption_style="bold magenta",
@@ -409,7 +408,7 @@ def build_vm_list_table(vm_list_data):
     )
 
     for field in console_fields:
-        table.add_column(label_map[field])
+        table.add_column(LABEL_MAP[field])
 
     for row in vm_list_data["rows"]:
         rendered_row = [row["name"]]
@@ -445,19 +444,8 @@ def render_csv(vm_list_data):
     """
     console_fields = get_console_fields(vm_list_data)
 
-    header_map = {
-        "name": "Name",
-        "uuid": "UUID",
-        "state": "State",
-        "image": "Image",
-        "hostname": "Hostname",
-        "vnc": "VNC Port",
-        "time": "Time",
-        "ip": "Control IP",
-    }
-
     console = Console(no_color=True)
-    console.print(",".join(header_map[field] for field in console_fields))
+    console.print(",".join(LABEL_MAP[field] for field in console_fields))
 
     for row in vm_list_data["rows"]:
         csv_row = [row["name"]]

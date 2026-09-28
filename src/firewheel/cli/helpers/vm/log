@@ -77,6 +77,7 @@ import json
 import argparse
 import subprocess
 from pathlib import Path
+from collections import namedtuple
 from datetime import datetime, timezone
 
 from rich.console import Console
@@ -158,42 +159,32 @@ def parse_text_log_entries(text):
     Returns:
         list[dict]: Structured parsed log entries.
     """
-    entries = []
-    current_entry = None
+    RawLogEntry = namedtuple("RawLogEntry", ["timestamp", "level", "lines"]
+    raw_entries = []
 
     for line in text.splitlines():
-        match = LOG_LINE_RE.match(line)
-        if match:
-            if current_entry is not None:
-                current_entry["raw_message"] = "\n".join(
-                    [current_entry["message"], *current_entry["continuation"]]
-                )
-                entries.append(current_entry)
-
-            current_entry = {
-                "timestamp": match.group("timestamp"),
-                "level": match.group("level"),
-                "message": match.group("message"),
-                "continuation": [],
-            }
+        if is_new_log_line := LOG_LINE_RE.match(line):
+            raw_entry = RawLogEntry(
+                timestamp=match.group("timestamp"),
+                level=match.group("level"),
+                lines=[match.group("message")],
+            )
+            raw_entries.append(raw_entry)
         else:
-            if current_entry is None:
-                current_entry = {
-                    "timestamp": None,
-                    "level": None,
-                    "message": line,
-                    "continuation": [],
-                }
+            if raw_entries:
+                raw_entries[-1].lines.append(line)
             else:
-                current_entry["continuation"].append(line)
-
-    if current_entry is not None:
-        current_entry["raw_message"] = "\n".join(
-            [current_entry["message"], *current_entry["continuation"]]
-        )
-        entries.append(current_entry)
-
-    return entries
+                # Handle edge cases where no prior entry exists, but the line is not prefixed
+                raw_entries.append(RawLogEntry(timestamp=None, level=None, lines=[line]))
+    return [
+        {
+            "timestamp": entry.timestamp,
+            "level": entry.level,
+            "message": entry.lines[0],
+            "raw_message": "\n".join(entry.lines),
+         }
+         for entry in raw_entries
+    ]
 
 
 def parse_json_log_entries(text):
