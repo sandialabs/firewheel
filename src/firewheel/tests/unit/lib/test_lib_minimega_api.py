@@ -425,8 +425,8 @@ def test_get_mesh_size_bad_shape_raises_keyerror(mock_mm_api) -> None:
         mock_mm_api.get_mesh_size()
 
 
-def test_mm_vms_bad_tags_json_raises(mock_mm_api) -> None:
-    """Verify malformed VM tag JSON propagates."""
+def test_mm_vms_bad_tags_json_returns_empty_tags(mock_mm_api) -> None:
+    """Verify malformed VM tag JSON is logged and normalized to empty tags."""
     mock_mm_api.mm.vm_info.return_value = [
         {
             "Header": ["uuid", "name", "state", "id", "vnc_port", "tags", "pid"],
@@ -435,8 +435,17 @@ def test_mm_vms_bad_tags_json_raises(mock_mm_api) -> None:
         }
     ]
 
-    with pytest.raises(Exception):
-        mock_mm_api.mm_vms()
+    result = mock_mm_api.mm_vms()
+
+    assert result["vm1"]["tags"] == {}
+    assert result["vm1"]["error"] == ""
+    assert result["vm1"]["image"] == ""
+    assert result["vm1"]["control_ip"] == ""
+    mock_mm_api.log.warning.assert_called_once_with(
+        "Unable to parse minimega tags for VM %s: %s",
+        "vm1",
+        "{bad json",
+    )
 
 
 def test_parse_table_with_only_header_returns_empty() -> None:

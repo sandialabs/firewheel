@@ -4,10 +4,15 @@ QEMU Guest Agent
 ================
 
 The `QEMU Guest Agent (QGA) <https://wiki.qemu.org/Features/GuestAgent>`_ is a binary file located within a VM which receives QEMU Machine Protocol (QMP) messages and can be used to perform actions within the virtual machine.
-The QGA is the primary way in which the :ref:`vm-resource-handler` communicates with VMs and enables the completion of VM resources.
-Therefore, in order for a VM image to be "FIREWHEEL-compatible" the QGA should be installed on the system and set to run as a service on system start.
+The QGA is the primary way in which the :ref:`vm-resource-handler` communicates with QEMU/KVM VMs and enables the completion of VM resources.
+Therefore, in order for a QEMU/KVM VM image to be "FIREWHEEL-compatible" the QGA should be installed on the system and set to run as a service on system start.
 
-When a VM is launched, a virtual serial port that is added which enables the QGA to communicate to FIREWHEEL via the :py:class:`QemuGuestAgentDriver <firewheel.vm_resource_manager.drivers.qemu_guest_agent_driver.QemuGuestAgentDriver>`, which then works with the :ref:`vm-resource-handler` for scheduling and executing VMRs within the VM.
+.. note::
+
+   Android guests use the ADB driver rather than the QEMU Guest Agent. See
+   :ref:`adb-driver`.
+
+When a QEMU/KVM VM is launched with QGA support, a virtual serial port that is added which enables the QGA to communicate to FIREWHEEL via the :py:class:`QemuGuestAgentDriver <firewheel.vm_resource_manager.drivers.qemu_guest_agent_driver.QemuGuestAgentDriver>`, which then works with the :ref:`vm-resource-handler` for scheduling and executing VMRs within the VM.
 
 .. seealso::
 

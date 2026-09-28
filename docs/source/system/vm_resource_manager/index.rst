@@ -35,3 +35,4 @@ However, there are several benefits to dynamic, automated configuration of VMs o
    vmr_in_experiment
    vm_resource_handler
    qga
+   adb

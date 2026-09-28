@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 
 """
-This module contains the class enable the ``vm_resource_handler`` to
-run. This runs as a process for each VM that is launched with FIREWHEEL and
-controls the interaction with the QEMU Guest Agent.
+This module contains the VM Resource Handler.
+
+A VM Resource Handler runs as a process for each VM that is launched with
+FIREWHEEL and controls the interaction between FIREWHEEL VM resources and the
+guest through a driver-specific communication mechanism, such as the QEMU Guest
+Agent or Android Debug Bridge.
 """
 
 import os
 import sys
 import json
 import time
+import shlex
 import random
 import socket
 import asyncio
@@ -137,28 +141,36 @@ class VMResourceHandler:
             check_interval,
         )
 
-        # Make sure the path is available
-        socket_path = Path(self.config["path"])
-        try:
-            os.stat(socket_path)
-        except FileNotFoundError:
-            self.log.debug("Waiting for path: %s", socket_path)
-            time.sleep(self.load_balance_factor * 1)
-        except PermissionError:
-            self.log.info(
-                "PermissionError: Trying to update permissions for %s through minimega",
-                socket_path,
+        # Make sure the QGA socket path is available for QGA-backed VMs.
+        # ADB-backed VMs do not use a local QGA socket path.
+        if self.config.get("engine") == "QemuVM":
+            socket_path = Path(self.config["path"])
+            try:
+                os.stat(socket_path)
+            except FileNotFoundError:
+                self.log.debug("Waiting for path: %s", socket_path)
+                time.sleep(self.load_balance_factor * 1)
+            except PermissionError:
+                self.log.info(
+                    "PermissionError: Trying to update permissions for %s through minimega",
+                    socket_path,
+                )
+                parent_dir = socket_path.parent
+                self.mma.set_group_perms(parent_dir)
+
+            self.log.debug("Found QGA socket path")
+        else:
+            self.log.debug(
+                "Skipping QGA socket path check for VM %s with engine %s",
+                self.config.get("vm_name"),
+                self.config.get("engine"),
             )
-            parent_dir = socket_path.parent
-            self.mma.set_group_perms(parent_dir)
 
-        self.log.debug("Found path")
-
-        # load the driver for the virtualization engine
-        try:
-            self.driver_class = self.import_driver()
-        except Exception as exp:  # noqa: BLE001
-            self.log.exception(exp)
+        # Load the communication driver for this VM.
+        # Individual driver import failures are tolerated inside _import_drivers(),
+        # but if no importable driver matches this VM's requested communication engine,
+        # this handler cannot run.
+        self.driver_class = self.import_driver()
 
         connected = self.connect_to_driver()
 
@@ -473,25 +485,40 @@ class VMResourceHandler:
         if executable.is_absolute():
             schedule_entry.exec_path = executable
         else:
-            # Check if the executable was loaded by the schedule entry
-            local = False
+            # Check if the executable was loaded by the schedule entry.
+            local_entry = None
             mm_cmd = bool("minimega" == schedule_entry.executable)
+
             if schedule_entry.data:
                 for entry in schedule_entry.data:
                     if entry.get("filename") == schedule_entry.executable:
-                        local = True
+                        local_entry = entry
+                        break
 
-            # Having both filename and minimega keys doesn't make sense,
+            # Having both filename and minimega keys does not make sense,
             # and should not be possible hence the `elif`.
-            if local:
-                # If the executable is "local", it is held in the VM resource system
-                # and we should create the abs path.
-                local_path = Path(
-                    self.vm_resource_store.get_path(schedule_entry.data["filename"])
+            if local_entry:
+                # The executable is part of the VMR system. VmResourceStore.get_path()
+                # returns the full local path to the cached file.
+                schedule_entry.exec_path = Path(
+                    self.vm_resource_store.get_path(local_entry["filename"])
                 )
-                schedule_entry.exec_path = local_path / executable
+
+                if local_entry.get("executable"):
+                    try:
+                        schedule_entry.exec_path.chmod(
+                            schedule_entry.exec_path.stat().st_mode | 0o111
+                        )
+                    except OSError as exp:
+                        self.log.warning(
+                            "Unable to set executable bit on host VMR file %s",
+                            schedule_entry.exec_path,
+                        )
+                        self.log.exception(exp)
+
             elif mm_cmd:
                 schedule_entry.exec_path = "minimega"
+
             else:
                 # The executable is not part of the VMR system and it was not provided
                 # as an absolute path so the executable is almost certainly supposed to
@@ -518,9 +545,12 @@ class VMResourceHandler:
                         global_config["minimega"]["install_dir"], "bin", "minimega"
                     )
                     if isinstance(schedule_entry.arguments, str):
-                        args = schedule_entry.arguments.split()
-                    else:
+                        args = shlex.split(schedule_entry.arguments)
+                    elif schedule_entry.arguments:
                         args = schedule_entry.arguments
+                    else:
+                        args = []
+
                     new_args = [
                         minimega_bin_path,
                         "-base",
@@ -546,16 +576,38 @@ class VMResourceHandler:
                     )
                     self.log.debug("Retrying host-based vm_resource")
                     continue
+                except OSError as exp:
+                    self.log.error(
+                        "Failed to run host-based minimega vm_resource: %s",
+                        new_args,
+                    )
+                    self.log.exception(exp)
+                    time.sleep(
+                        self.load_balance_factor * random.SystemRandom().randint(3, 10)
+                    )
+                    self.log.debug("Retrying host-based vm_resource")
+                    continue
             else:
-                call_arguments = f"{schedule_entry.exec_path!s}"
+                call_arguments = [str(schedule_entry.exec_path)]
 
-                # If there are arguments, then append them to the path to the executable
                 if schedule_entry.arguments:
-                    call_arguments += f" {schedule_entry.arguments}"
+                    if isinstance(schedule_entry.arguments, str):
+                        call_arguments.extend(shlex.split(schedule_entry.arguments))
+                    else:
+                        call_arguments.extend(schedule_entry.arguments)
 
+                host_env = self._build_host_vm_resource_env()
+                self.log.debug(
+                    "Running command: `%s` with environment `%s`",
+                    call_arguments,
+                    host_env,
+                )
                 try:
                     ret = subprocess.run(
-                        call_arguments, capture_output=True, check=True
+                        call_arguments,
+                        capture_output=True,
+                        check=True,
+                        env=host_env,
                     )
                     exitcode = ret.returncode
                 except subprocess.CalledProcessError as e:
@@ -568,6 +620,17 @@ class VMResourceHandler:
                     self.log.exception(
                         "Failed to run host-based vm_resource: %s", call_arguments
                     )
+                    time.sleep(
+                        self.load_balance_factor * random.SystemRandom().randint(3, 10)
+                    )
+                    self.log.debug("Retrying host-based vm_resource")
+                    continue
+                except OSError as exp:
+                    self.log.error(
+                        "Failed to run host-based vm_resource: %s",
+                        call_arguments,
+                    )
+                    self.log.exception(exp)
                     time.sleep(
                         self.load_balance_factor * random.SystemRandom().randint(3, 10)
                     )
@@ -768,6 +831,75 @@ class VMResourceHandler:
                 return
             queue.put(schedule_entry)
 
+    def _build_host_vm_resource_env(self):
+        """
+        Build environment variables for host-side VM resources.
+
+        Host-side VM resources execute on the physical host, but they are invoked
+        by a VM-specific VMResourceHandler. These variables expose that VM-specific
+        runtime context to the host-side resource.
+        """
+        env = os.environ.copy()
+
+        self.log.debug(
+            "Host resource parent sys.base_prefix=%s",
+            getattr(sys, "base_prefix", sys.prefix),
+        )
+
+        virtual_env = env.get("VIRTUAL_ENV")
+
+        # If VIRTUAL_ENV is not exported, infer it from Python's venv state.
+        if not virtual_env and sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+            virtual_env = sys.prefix
+            env["VIRTUAL_ENV"] = virtual_env
+
+        if virtual_env:
+            python_bin_dir = Path(virtual_env) / "bin"
+
+            python_executable = None
+            for candidate in ("python3", "python"):
+                candidate_path = python_bin_dir / candidate
+                if candidate_path.exists():
+                    python_executable = candidate_path
+                    break
+
+            if python_executable is None:
+                raise RuntimeError(
+                    f"VIRTUAL_ENV is set to {virtual_env}, but no python3/python "
+                    f"was found in {python_bin_dir}"
+                )
+
+        else:
+            # No venv detected. Fall back to the interpreter used by this handler.
+            # Do not call resolve() before taking parent, because that can collapse
+            # venv symlinks to /usr/bin/python.
+            python_executable = Path(sys.executable)
+            python_bin_dir = python_executable.parent
+
+        env["PATH"] = str(python_bin_dir) + os.pathsep + env.get("PATH", "")
+        env["FIREWHEEL_PYTHON"] = str(python_executable)
+
+        self.log.debug("Host VM resource PATH=%s", env["PATH"])
+
+        env["FIREWHEEL_VM_NAME"] = str(self.config.get("vm_name", ""))
+        env["FIREWHEEL_VM_UUID"] = str(self.config.get("vm_uuid", ""))
+
+        adb_serial = self.config.get("adb_serial")
+        android_console_port = self.config.get("android_console_port")
+
+        if adb_serial:
+            env["FIREWHEEL_ADB_SERIAL"] = str(adb_serial)
+
+        if android_console_port is not None:
+            env["FIREWHEEL_ANDROID_CONSOLE_PORT"] = str(android_console_port)
+
+            if not adb_serial:
+                env["FIREWHEEL_ADB_SERIAL"] = f"emulator-{android_console_port}"
+
+        env["FIREWHEEL_VM_CONFIG_JSON"] = json.dumps(self.config, separators=(",", ":"))
+
+        return env
+
     def check_for_reboot(self, reboot_filepath):
         """
         Check if the reboot file exists and a reboot is needed.
@@ -926,35 +1058,39 @@ class VMResourceHandler:
         Print any JSON line in vm_resource output to the json log.
 
         Args:
-            content (str or dict): Buffer from agent output.
+            content (str | bytes | dict): Buffer from agent output.
         """
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        # Handle content that is already a dictionary, i.e. from the handler
+
+        # Handle content that is already a dictionary, i.e. from the handler.
         if isinstance(content, dict):
             content["timestamp"] = timestamp
             try:
-                # Only log a line if it is a JSON object.
                 self.json_log.info(json.dumps(content))
             except TypeError:
                 self.log.debug("Could not parse '%s' into JSON formatting.", content)
+            return
+
+        if isinstance(content, bytes):
+            content_text = content.decode(sys.getdefaultencoding(), errors="replace")
         else:
+            content_text = str(content)
+
+        for line in content_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
             try:
-                # Buffer can contain multiple lines of output.
-                split_lines = [s.strip() for s in content.splitlines()]
-            except AttributeError:
-                return
-            for line in split_lines:
-                # Only log a line if it can be decoded
-                try:
-                    data = json.loads(line.decode())
-                except (json.JSONDecodeError, TypeError):
-                    try:
-                        # Convert decoded line into a dict
-                        data = {"msg": line.decode()}
-                    except TypeError:
-                        return
-                data["timestamp"] = timestamp
-                self.json_log.info(json.dumps(data))
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                data = {"msg": line}
+
+            if not isinstance(data, dict):
+                data = {"msg": data}
+
+            data["timestamp"] = timestamp
+            self.json_log.info(json.dumps(data))
 
     def print_output(self, schedule_entry, pid):
         """
@@ -984,10 +1120,23 @@ class VMResourceHandler:
             self._print_stream(output, stderr, "stderr")
 
     def _print_stream(self, output, stream, stream_name):
-        stream_text = stream.encode(sys.getdefaultencoding())
+        """
+        Print a stdout/stderr stream to the text and JSON logs.
+
+        Args:
+            output (dict): Log metadata dictionary.
+            stream (str | bytes): Stream content.
+            stream_name (str): ``stdout`` or ``stderr``.
+        """
+        if isinstance(stream, bytes):
+            stream_text = stream.decode(sys.getdefaultencoding(), errors="replace")
+        else:
+            stream_text = str(stream)
+
         output["fd"] = stream_name
-        output["output"] = rf"{stream_text}"
-        self.log.info(output["output"])
+        output["output"] = stream_text
+
+        self.log.info(stream_text)
         self.log_json(stream_text)
 
     def preload_files(self):
@@ -1324,7 +1473,7 @@ class VMResourceHandler:
                     return False
 
                 # Make the executable file executable on machines that aren't windows
-                if "executable" in data:
+                if data.get("executable"):
                     self.driver.make_file_executable(str(target_path))
 
             elif "content" in data and isinstance(data["content"], str):
@@ -1352,7 +1501,7 @@ class VMResourceHandler:
                         if not ret_value:
                             self.log.error("UNABLE TO WRITE CONTENT")
 
-                    if "executable" in data:
+                    if data.get("executable"):
                         self.driver.make_file_executable(str(target_path))
             else:
                 self.log.error("Data entry for schedule entry is not a file or content")
@@ -1390,11 +1539,11 @@ class VMResourceHandler:
 
     def import_driver(self):
         """
-        Walk through all the available drivers and find the one that
-        matches the type of VM that has been booted.
+        Walk through all available drivers and find the one that matches this VM's
+        configured VM Resource Handler communication engine.
 
         Returns:
-            object: The driver class that matches the VM's type
+            object: The driver class that matches ``self.config["engine"]``.
         """
         drivers = self._import_drivers()
         if not drivers:
@@ -1407,7 +1556,7 @@ class VMResourceHandler:
             sys.exit(1)
 
         # Walk the drivers looking for the one that has an engine
-        # that matches the config's type (i.e. QemuVM)
+        # that matches the config's type (e.g. QemuVM or ADB)
         for driver in drivers:
             if driver.get_engine() == self.config["engine"]:
                 return driver
@@ -1441,8 +1590,18 @@ class VMResourceHandler:
                 module = importlib.util.module_from_spec(spec)
                 try:
                     spec.loader.exec_module(module)
-                except (FileNotFoundError, SyntaxError):
-                    self.log.debug("Could not load module '%s'. Continuing", module)
+                except (
+                    FileNotFoundError,
+                    SyntaxError,
+                    ImportError,
+                    ModuleNotFoundError,
+                ) as exp:
+                    self.log.warning(
+                        "Could not load driver module '%s': %s. Continuing.",
+                        module_path,
+                        exp,
+                    )
+                    continue
                 for _, driver_cls in inspect.getmembers(module, self._check_driver):
                     drivers.add(driver_cls)
         return drivers

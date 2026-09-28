@@ -33,26 +33,26 @@
     GIT_LFS_SKIP_SMUDGE: "1"
   register: git_clone_result
 
-- name: "Identfying files in {{ firewheel_repo_path }}"
+- name: "Identifying files in {{ firewheel_repo_path }}"
   ansible.builtin.stat:
-    path: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/'+ item.destination | basename }}"
-  loop: "{{ required_files }}"
+    path: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/' + (item.destination | basename) }}"
+  loop: "{{ firewheel_cache_files | default(required_files) }}"
   register: file_check_results
 
-- name: LFS pull required files
+- name: LFS pull cached files
   ansible.builtin.shell:
-    cmd: "git lfs pull --include={{ item.source if item.source is defined else mc_name + '/'+ item.destination | basename }}"
+    cmd: "git lfs pull --include={{ item.source if item.source is defined else mc_name + '/' + (item.destination | basename) }}"
     chdir: "{{ ansible_remote_tmp }}/git"
-  loop: "{{ required_files }}"
+  loop: "{{ firewheel_cache_files | default(required_files) }}"
   when: "item in file_check_results.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list"
   register: pull_results
 
 - name: Move each pulled file into place
   ansible.builtin.copy:
-    src: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/' + item.destination | basename }}"
+    src: "{{ ansible_remote_tmp }}/git/{{ item.source if item.source is defined else mc_name + '/' + (item.destination | basename) }}"
     dest: "{{ item.destination }}"
     mode: "0660"
-  loop: "{{ required_files }}"
+  loop: "{{ firewheel_cache_files | default(required_files) }}"
   when: "item in file_check_results.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | list"
   ignore_errors: true
   register: move_results

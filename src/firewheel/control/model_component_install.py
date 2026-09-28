@@ -217,8 +217,8 @@ class ModelComponentInstall:
         file_servers = []
         for server in config["ansible"].get("file_servers", []):
             url = server["url"]
-            use_proxy = server["use_proxy"]
-            validate_certs = server["validate_certs"]
+            use_proxy = server.get("use_proxy", True)
+            validate_certs = server.get("validate_certs", True)
 
             for cache_path in server["cache_paths"]:
                 cache_info = {

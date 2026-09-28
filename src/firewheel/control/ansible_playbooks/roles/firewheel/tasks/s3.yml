@@ -1,7 +1,7 @@
 ---
 ###################################################################################################
-# This playbook will loop through all values in the `required_files` variable
-# and collected those files from an S3 instance.
+# This playbook will loop through configured S3 endpoints and collect
+# cacheable files from S3.
 # The user will need to provide all relevant information.
 # An example configuration is shown below:
 #
@@ -17,6 +17,12 @@
 #     aws_secret_access_key: "SOME SECRET KEY"
 #     buckets:
 #       - "firewheel_bucket3"
+#
+# Note:
+#   The user-facing FIREWHEEL configuration uses the nested structure shown
+#   above. `model_component_install.py` flattens that structure before passing
+#   `s3_endpoints` to this Ansible role.
+#
 ###################################################################################################
 
 

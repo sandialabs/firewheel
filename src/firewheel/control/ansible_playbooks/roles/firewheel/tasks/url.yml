@@ -3,7 +3,7 @@
 # This playbook will collect cached files from a given URL.
 # It uses https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html.
 #
-# If you are using an username or password token, you can specify it in the URL
+# If you are using a username or password token, you can specify it in the URL
 # For example: https://user:password@server.com/url/cache/path/file.txt
 # The user will need to provide all relevant information.
 # An example configuration is shown below:
@@ -20,6 +20,12 @@
 #     validate_certs: False
 #     cache_paths:
 #       - "secondpath/intermediate/path"
+#
+# Note:
+#   The user-facing FIREWHEEL configuration uses the nested structure shown
+#   above. `model_component_install.py` flattens that structure before passing
+#   `file_servers` to this Ansible role.
+#
 ###################################################################################################
 - name: Attempt to pull from URL cache
   block:

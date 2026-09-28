@@ -4,9 +4,9 @@
 Model Component INSTALL file
 ############################
 
-Some Model Components may require additional Python packages to be installed within FIREWHEEL's virtual environment or for data to be downloaded.
-In this case, the Model Component can have an ``INSTALL`` directory, which contains a valid `Ansible Playbook <https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html>`_ (recommended method).
-Alternatively, ``INSTALL`` can be an executable script (as denoted by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line), though this is not recommended and support will be removed in a future releases.
+Some model components may require additional Python packages to be installed within FIREWHEEL's virtual environment or for data to be downloaded.
+In this case, the model component can have an ``INSTALL`` directory, which contains a valid `Ansible Playbook <https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html>`_ (recommended method).
+Alternatively, ``INSTALL`` can be an executable script (as denoted by a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line), though this is not recommended and support will be removed in a future release.
 When users use the :ref:`helper_mc_generate` Helper, a new INSTALL directory is created with sample ``tasks.yml`` and ``vars.yml`` automatically included.
 
 
@@ -19,8 +19,8 @@ Design Principles
 
 We recommend that the following principles are adhered to when installing a model component.
 
-1. `Idempotence <https://en.wikipedia.org/wiki/Idempotence>`_ -- The file(s) should be capable of running multiple times without causing issues. This is a core tenant of Ansible and a strong motivator why Ansible playbooks are the preferred method.
-2. **Reproducibility** -- It is critical that users download the exact same data that was originally intended by the Model Component creators.
+1. `Idempotence <https://en.wikipedia.org/wiki/Idempotence>`_ -- The file(s) should be capable of running multiple times without causing issues. This is a core tenet of Ansible and a strong motivator why Ansible playbooks are the preferred method.
+2. **Reproducibility** -- It is critical that users download the exact same data that was originally intended by the model component creators.
    If the data/packages differ, then there is a strong possibility that the experimental outcomes will differ and could produce unintended consequences.
    Therefore, we strongly recommend that MC creators link to exact versions of software to download, rather than an automatically updating link.
    For example, if the MC was supposed to install a GitLab runner:
@@ -33,7 +33,7 @@ We recommend that the following principles are adhered to when installing a mode
         # GOOD: Get version 11.4.2
         wget https://s3.amazonaws.com/gitlab-runner-downloads/v11.4.2/binaries/gitlab-runner-linux-386
 
-3. **Integrity** -- A checksum for all downloaded files is strongly recommend both to facilitate reproducibility and to increase the security of the experiment.
+3. **Integrity** -- A checksum for all downloaded files is strongly recommended both to facilitate reproducibility and to increase the security of the experiment.
 4. **Offline Accessible** -- Many experiments are conducted on infrastructure that lacks Internet access. Therefore, we recommend that INSTALL files allow users to achieve the same end result using cached files.
 5. **Cleanup** -- Only the essential dependencies should be kept and any irrelevant data that may have been generated during intermediate steps should be removed.
 6. **Readability** -- Users will need to execute these potentially unknown actions, the INSTALL script should be well documented and readable to the average user. Readability is desired over brevity.
@@ -97,14 +97,28 @@ The tasks file should be a YAML list with any tasks needed to ensure that the mo
 The ``vars.yml`` file should be a YAML dictionary of all the variable keys/values which will be used when installing the model component.
 FIREWHEEL will automatically provide the following variables to the Ansible playbooks when running:
 
-- ``mc_name`` -- The name of the Model Component.
+- ``mc_name`` -- The name of the model component.
 - ``mc_dir`` -- The full path to the model component directory.
 
 In addition to any variables the specific tasks need, the ``vars.yml`` *should* have a ``required_files`` key where a list of the final output files is listed.
-This is because the model component installation is assumed to be complete when all ``required_files`` are present.
-As an added benefit, FIREWHEEL supports caching pre-computed blobs from various resources to enable offline experiment access and the ``required_files`` supports this feature.
-The process of collecting offline required files is automatically handled by FIREWHEEL and using this process is discussed in detail in :ref:`mc_install_cache`.
-If no ``required_files`` are needed, then it can be omitted from ``INSTALL/vars.yml``.
+This is because the model component installation is assumed to be complete when all ``required_files`` are present and, if checksums are provided, valid.
+
+Some installations also need intermediate input files, such as archives, installers, datasets, or other blobs, that are not themselves the final installed state.
+For these cases, ``vars.yml`` may also define an ``install_inputs`` key.
+The ``install_inputs`` list describes cacheable files that FIREWHEEL may retrieve before running ``tasks.yml``.
+Unlike ``required_files``, ``install_inputs`` do **not** indicate that installation is complete.
+Instead, ``tasks.yml`` is responsible for consuming those inputs and producing the final files listed in ``required_files``.
+
+As an added benefit, FIREWHEEL supports caching pre-computed blobs from various resources to enable offline experiment access.
+Both ``required_files`` and ``install_inputs`` support this cache retrieval process.
+The distinction is:
+
+- ``required_files`` -- Final installed files. If all are present and valid, the model component is considered installed.
+- ``install_inputs`` -- Cacheable inputs used by ``tasks.yml`` to produce the final installed files. These are not completion markers.
+
+If no final output files need to be tracked, then ``required_files`` can be omitted from ``INSTALL/vars.yml``.
+However, model components that define ``install_inputs`` should normally also define ``required_files`` so FIREWHEEL can verify that ``tasks.yml`` successfully processed those inputs into the desired final state.
+If no intermediate cacheable inputs are needed, then ``install_inputs`` can be omitted.
 
 Continuing the example from above, the end result of ``tasks.yml`` is the creation of the file ``{{ mc_dir }}/vm_resources/debs/htop-1_0_2_debs.tgz``.
 Therefore, this file is *required* to exist for the model component to be completely installed.
@@ -116,6 +130,25 @@ The ``vars.yml`` file would look like:
   required_files:
     - destination: "{{ mc_dir }}/vm_resources/debs/htop-1_0_2_debs.tgz"
 
+Some model components need a cached input artifact that must be processed before the final installed files exist.
+For example, a model component may use a cached archive and extract it into the final installation layout:
+
+.. code-block:: yaml
+  :caption: This is an example ``vars.yml`` file that uses an install input archive to create final required files.
+
+  install_inputs:
+    - destination: "{{ mc_dir }}/artifacts/example-data.tgz"
+      source: "{{ mc_name }}/example-data.tgz"
+      checksum_algorithm: "sha256"
+      checksum: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+  required_files:
+    - destination: "{{ mc_dir }}/vm_resources/example-data/metadata.json"
+    - destination: "{{ mc_dir }}/vm_resources/example-data/data.bin"
+
+In this example, FIREWHEEL may retrieve ``example-data.tgz`` from cache before running ``tasks.yml``.
+The ``tasks.yml`` file is then responsible for extracting that archive and creating the final files listed in ``required_files``.
+The model component is not considered installed merely because ``example-data.tgz`` exists.
 
 The full definition for ``required_files`` is:
 
@@ -130,12 +163,12 @@ The full definition for ``required_files`` is:
 .. confval:: source
 
     Where the file should be located **within** the cache.
-    This should not be set by MC creators, as it defaults to ``{{ mc_name }}/file``.
-    However, it is available to be modified by end-users if desired.
+    This defaults to ``{{ mc_name }}/{{ item.destination | basename }}``.
+    Model component creators or end-users may set this when the cache path should differ from the destination basename.
 
     :type: string
     :required: false
-    :default: ``{{ mc_name }}/file``
+    :default: ``{{ mc_name }}/{{ item.destination | basename }}``
 
 .. confval:: checksum_algorithm
 
@@ -157,33 +190,79 @@ The full definition for ``required_files`` is:
     :type: string
     :required: false
 
+The full definition for ``install_inputs`` is the same as ``required_files``:
+
+.. confval:: destination
+
+    Where the install input should be placed before ``tasks.yml`` runs.
+    Should include ``{{ mc_dir }}`` if the file needs to be relative to the model component directory.
+
+    :type: string
+    :required: true
+
+.. confval:: source
+
+    Where the file should be located **within** the cache.
+    This defaults to ``{{ mc_name }}/{{ item.destination | basename }}``.
+    Model component creators or end-users may set this when the cache path should differ from the destination basename.
+
+    :type: string
+    :required: false
+    :default: ``{{ mc_name }}/{{ item.destination | basename }}``
+
+.. confval:: checksum_algorithm
+
+    Algorithm to determine checksum of the input file.
+    Must be supported by `ansible.builtin.stat <https://docs.ansible.com/ansible/latest/collections/ansible/builtin/stat_module.html#parameter-checksum_algorithm>`_ (e.g., ``"sha1"``, ``"sha256"``, etc.).
+
+    :type: string
+    :required: false
+
+.. confval:: checksum
+
+    The hash of the input file.
+
+    :type: string
+    :required: false
+
+.. note::
+
+    ``install_inputs`` are useful for offline installs where a cached artifact must be unpacked or transformed before the final installed files exist.
+    FIREWHEEL will attempt to retrieve ``install_inputs`` from configured caches, but will not use them as installation completion markers.
+    The final completion check is based on ``required_files``.
+    If a system is offline but all declared ``install_inputs`` are available and valid, FIREWHEEL may still run ``tasks.yml`` so the model component can produce its final ``required_files`` without Internet access.
+
 .. _mc_install_cache:
 
 ***************************
 Setting up an Offline Cache
 ***************************
 
-Collecting and retrieving files from a cache is automatically supported in Ansible playbooks without MC designer intervention.
+Collecting and retrieving files from a cache is automatically supported in Ansible playbooks without model component designer intervention.
 Currently, FIREWHEEL supports caching files in a file server, git repository, or in an Amazon S3 data store.
-If the user sets the necessary settings in the :ref:`firewheel_configuration` for the described types below, then FIREWHEEL will automatically check those locations for any model component ``required_files``.
-Users are able to set multiple cache types as FIREWHEEL will check any caches for the required file.
+If the user sets the necessary settings in the :ref:`firewheel_configuration` for the cache types described below, then FIREWHEEL will automatically check those locations for model component cacheable files.
+
+FIREWHEEL supports caching two categories of files:
+
+- ``required_files`` -- Final installed files. If these are retrieved from cache and validated, the model component may already be considered installed.
+- ``install_inputs`` -- Intermediate input files used by ``tasks.yml``. These may be retrieved from cache, but ``tasks.yml`` must still run to convert them into the final ``required_files``.
 
 Users setting up a cache should place cached files using the path: ``{{ mc_name }}/{{ item.destination | basename }}``.
 From the example above, the default ``source`` path would be ``linux.ubuntu/htop-1_0_2_debs.tgz``, where ``linux.ubuntu`` is the name of the associated model component.
-Users can optionally modify this path by setting the :confval:`source` within the model component variables file.
+Users can optionally modify this path by setting the :confval:`source` field within the relevant ``required_files`` or ``install_inputs`` entry.
 
 Git Cache
 =========
 Users can use `git <https://git-scm.com>`__ repositories for caching model component binaries.
 To use this, users will need to install  `git <https://git-scm.com>`__ and `git-lfs <https://git-lfs.com>`__ on their :ref:`cluster-control-node` to appropriately clone their repositories.
 This caching mechanism is set up so that repositories are initially cloned *without* downloading any large file storage (LFS) for performance reasons.
-Then if a ``required_file`` is identified without that repository, the file is subsequently downloaded and moved into place.
+Then, if a cacheable file from ``required_files`` or ``install_inputs`` is found in one of those repositories, the file is subsequently downloaded and moved into place.
 
 .. note::
 
   Users may also need to execute ``git lfs install`` to set up Git LFS for their user account.
 
-If users plan to use git repositories for the Model Component cache, they should specify the following options in the :ref:`firewheel_configuration` under the ``ansible`` key.
+If users plan to use git repositories for the model component cache, they should specify the following options in the :ref:`firewheel_configuration` under the ``ansible`` key.
 
 An example of this configuration is shown below:
 
@@ -255,7 +334,7 @@ S3 Cache
 ========
 Users can use `Amazon Simple Storage Service (S3) <https://aws.amazon.com/s3/>`__ buckets for caching model component binaries.
 To use this, users will need to install  `boto3 <https://pypi.org/project/boto3/>`__, the official Amazon Web Services (AWS) Software Development Kit (SDK) for Python into their FIREWHEEL virtual environment.
-Additionally, if users plan to use an AWS S3 instance for the Model Component cache, they should specify the following options in the :ref:`firewheel_configuration` under the ``ansible`` key.
+Additionally, if users plan to use an AWS S3 instance for the model component cache, they should specify the following options in the :ref:`firewheel_configuration` under the ``ansible`` key.
 
 An example of this configuration is shown below:
 
@@ -307,7 +386,7 @@ An example of this configuration is shown below:
         :type: string
         :required: true
 
-    .. confval:: s3_buckets
+    .. confval:: buckets
 
         A list of buckets associated with the S3 server where each bucket is represented as a string.
 
@@ -317,6 +396,45 @@ An example of this configuration is shown below:
 File Server Cache
 =================
 If users plan to use a file server (HTTP/HTTPS/FTP) for the Model Component cache, they can specify the following options in the :ref:`firewheel_configuration` under the ``ansible`` key.
+The file server cache uses Ansible's `ansible.builtin.get_url <https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html>`_ module.
+The supported URL schemes are those supported by ``get_url`` for downloading files, primarily:
+
+- ``http://``
+- ``https://``
+- ``ftp://``
+
+A local filesystem path such as ``/path/to/cache`` is **not** itself a file server URL.
+If cached files already exist on disk and users want to use the file server cache mechanism, the directory should be served through one of the supported URL schemes, such as HTTP.
+For example, a user can expose a local cache directory with Python's built-in HTTP server:
+
+.. code-block:: bash
+
+   cd /path/to/firewheel-cache
+   python3 -m http.server 8000
+
+Then configure FIREWHEEL to use that local server:
+
+.. code-block:: yaml
+  :caption: Example file server cache configuration using a local on-disk cache served over HTTP.
+
+  ansible:
+    file_servers:
+      - url: "http://127.0.0.1:8000"
+        cache_paths:
+          - ""
+
+With this configuration, a cached file whose ``source`` is ``test.base_objects/MyTarball.tgz`` should be available at:
+
+.. code-block:: text
+
+   http://127.0.0.1:8000/test.base_objects/MyTarball.tgz
+
+If the cache root is served from a subdirectory, place that subdirectory in ``cache_paths`` instead.
+
+.. note::
+
+   The file server cache is intended for URL-based retrieval using protocols such as HTTP, HTTPS, and FTP.
+   For local on-disk caches, the recommended approach is to serve the cache directory over HTTP, rather than using a raw filesystem path or relying on ``file://`` behavior.
 
 An example of this configuration is shown below:
 
@@ -354,21 +472,48 @@ An example of this configuration is shown below:
 
         .. note::
 
-            If you are using an username or password token, you can specify it in the URL.
+            If you are using a username or password token, you can specify it in the URL.
             For example: ``https://user:password@server.com``
 
 
     .. confval:: cache_paths
 
-        A list of intermediate paths to the FIREWHEEL cache. For example in the URL ``http://example.com/files/firewheel/firewheel_repo_linux/linux.ubuntu/htop-1_0_2_debs.tgz`` then ``url="http://example.com"``,  ``url_cache_path="files/firewheel/firewheel_repo_linux"``, and the ``source=linux.ubuntu/htop-1_0_2_debs.tgz``.
-        If no cache path is required, please use a list with empty string entry as the value.
+        A list of intermediate paths to the FIREWHEEL cache.
+
+        For example, given this cached file URL:
+
+        .. code-block:: text
+
+          http://example.com/files/firewheel/firewheel_repo_linux/linux.ubuntu/htop-1_0_2_debs.tgz
+
+        the configuration would be:
+
+        .. code-block:: text
+
+          url = http://example.com
+          cache_path = files/firewheel/firewheel_repo_linux
+          source = linux.ubuntu/htop-1_0_2_debs.tgz
+
+        The ``source`` value comes from the relevant ``required_files`` or ``install_inputs`` entry.
 
         .. code-block:: yaml
 
           file_servers:
             - url: "http://example.com"
+              use_proxy: false
               cache_paths:
                 - ""
+
+        For a local cache served from a parent directory, include the relative cache directory as the cache path.
+        For example, if ``http://127.0.0.1:8000/firewheel-cache`` is the cache root, use:
+
+        .. code-block:: yaml
+
+          file_servers:
+            - url: "http://127.0.0.1:8000"
+              use_proxy: false
+              cache_paths:
+                - "firewheel-cache"
 
         :type: list
         :required: true
@@ -398,9 +543,9 @@ Script INSTALL File Requirements
 
   This method is **NOT** recommended and will be eliminated in future releases of FIREWHEEL.
 
-If the model component needs to use a single executable to install additional Model Component, users must create a single file called: ``INSTALL`` that should not have an extension and contains a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line (e.g., ``#!/bin/bash``).
+If the model component needs to use a single executable to install additional dependencies, users must create a single file called: ``INSTALL`` that should not have an extension and contains a `shebang <https://en.wikipedia.org/wiki/Shebang_(Unix)>`_ line (e.g., ``#!/bin/bash``).
 Additionally, users must ensure that, upon successful installation, a new file is created in the model component directory with the following format: ``.<MC Name>.installed``.
-For example, if the model component name is ``dns.dns_objects`` than the new file would be ``.dns.dns_objects.installed``.
+For example, if the model component name is ``dns.dns_objects`` then the new file would be ``.dns.dns_objects.installed``.
 
 .. dropdown:: A Bash-based INSTALL template
 
@@ -511,7 +656,7 @@ For example, if the model component name is ``dns.dns_objects`` than the new fil
         # (URL SHASUM-256 FILENAME).
         #
         # We recommend that explicit versions are used for all Images/VMRs to prevent
-        # possible differences between instances of a given Model Component.
+        # possible differences between instances of a given model component.
         # Please be mindful of the software versions as it can have unintended
         # consequences on your Emulytics experiment.
         #

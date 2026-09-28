@@ -339,20 +339,48 @@ class minimegaAPI:  # noqa: N801
         """
         mm_vm_info = self.mm.vm_info()
         formatted_vm_info = self.mmr_map(mm_vm_info)
-        mm_common_keys = {"uuid", "name", "state", "id"}
+
+        mm_common_keys = {
+            "uuid",
+            "name",
+            "state",
+            "id",
+            "type",
+            "android_serial",
+            "android_console_port",
+            "android_adb_port",
+        }
+
         vms = {}
         for hostname, host_vms in formatted_vm_info.items():
             for host_vm in host_vms:
                 if not self.check_host_filter(filter_dict, host_vm):
                     continue
+
                 new_host_vm = {k: v for k, v in host_vm.items() if k in mm_common_keys}
-                new_host_vm["vnc"] = host_vm["vnc_port"]
-                tags = json.loads(host_vm["tags"])
+
+                new_host_vm["vnc"] = host_vm.get("vnc_port", "")
+
+                raw_tags = host_vm.get("tags", "{}")
+                try:
+                    tags = json.loads(raw_tags) if raw_tags not in ("", "N/A") else {}
+                except json.JSONDecodeError:
+                    self.log.warning(
+                        "Unable to parse minimega tags for VM %s: %s",
+                        host_vm.get("name", ""),
+                        raw_tags,
+                    )
+                    tags = {}
+
+                new_host_vm["tags"] = tags
+                new_host_vm["error"] = tags.get("error", "")
                 new_host_vm["image"] = tags.get("image", "")
                 new_host_vm["control_ip"] = tags.get("control_ip", "")
                 new_host_vm["hostname"] = hostname
                 new_host_vm["pid"] = host_vm.get("pid", "")
+
                 vms[new_host_vm["name"]] = new_host_vm
+
         return vms
 
     @staticmethod

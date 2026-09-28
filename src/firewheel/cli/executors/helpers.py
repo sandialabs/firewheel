@@ -19,7 +19,7 @@ class Helpers(AbstractExecutor):
         self,
         host_list_path: list[str],
         content: list[str],
-        helper_dict: dict[str, Helper] | None = None,
+        helper_dict: dict[str, type["Helper"]] | None = None,
     ) -> None:
         """
         Initialize.
