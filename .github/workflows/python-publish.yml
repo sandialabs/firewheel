@@ -6,6 +6,10 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   call-firewheel-publishing:
     name: Publish FIREWHEEL Packages
