@@ -7,10 +7,10 @@ import tarfile
 from io import BufferedReader
 from lzma import LZMAError, LZMADecompressor
 from types import TracebackType
-from typing import Dict, List, Tuple, Union, Optional, Generator
 from logging import Logger
 from datetime import datetime, timezone
 from contextlib import contextmanager
+from collections.abc import Generator
 
 from minimega import Error as MinimegaError  # type: ignore[import-untyped]
 
@@ -39,7 +39,7 @@ class FileStoreFile:
         """
         self.filename = filename
         self.database = database
-        self.handle: Union[BufferedReader, None] = None
+        self.handle: BufferedReader | None = None
 
         self.log = Log(name="FileStoreFile").log
 
@@ -81,9 +81,9 @@ class FileStoreFile:
 
     def __exit__(
         self,
-        exc_type: Union[BaseException, None] = None,
-        exc_val: Union[BaseException, None] = None,
-        exc_tb: Union[TracebackType, None] = None,
+        exc_type: BaseException | None = None,
+        exc_val: BaseException | None = None,
+        exc_tb: TracebackType | None = None,
     ) -> bool:
         """
         Close the file.
@@ -116,7 +116,7 @@ class FileStore:
         store: str,
         mm_base: str = config["minimega"]["base_dir"],
         decompress: bool = False,
-        log: Optional[Logger] = None,
+        log: Logger | None = None,
     ) -> None:
         """
         Initializes the object with a minimegaAPI connection.
@@ -224,7 +224,7 @@ class FileStore:
         return False
 
     @contextmanager
-    def file_lock(self, location: str) -> Generator[Optional[bool], None, None]:
+    def file_lock(self, location: str) -> Generator[bool | None, None, None]:
         """
         Context Manager for acquiring locks. Enables using the with context
         to get a lock using an optional timeout. Release lock at the end of
@@ -234,7 +234,7 @@ class FileStore:
             location (str): Location of the file to lock.
 
         Yields:
-            Optional[bool]: :py:data:`True` on lock acquired.
+            bool | None: :py:data:`True` on lock acquired.
         """
         try:
             # Try to acquire the lock.
@@ -297,7 +297,7 @@ class FileStore:
 
     def _minimega_get_data(
         self, host_file_path: str, filename: str, decompress: bool = False
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         Get the requested file from minimega and return the path to the locally
         cached version of the file.
@@ -589,7 +589,7 @@ class FileStore:
             return hash_file(host_file_path)
         return ""
 
-    def get_file_upload_date(self, filename: str) -> Optional[datetime]:
+    def get_file_upload_date(self, filename: str) -> datetime | None:
         """
         Returns the upload date of a file in minimega
 
@@ -620,7 +620,7 @@ class FileStore:
             self.log.debug("Filename %s has not been uploaded", filename)
             return None
 
-    def list_contents(self, pattern: str = "") -> List[Tuple[str, str, str]]:
+    def list_contents(self, pattern: str = "") -> list[tuple[str, str, str]]:
         """
         List the contents of the FileStore.
 
@@ -652,7 +652,7 @@ class FileStore:
             self.log.error("Exception getting running file_list on %s", self.store)
             raise exp
 
-    def list_distinct_contents(self, pattern: str = "") -> List[str]:
+    def list_distinct_contents(self, pattern: str = "") -> list[str]:
         """
         List the contents of the FileStore.
 
@@ -708,7 +708,7 @@ class FileStore:
 
     def _check_mesh_file_consistency(
         self, mm_file_path: str
-    ) -> Dict[str, Union[List[Dict[str, Optional[Union[str, List[str]]]]], bool]]:
+    ) -> dict[str, list[dict[str, str | list[str] | None]] | bool]:
         """
         Checks whether there is a consistent version of the file on all hosts in the mesh.
 

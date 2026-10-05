@@ -1,8 +1,7 @@
 import os
 import json
 from pathlib import Path
-
-from importlib_metadata import entry_points
+from importlib.metadata import entry_points
 
 from firewheel.config import config
 from firewheel.lib.log import Log

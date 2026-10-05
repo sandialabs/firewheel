@@ -22,7 +22,7 @@ Examples:
 
 import shlex
 import shutil
-from typing import Any, Set, Dict, List, Final, Tuple, Union
+from typing import Final, TypedDict, cast
 from pathlib import Path
 
 import yaml
@@ -32,6 +32,106 @@ from rich.console import Console
 from firewheel.lib.utilities import strtobool
 
 CONFIG_MODULE_PATH = Path(__file__).parent
+
+
+class AnsibleConfig(TypedDict):
+    pass
+
+
+class AttributeDefaultsConfig(TypedDict):
+    pass
+
+
+class CliConfig(TypedDict):
+    cache_dir: str
+    root_dir: str
+
+
+class ClusterConfig(TypedDict):
+    compute: list[str]
+    control: list[str]
+
+
+class DiscoveryConfig(TypedDict):
+    hostname: str
+    install_dir: str
+    port: int
+
+
+class GrpcConfig(TypedDict):
+    cache_dir: str
+    db: str
+    hostname: str
+    port: int
+    root_dir: str
+    threads: int
+
+
+class LoggingConfig(TypedDict):
+    cli_log: str
+    discovery_log: str
+    firewheel_log: str
+    level: str | int
+    minimega_log: str
+    root_dir: str
+    vmr_log_dir: str
+
+
+class MinimegaConfig(TypedDict):
+    base_dir: str
+    control_bridge: str
+    degree: int
+    experiment_interface: str
+    files_dir: str
+    install_dir: str
+    namespace: str
+    use_gre: bool
+
+
+class PythonConfig(TypedDict):
+    bin: str
+    venv: str
+
+
+class SshConfig(TypedDict):
+    user: str | None
+
+
+class SystemConfig(TypedDict):
+    default_group: str | None
+    default_output_dir: str
+    umask: str
+
+
+class TestConfig(TypedDict):
+    grpc_db: str
+    image_db: str
+    schedule_test_database: str
+    vm_resource_store_test_database: str
+    vmmapping_test_database: str
+
+
+class VmResourceManagerConfig(TypedDict):
+    experiment_start_buffer_sec: int
+
+
+class FirewheelConfig(TypedDict):
+    ansible: AnsibleConfig
+    attribute_defaults: AttributeDefaultsConfig
+    cli: CliConfig
+    cluster: ClusterConfig
+    discovery: DiscoveryConfig
+    grpc: GrpcConfig
+    logging: LoggingConfig
+    minimega: MinimegaConfig
+    python: PythonConfig
+    ssh: SshConfig
+    system: SystemConfig
+    test: TestConfig
+    vm_resource_manager: VmResourceManagerConfig
+
+
+ConfigLeafValue = str | int | bool | list[str] | None
 
 
 class Config:
@@ -90,16 +190,7 @@ class Config:
         if not self.config_path.exists():
             self.generate_config_from_defaults()
         # Load the configuration parameters from the file
-        self.config: Dict[
-            str,
-            Union[
-                int,
-                str,
-                bool,
-                Dict[str, Union[int, str, bool]],
-                List[Union[int, str, bool]],
-            ],
-        ] = {}
+        self.config: FirewheelConfig = cast(FirewheelConfig, {})
         self._load_config_file()
 
     def generate_config_from_defaults(self) -> None:
@@ -153,7 +244,7 @@ class Config:
         except KeyError:
             # No logging level found defaulting to `info`
             if "logging" not in self.config:
-                self.config["logging"] = {}
+                self.config["logging"] = cast(LoggingConfig, {})
             self.config["logging"]["level"] = default_value
 
     def check_cluster(self) -> None:
@@ -173,7 +264,7 @@ class Config:
                 f"[cyan]{len(self.config['cluster']['control'])}[/ cyan]"
             )
 
-        nodes: Set[str] = set()
+        nodes: set[str] = set()
         nodes.update(self.config["cluster"]["control"])
         nodes.update(self.config["cluster"]["compute"])
 
@@ -233,12 +324,12 @@ class Config:
 
     def _update_minimega_config_value(
         self,
-        minimega_config,
-        default_minimega_config_path,
-        minimega_config_parameter,
-        firewheel_config_parameter,
-        description=None,
-    ):
+        minimega_config: dict[str, str | None],
+        default_minimega_config_path: Path,
+        minimega_config_parameter: str,
+        firewheel_config_parameter: str,
+        description: str | None = None,
+    ) -> None:
         description = description or f"minimega parameter {minimega_config_parameter}"
         Console().print(
             f"[b yellow]WARNING: Updating {description}. Currently have:"
@@ -265,26 +356,17 @@ class Config:
         self.check_cluster()
         self.check_minimega_config()
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> FirewheelConfig:
         """Get the currently instantiated configuration.
 
         Returns:
-            dict: The current FIREWHEEL configuration.
+            FirewheelConfig: The current FIREWHEEL configuration.
         """
         return self.config
 
     def set_config(
         self,
-        new_config: Dict[
-            str,
-            Union[
-                int,
-                str,
-                bool,
-                Dict[str, Union[int, str, bool]],
-                List[Union[int, str, bool]],
-            ],
-        ],
+        new_config: FirewheelConfig,
     ) -> None:
         """Set configuration to the value of the passed-in configuration.
 
@@ -294,7 +376,7 @@ class Config:
             possible issues with multiple writers.
 
         Args:
-            new_config (dict): A new FIREWHEEL configuration dictionary.
+            new_config (FirewheelConfig): A new FIREWHEEL configuration dictionary.
 
         Todo:
             * In the future, it might be better to validate the incoming
@@ -306,11 +388,7 @@ class Config:
         self.config = new_config
         self.check_config()
 
-    def resolve_get(
-        self, key: str, space_sep: bool = True
-    ) -> Union[
-        int, str, bool, Dict[str, Union[int, str, bool]], List[Union[int, str, bool]]
-    ]:
+    def resolve_get(self, key: str, space_sep: bool = True) -> ConfigLeafValue:
         """Get the value of a specific key.
 
         This helper method enables getting the value for a specific configuration
@@ -328,7 +406,7 @@ class Config:
                 separated string or as a Python ``list`` object. Defaults to ``True``.
 
         Returns:
-            Union[str, int, list, dict]: The value of the specified key.
+            ConfigLeafValue: The value of the specified key.
 
         Examples:
             To get the value of ``self.config["cluster"]["compute"]`` as
@@ -353,11 +431,7 @@ class Config:
             return " ".join(str(x) for x in value)
         return value
 
-    def resolve_set(
-        self, key: str, value: str
-    ) -> Union[
-        int, str, bool, Dict[str, Union[int, str, bool]], List[Union[int, str, bool]]
-    ]:
+    def resolve_set(self, key: str, value: str) -> ConfigLeafValue:
         """Set the value of a specific key to the given value.
 
         This helper method enables setting the value for a specific configuration
@@ -379,7 +453,7 @@ class Config:
                 attempt to convert that value into the correct Python type.
 
         Returns:
-            Union[str, int, list, dict]: The new value of the specified key.
+            ConfigLeafValue: The new value of the specified key.
 
         Raises:
             ValueError: If the passed in value type cannot be converted into
@@ -410,25 +484,10 @@ class Config:
 
     def resolve_key(
         self, key: str
-    ) -> Tuple[
-        Union[
-            int,
-            str,
-            Dict[str, Union[int, str, bool]],
-            List[Union[int, str, bool]],
-            None,
-        ],
+    ) -> tuple[
+        ConfigLeafValue,
         str,
-        Dict[
-            str,
-            Union[
-                int,
-                str,
-                bool,
-                Dict[str, Union[int, str, bool]],
-                List[Union[int, str, bool]],
-            ],
-        ],
+        dict[str, ConfigLeafValue],
     ]:
         """Identify the configuration key based on a period-separated string.
 
@@ -475,10 +534,10 @@ class Config:
         key_path = split_key[:-1]
         if not leaf_key:
             raise RuntimeError(f"No leaf key found for {key}")
-        current_d = self.config
+        current_d: FirewheelConfig | dict[str, ConfigLeafValue] = self.config
         try:
             for key_p in key_path:
-                current_d = current_d.get(key_p)
+                current_d = cast(dict[str, ConfigLeafValue], current_d.get(key_p))
             resolved_value = current_d.get(leaf_key)
         except AttributeError as exp:
             # Quickly converting the config keys to a list:
@@ -488,7 +547,7 @@ class Config:
                 f"top-level configuration keys cannot be added. Existing keys "
                 f"include: {[*self.config]}."
             ) from exp
-        parent_d = current_d
+        parent_d = cast(dict[str, ConfigLeafValue], current_d)
         return (resolved_value, leaf_key, parent_d)
 
     def write(self) -> None:

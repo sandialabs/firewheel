@@ -1,5 +1,4 @@
 import sys
-from typing import Dict, List, Optional
 from decimal import Decimal
 
 from firewheel.cli.host_accessor import HostAccessor
@@ -16,8 +15,8 @@ class Python(AbstractExecutor):
     def execute(
         self,
         cache_file: str,
-        session: Dict[str, Decimal],
-        arguments: Optional[List[str]],
+        session: dict[str, Decimal],
+        arguments: list[str] | None,
     ) -> int:
         """
         Execute Python scripts via the :class:`firewheel.cli.host_accessor.HostAccessor`.

@@ -10,7 +10,7 @@ authors = [
 ]
 description = "FIREWHEEL is an experiment orchestration tool that assists a user in building, controlling, observing, and analyzing repeatable experiments of distributed network systems at any scale."
 readme = "README.rst"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = [
     "FIREWHEEL",
     "Phenix",
@@ -33,11 +33,11 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Information Analysis",
@@ -55,22 +55,22 @@ dependencies = [
     "ansible>=7.0.0,<=12.0.0",
     "ansible-runner>=2.0.0,<=2.4.3",
     "minimega>=3.0.0",
-    "ClusterShell<=1.10",
+    "ClusterShell<=1.10.1",
     "colorama<=0.4.6",
-    "coverage<=7.10.7",
+    "coverage<=7.16.1",
     "grpcio>=1.71.0,<=1.80.0",
-    "grpcio-tools>=1.71.0,<=1.80.0",
-    "importlib_metadata>=8.0.0,<=8.7.1",
+    "grpcio-tools>=1.71.0,<=1.84.0",
     "Jinja2>=3.1.2,<=3.1.6",
     "netaddr<=1.3.0,>=1.0.0",
     "networkx>=3.0,<=3.4.2",
     "protobuf>=6.0.0,<8.0.0",
-    "pytest<=8.4.2",
+    "pytest<=9.1.1",
     "pytest-cov<=7.1.0",
-    "python-dotenv<=1.2.2",
+    "python-dotenv<=1.2.3",
     "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
-    "requests==2.32.5",
+    "adbutils>=2.12.0",
+    "requests==2.34.2",
     "rich>=13.6.0,<15.1",
 ]
 
@@ -85,12 +85,12 @@ format = [
 ]
 docs = [
     "Sphinx>=7.0.0,<=8.2.3",
-    "myst-nb<=1.3.0",
+    "myst-nb<=1.4.0",
     "sphinx-rtd-theme==3.1.0",
     "sphinxcontrib-spelling>=7.0.0,<=8.0.2",
     "sphinx-copybutton==0.5.2",
     "pyenchant==3.3.0",
-    "doc8==1.1.2",
+    "doc8==2.0.0",
     "pip-licenses==5.5.5",
     "sphinx-design==0.6.1",
 ]
@@ -134,7 +134,7 @@ strict = true
 disallow_any_unimported = true
 show_traceback = true
 pretty = true
-python_version = "3.9"
+python_version = "3.10"
 enable_error_code = ["ignore-without-code", "redundant-expr"]
 show_error_code_links = true
 disallow_untyped_calls = false
@@ -227,8 +227,8 @@ exclude_also = [
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.9
-target-version = "py39"
+# Assume Python 3.10
+target-version = "py310"
 
 
 extend-exclude = [

@@ -5,16 +5,20 @@
 #   This Ansible playbook is designed to install extra dependencies for a model component
 #   such as file retrieval or data processing. It does this by first checking if the necessary
 #   files are available via a cache mechanism, including Git, S3, and a standard file server
-#   (via a URL). If a cache is not available, than it provides a naive check for online access
+#   (via a URL). If a cache is not available, then it provides a naive check for online access
 #   and, if needed executes the tasks that are provided in the model component
 #   ``INSTALL/tasks.yml`` file.
 #
 #   The playbook performs the following steps:
 #   1. Imports variables from the specified model component.
-#   2. Attempts to retrieve required files from cache using the 'firewheel' role.
+#   2. Attempts to retrieve cacheable files from cache. This includes:
+#      - required_files: final installed files
+#      - install_inputs: inputs consumed by INSTALL/tasks.yml
 #   3. Checks the online status of the system by pinging 8.8.8.8.
-#   4. If all cache retrieval methods fail and the system is offline, it raises a failure message.
-#   5. If the system is online, it runs the model component-provided tasks.
+#   4. If required files are missing, the system is offline, and valid install
+#      inputs are unavailable, it raises a failure message.
+#   5. If the system is online, or if valid install_inputs are available,
+#      it runs the model component-provided tasks.
 #   6. Performs a final check for required files.
 ###################################################################################################
 - name: "Install Model Component: {{ mc_name }}"
@@ -25,46 +29,87 @@
       ansible.builtin.include_vars:
         file: "{{ vars_path }}"
 
+    - name: Build list of files that may be retrieved from cache
+      ansible.builtin.set_fact:
+        firewheel_cache_files: "{{ (required_files | default([])) + (install_inputs | default([])) }}"
+
+    - name: Determine whether this model component has required file markers
+      ansible.builtin.set_fact:
+        firewheel_has_required_files: "{{ (required_files | default([]) | length) > 0 }}"
+
+    - name: Determine whether this model component has cacheable files
+      ansible.builtin.set_fact:
+        firewheel_has_cache_files: "{{ (firewheel_cache_files | length) > 0 }}"
+
     - name: Checking for required files
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: check_and_end.yml
+      when: firewheel_has_required_files | bool
 
-    - name: Create all destination directories
+    - name: Create all cache destination directories
       ansible.builtin.file:
         path: "{{ item.destination | dirname }}"
         state: directory
         mode: "0755"
-      loop: "{{ required_files }}"
+      loop: "{{ firewheel_cache_files }}"
+
+    - name: Determine configured cache mechanisms
+      ansible.builtin.set_fact:
+        firewheel_has_git_cache: "{{ git_servers is defined and git_servers | length > 0 }}"
+        firewheel_has_s3_cache: "{{ s3_endpoints is defined and s3_endpoints | length > 0 }}"
+        firewheel_has_url_cache: "{{ file_servers is defined and file_servers | length > 0 }}"
 
     - name: Checking git cache
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: git.yml
+      when:
+        - firewheel_has_git_cache | bool
+        - firewheel_has_cache_files | bool
+
+    - name: Checking for required files after Git cache
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: check_and_end.yml
+      when:
+        - firewheel_has_git_cache | bool
+        - firewheel_has_required_files | bool
+        - firewheel_has_cache_files | bool
 
     - name: Checking s3 cache
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: s3.yml
       when:
-        - (git_clone_result is not defined) or (git_clone_result is failed)
+        - firewheel_has_s3_cache | bool
+        - firewheel_has_cache_files | bool
+
+    - name: Checking for required files after S3 cache
+      ansible.builtin.include_role:
+        name: firewheel
+        tasks_from: check_and_end.yml
+      when:
+        - firewheel_has_s3_cache | bool
+        - firewheel_has_required_files | bool
+        - firewheel_has_cache_files | bool
 
     - name: Checking URL cache
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: url.yml
       when:
-        - (git_clone_result is not defined) or (git_clone_result is failed)
-        - (s3_download_result is not defined) or (s3_download_result is failed)
+        - firewheel_has_url_cache | bool
+        - firewheel_has_cache_files | bool
 
-    - name: Checking for required files
+    - name: Checking for required files after URL cache
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: check_and_end.yml
-      when: |
-        (git_clone_result is defined and git_clone_result is succeeded) or
-        (s3_download_result is defined and s3_download_result is succeeded) or
-        (url_download_result is defined and url_download_result is succeeded)
+      when:
+        - firewheel_has_url_cache | bool
+        - firewheel_has_required_files | bool
+        - firewheel_has_cache_files | bool
 
     - name: Check if user is online
       ansible.builtin.command: ping -c 1 8.8.8.8
@@ -72,22 +117,56 @@
       changed_when: false
       ignore_errors: true
 
+    - name: Initialize install input availability status
+      ansible.builtin.set_fact:
+        all_install_inputs_valid: "{{ (install_inputs | default([]) | length) > 0 }}"
+
+    - name: Inspect install inputs
+      ansible.builtin.stat:
+        path: "{{ item.destination }}"
+        checksum_algorithm: "{{ item.checksum_algorithm | default(item.checksum_algo | default('sha1')) }}"
+        get_checksum: true
+      register: install_inputs_check
+      loop: "{{ install_inputs | default([]) }}"
+      when: install_inputs | default([]) | length > 0
+
+    - name: Mark install inputs invalid if any are missing or checksum-invalid
+      ansible.builtin.set_fact:
+        all_install_inputs_valid: false
+      loop: "{{ install_inputs_check.results | default([]) }}"
+      when: >-
+        (not item.stat.exists) or
+        (
+          item.item.checksum is defined and
+          item.stat.checksum != item.item.checksum
+        )
+
     - name: Final failure message if all attempts fail
       ansible.builtin.fail:
-        msg: "All cache file methods have failed and system does not appear to be online. Please provide valid cache information."
-      when: (ping_result.rc | default(0)) != 0
+        msg: >-
+          Required files are not installed, the system does not appear to be online,
+          and valid install inputs are not available. Provide valid cache information,
+          manually place the required install inputs, or rerun on an online system.
+      when:
+        - (ping_result.rc | default(0)) != 0
+        - not (all_install_inputs_valid | default(false) | bool)
 
-    # If we don't have any cached files and are online
-    # then we need to run the MC Install tasks
+    # If required files are still missing, run the MC install tasks when either:
+    #   - the system appears to be online, or
+    #   - all declared install_inputs are available and valid.
     - name: "Include tasks (if needed) for: {{ mc_name }}"
       ansible.builtin.include_tasks: "{{ tasks_path }}"
-      when: (ping_result.rc | default(1)) == 0
+      when: >-
+        ((ping_result.rc | default(1)) == 0) or
+        (all_install_inputs_valid | default(false) | bool)
 
     - name: Checking for required files
       ansible.builtin.include_role:
         name: firewheel
         tasks_from: check_and_end.yml
 
-    - name: Fail if any cached file destination still does not exist
+    - name: Fail if model component installation did not complete
       ansible.builtin.fail:
-        msg: "Failed to correctly install this model component!"
+        msg: >-
+          Failed to correctly install this model component. The INSTALL tasks
+          completed, but the final required_files check did not pass.

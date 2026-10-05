@@ -17,7 +17,7 @@ To accomplish this, FIREWHEEL's *Control* system interprets user defined experim
    FIREWHEEL Software Architecture
 
 FIREWHEEL's software architecture, as shown in :numref:`Figure %s <fw_sw_arch>`, consists of a Command Line Interface (CLI), Experiment Models, and three other major components (*Control*, minimega, and the *VM Resource Manager*) that convert experiment models into running experiments, and manage FIREWHEEL's VM deployment, virtual network and VM provisioning, and run time execution capabilities.
-These FIREWHEEL software components are executed within a Python Virtual Environment, which we will refer to as ``fwpy``, and interact with the Hardware Virtualization components, QEMU/KVM and Open vSwitch (OVS), to instantiate experiment models as configured VMs communicating via virtual networks.
+These FIREWHEEL software components are executed within a Python Virtual Environment, which we will refer to as ``fwpy``, and interact with hardware virtualization and networking components, including QEMU/KVM, the Android Emulator when Android VMs are used, and Open vSwitch (OVS), to instantiate experiment models as configured VMs communicating via virtual networks.
 We'll next discuss each of FIREWHEEL's major software components.
 
 .. note::
@@ -103,7 +103,8 @@ FIREWHEEL uses `NetworkX <https://networkx.org/>`_ [#netx]_, a Python library fo
 minimega
 ========
 
-`minimega <https://www.sandia.gov/minimega/>`__, is the name of the virtualization management component that's currently available with FIREWHEEL. minimega will instantiate an experiment using QEMU/KVM for VMs, and OVS networks.
+`minimega <https://www.sandia.gov/minimega/>`__, is the name of the virtualization management component that's currently available with FIREWHEEL.
+minimega will instantiate an experiment using supported VM backends, such as QEMU/KVM for conventional VMs and native Android emulator support for Android VMs, and OVS networks.
 minimega receives an experiment graph from FIREWHEEL's *Control* system, then determines and sends the appropriate set of instructions to the QEMU/KVM hypervisor and OVS virtual networking systems that are needed to instantiate the experiment model as an emulated computer network.
 At this stage the experiment network's topology has been fully instantiated on the virtualization platform, but has yet to have any of its scheduled actions applied to it -- which may further configure the compute systems and network devices as needed before beginning the intended cyber experiment.
 

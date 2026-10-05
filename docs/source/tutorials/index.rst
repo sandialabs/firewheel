@@ -25,6 +25,7 @@ Building Experiments
     vm_builder
     acme
     image
+    android/index
 
 **************
 Advanced Usage
