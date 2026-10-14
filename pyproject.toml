@@ -66,7 +66,7 @@ dependencies = [
     "protobuf>=6.0.0,<7.0.0",
     "pytest<=9.1.1",
     "pytest-cov<=7.1.0",
-    "python-dotenv<=1.2.3",
+    "python-dotenv<=1.2.4",
     "PyYAML<=6.0.3",
     "qemu.qmp==0.0.3",
     "adbutils>=2.12.0",
