@@ -461,7 +461,7 @@ def retry(
 
 @contextmanager
 def manage_queueing_process(
-    target: Any, *extra_args: Any
+    target: Any, *extra_args: Any, method: str | None = None
 ) -> Generator[tuple[multiprocessing.Process, multiprocessing.Queue], None, None]:
     """
     Manages spawning, terminating, and cleaning up a multiprocessing task.
@@ -472,13 +472,24 @@ def manage_queueing_process(
             first argument.
         *extra_args: Additional arguments to pass to the target
             function.
+        method (str | None): The multiprocessing start method to use
+            ('fork', 'spawn', 'forkserver'). If None, uses the default
+            for the platform.
 
     Yields:
         tuple[multiprocessing.Process, multiprocessing.Queue]: A pair
             containing the spawned process instance and the queue
             injected into the process.
     """
-    context = multiprocessing.get_context()
+    # Use explicit context if a method is specified, otherwise use default
+    if method is not None:
+        try:
+            context = multiprocessing.get_context(method)
+        except ValueError:
+            # Method not available on this platform, fall back to default
+            context = multiprocessing.get_context()
+    else:
+        context = multiprocessing.get_context()
     task_queue = context.Queue()
 
     # Launch a worker process to update the queue

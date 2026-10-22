@@ -540,3 +540,36 @@ class TestManageQueueingProcess:
         mock_process.is_alive.assert_called_once_with()
         mock_process.terminate.assert_called_once_with()
         mock_process.join.assert_called_once_with()
+
+    def test_explicit_method_parameter(
+        self, mock_get_context, mock_context, mock_queue, mock_process
+    ):
+        with manage_queueing_process("target", "arg1", method="forkserver") as (process, queue):
+            assert process is mock_process
+            assert queue is mock_queue
+
+        mock_get_context.assert_called_once_with("forkserver")
+        mock_context.Queue.assert_called_once_with()
+        mock_context.Process.assert_called_once_with(
+            target="target",
+            args=(mock_queue, "arg1"),
+        )
+        mock_process.start.assert_called_once_with()
+
+    def test_method_parameter_fallback_on_value_error(
+        self, mock_context, mock_queue, mock_process
+    ):
+        # Mock get_context to raise ValueError on invalid method, then succeed with default
+        with patch.object(
+            multiprocessing,
+            "get_context",
+            side_effect=[ValueError("invalid method"), mock_context]
+        ) as mock_get:
+            with manage_queueing_process("target", method="invalid") as (process, queue):
+                assert process is mock_process
+                assert queue is mock_queue
+
+            # Should be called twice: once with the invalid method, once without args (default)
+            assert mock_get.call_count == 2
+            mock_get.assert_any_call("invalid")
+            mock_get.assert_any_call()

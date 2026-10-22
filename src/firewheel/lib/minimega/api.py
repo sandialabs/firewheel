@@ -14,10 +14,59 @@ from firewheel.config import config
 from firewheel.lib.log import Log
 from firewheel.lib.utilities import retry, manage_queueing_process
 
-# Python 3.14+ starts processes by default via the `forkserver` method
-multiprocessing.set_start_method("forkserver", force=True)
-# minimega must be preloaded into forkserver processes
-multiprocessing.set_forkserver_preload(["minimega"])
+
+def _get_safe_multiprocessing_method():
+    """
+    Determine the safest multiprocessing method for the current context.
+
+    Python 3.14+ requires forkserver for proper pickling compatibility, but
+    forkserver cannot be used in scripts that are executed directly (like
+    FIREWHEEL's generated CLI helper scripts) without proper if __name__ guards.
+
+    This function detects when we're in a directly executed script and falls
+    back to 'fork' (on Unix) or 'spawn' in that case.
+
+    Returns:
+        str: The multiprocessing method to use ('forkserver', 'fork', or 'spawn')
+    """
+    # Check if we're running from a directly executed script
+    # When Python runs a script directly (python script.py), __main__.__spec__ is None
+    # When importing a module, __main__.__spec__ will be set
+    import __main__  # noqa: PLC0415
+
+    # If __main__ has no __spec__, we're running a script directly
+    # Also check if __main__ has __file__ - scripts run with -c won't have it
+    is_direct_script = (
+        not hasattr(__main__, "__spec__") or __main__.__spec__ is None
+    ) and hasattr(__main__, "__file__")
+
+    if is_direct_script:
+        # We're in a directly executed script (like CLI helper scripts)
+        # Use 'fork' on Unix systems (safer for this context)
+        # Note: 'fork' is the default on Unix and doesn't require if __name__ guards
+        if sys.platform != "win32":
+            return "fork"
+        else:
+            # On Windows, we have to use spawn, but this may still fail
+            # if the script doesn't have proper guards
+            return "spawn"
+    else:
+        # We're in a normal import context, can safely use forkserver
+        return "forkserver"
+
+
+def _ensure_forkserver_ready():
+    """
+    Ensure the forkserver context is properly configured for minimega.
+
+    This must be called before using the forkserver multiprocessing method.
+    Python 3.14+ requires explicit preloading of modules like minimega.
+    """
+    try:
+        multiprocessing.set_forkserver_preload(["minimega"])
+    except RuntimeError:
+        # Preload already set or forkserver not initialized yet
+        pass
 
 
 # The proper way to spell minimega is ALWAYS lowercase.
@@ -138,8 +187,18 @@ class minimegaAPI:  # noqa: N801
             RuntimeError: If a timeout occurs when connecting to minimega but
                 ``skip_retry is true``.
         """
+        # Determine the safe multiprocessing method for this context
+        mp_method = _get_safe_multiprocessing_method()
+
+        # Only set up forkserver if we're actually using it
+        if mp_method == "forkserver":
+            _ensure_forkserver_ready()
+
         with manage_queueing_process(
-            _enqueue_binding_compatibility, self.mm_socket, self.mm_namespace
+            _enqueue_binding_compatibility,
+            self.mm_socket,
+            self.mm_namespace,
+            method=mp_method,
         ) as (process, compatibility_queue):
             # Check the completed process for failure conditions
             process.join(timeout)
@@ -418,8 +477,7 @@ class minimegaAPI:  # noqa: N801
         """
         header, rows = table_output[0], table_output[1:-1]
         return [
-            {title: row[col_i] for col_i, title in enumerate(header)}
-            for row in rows
+            {title: row[col_i] for col_i, title in enumerate(header)} for row in rows
         ]
 
     def _cmd_to_dict(self, cmd: list[str]) -> list[dict[str, str]]:
@@ -461,7 +519,9 @@ class minimegaAPI:  # noqa: N801
         result = subprocess.run(new_args, capture_output=True, check=True)
         return result.stdout.decode("utf-8")
 
-    def _parse_host(self, host_item: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    def _parse_host(
+        self, host_item: tuple[str, list[dict[str, Any]]]
+    ) -> dict[str, Any]:
         """
         Parses a host response item from minimega.
 
