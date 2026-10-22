@@ -27,6 +27,9 @@ class VMMappingTestCase(unittest.TestCase):
                 "server_uuid": "12345",
                 "state": VMState.TESTING,
                 "current_time": "0",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
             },
         ]
         self.invalid_entry_1 = {"server_name": "test-invalid", "invalid": "value"}
@@ -49,8 +52,11 @@ class VMMappingTestCase(unittest.TestCase):
             "server_name": self.entries[0]["server_name"],
             "control_ip": self.entries[0]["control_ip"],
             "server_uuid": self.entries[0]["server_uuid"],
-            "state": "uninitialized",
+            "state": VMState.UNINITIALIZED,
             "current_time": "",
+            "has_execution_issues": False,
+            "execution_issue_count": 0,
+            "last_execution_issue": "",
         }
         self.assertEqual(found, expected)
 
@@ -73,7 +79,7 @@ class VMMappingTestCase(unittest.TestCase):
         found2 = self.vmmapping.get(server_uuid=self.entries[1]["server_uuid"])
         self.assertEqual(self.entries[0]["server_name"], found1["server_name"])
         self.assertEqual(self.entries[0]["control_ip"], found1["control_ip"])
-        self.assertEqual("uninitialized", found1["state"])
+        self.assertEqual(VMState.UNINITIALIZED, found1["state"])
         self.assertEqual("", found1["current_time"])
         self.assertEqual(self.entries[1], found2)
 
@@ -119,7 +125,7 @@ class VMMappingTestCase(unittest.TestCase):
             if "state" in entry:
                 self.assertEqual(entry["state"], db_entry["state"])
             else:
-                self.assertEqual("uninitialized", db_entry["state"])
+                self.assertEqual(VMState.UNINITIALIZED, db_entry["state"])
             if "current_time" in entry:
                 self.assertEqual(entry["current_time"], db_entry["current_time"])
             else:
@@ -151,6 +157,9 @@ class VMMappingTestCase(unittest.TestCase):
             "server_name": self.entries[1]["server_name"],
             "state": VMState.CONFIGURING,
             "current_time": self.entries[1]["current_time"],
+            "has_execution_issues": False,
+            "execution_issue_count": 0,
+            "last_execution_issue": "",
         }
         self.assertEqual(found, expected)
 
@@ -195,6 +204,9 @@ class VMMappingTestCase(unittest.TestCase):
                 "server_name": self.entries[0]["server_name"],
                 "state": VMState.UNINITIALIZED,
                 "current_time": "",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
             }
         )
 

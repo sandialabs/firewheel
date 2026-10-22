@@ -109,6 +109,142 @@ class VmListError(Exception):
         self.error_type = error_type
 
 
+def _state_text(state):
+    """Return a display-safe state string.
+
+    Args:
+        state: State value, potentially an enum.
+
+    Returns:
+        str: State text.
+    """
+    return state.value if hasattr(state, "value") else str(state)
+
+
+def _execution_issue_suffix(vm_resource_status, show_count=True):
+    """Build an execution-issue suffix for state display.
+
+    Args:
+        vm_resource_status (dict): VM resource status dictionary.
+        show_count (bool): Whether to include issue count when greater than one.
+
+    Returns:
+        str: Display suffix.
+    """
+    if not vm_resource_status or not vm_resource_status.get(
+        "has_execution_issues", False
+    ):
+        return ""
+
+    try:
+        issue_count = int(vm_resource_status.get("execution_issue_count", 0))
+    except (TypeError, ValueError):
+        issue_count = 0
+
+    if show_count and issue_count > 1:
+        return f" (execution issues: {issue_count})"
+
+    return " (execution issues)"
+
+
+def _style_power_state(power_state):
+    """Apply Rich styling to a minimega power state.
+
+    Args:
+        power_state (str): Minimega power state.
+
+    Returns:
+        str: Rich-styled power state.
+    """
+    power_state = str(power_state)
+
+    if "run" in power_state.lower():
+        return f"[green]{power_state}[/green]"
+    if "error" in power_state.lower():
+        return f"[red]{power_state}[/red]"
+
+    return power_state
+
+
+def _style_vmr_state(vmr_state):
+    """Apply Rich styling to a VM resource manager state.
+
+    Args:
+        vmr_state (str): VM resource manager state.
+
+    Returns:
+        str: Rich-styled VM resource manager state.
+    """
+    vmr_state = str(vmr_state)
+    lowered = vmr_state.lower()
+
+    if (
+        "failed" in lowered
+        or "error" in lowered
+        or "unknown" in lowered
+        or "missing" in lowered
+    ):
+        return f"[red]{vmr_state}[/red]"
+    if "testing" in lowered:
+        return f"[cyan]{vmr_state}[/cyan]"
+    if "configuring" in lowered or "uninitialized" in lowered:
+        return f"[yellow]{vmr_state}[/yellow]"
+    if "configured" in lowered:
+        return f"[green]{vmr_state}[/green]"
+
+    return vmr_state
+
+
+def _plain_state_string(power_state, vm_resource_status):
+    """Build an unstyled combined state string.
+
+    Args:
+        power_state (str): Minimega power state.
+        vm_resource_status (dict): VM resource status dictionary.
+
+    Returns:
+        str: Combined unstyled state string.
+    """
+    vm_resource_state = "status missing"
+
+    if vm_resource_status:
+        vm_resource_state = _state_text(
+            vm_resource_status.get("state", "status missing")
+        )
+
+    return (
+        f"{power_state}/{vm_resource_state}"
+        f"{_execution_issue_suffix(vm_resource_status)}"
+    )
+
+
+def _formatted_state_string(power_state, vm_resource_status):
+    """Build a Rich-styled combined state string.
+
+    Args:
+        power_state (str): Minimega power state.
+        vm_resource_status (dict): VM resource status dictionary.
+
+    Returns:
+        str: Combined Rich-styled state string.
+    """
+    styled_power_state = _style_power_state(power_state)
+
+    vm_resource_state = "status missing"
+    if vm_resource_status:
+        vm_resource_state = _state_text(
+            vm_resource_status.get("state", "status missing")
+        )
+
+    styled_vmr_state = _style_vmr_state(vm_resource_state)
+
+    execution_issue_suffix = _execution_issue_suffix(vm_resource_status)
+    if execution_issue_suffix:
+        execution_issue_suffix = f"[yellow]{execution_issue_suffix}[/yellow]"
+
+    return f"{styled_power_state}/{styled_vmr_state}{execution_issue_suffix}"
+
+
 def parse_requested_fields(raw_fields):
     """Parse requested fields and filters from CLI input.
 
@@ -130,9 +266,11 @@ def parse_requested_fields(raw_fields):
     ]
 
     parsed_fields = OrderedDict()
+
     for field in raw_fields:
-        field_vals = field.split("=")
+        field_vals = field.split("=", 1)
         field_name = field_vals[0]
+
         if field_name in valid_fields:
             if len(field_vals) > 1:
                 parsed_fields[field_name] = field_vals[1]
@@ -143,30 +281,6 @@ def parse_requested_fields(raw_fields):
         parsed_fields = OrderedDict({"state": None})
 
     return parsed_fields
-
-
-def style_state_display(state_display):
-    """Apply Rich styling to a VM state display string.
-
-    Args:
-        state_display (str): Combined display string for state.
-
-    Returns:
-        str: Rich-styled state string.
-    """
-    if "configuring" in state_display.lower():
-        return f"[yellow]{state_display}"
-    if "configured" in state_display.lower():
-        return f"[green]{state_display}"
-    if "uninitialized" in state_display.lower():
-        return f"[yellow]{state_display}"
-    if "error" in state_display.lower():
-        return f"[red]{state_display}"
-    if "pause" in state_display.lower():
-        return f"[yellow]{state_display}"
-    if "run" in state_display.lower():
-        return f"[green]{state_display}"
-    return state_display
 
 
 def filter_basic_vm_data(basic_dict, requested_fields):
@@ -185,19 +299,26 @@ def filter_basic_vm_data(basic_dict, requested_fields):
         return {vm: vm_dict.copy() for vm, vm_dict in basic_dict.items()}
 
     filtered_dict = {}
+
     for vm, vm_dict in basic_dict.items():
         vm_obeys_filters = True
+
         for key, value in requested_fields.items():
             if value is None:
                 continue
+
             if key not in vm_resource_fields:
-                if key == "ip":
+                if key == "name":
+                    candidate = vm
+                elif key == "ip":
                     candidate = vm_dict.get("control_ip", "")
                 else:
                     candidate = vm_dict.get(key, "")
+
                 if value.lower() not in str(candidate).lower():
                     vm_obeys_filters = False
                     break
+
         if vm_obeys_filters:
             filtered_dict[vm] = vm_dict.copy()
 
@@ -256,24 +377,50 @@ def enrich_state_data(filtered_dict, requested_fields):
         return filtered_dict
 
     state_filter = requested_fields["state"]
+    vm_resource_statuses = vm_resource_api.get_vm_statuses()
 
     if state_filter:
-        filtered_vm_resource_dict = vm_resource_api.get_vm_states(state_filter)
         filtered_dict = {
-            k: v
-            for k, v in filtered_dict.items()
-            if k in filtered_vm_resource_dict
-            or state_filter.lower() in v["state"].lower()
+            vm_name: vm_dict
+            for vm_name, vm_dict in filtered_dict.items()
+            if state_filter.lower()
+            in _plain_state_string(
+                vm_dict.get("state", ""),
+                vm_resource_statuses.get(vm_name),
+            ).lower()
         }
 
-    vm_resource_dict = vm_resource_api.get_vm_states()
-    for vm in filtered_dict:
-        power_state = filtered_dict[vm]["state"]
-        vm_resource_state = vm_resource_dict.get(vm, "ERROR")
+    for vm_name, vm_dict in filtered_dict.items():
+        power_state = vm_dict.get("state", "")
+        vm_resource_status = vm_resource_statuses.get(vm_name)
 
-        filtered_dict[vm]["power_state"] = power_state
-        filtered_dict[vm]["vm_resource_state"] = vm_resource_state
-        filtered_dict[vm]["state_display"] = f"{power_state}/{vm_resource_state}"
+        vm_resource_state = "status missing"
+        has_execution_issues = False
+        execution_issue_count = 0
+
+        if vm_resource_status:
+            vm_resource_state = _state_text(
+                vm_resource_status.get("state", "status missing")
+            )
+            has_execution_issues = bool(
+                vm_resource_status.get("has_execution_issues", False)
+            )
+
+            try:
+                execution_issue_count = int(
+                    vm_resource_status.get("execution_issue_count", 0)
+                )
+            except (TypeError, ValueError):
+                execution_issue_count = 0
+
+        vm_dict["power_state"] = power_state
+        vm_dict["vm_resource_state"] = vm_resource_state
+        vm_dict["has_execution_issues"] = has_execution_issues
+        vm_dict["execution_issue_count"] = execution_issue_count
+        vm_dict["state_display"] = _plain_state_string(
+            power_state,
+            vm_resource_status,
+        )
 
     return filtered_dict
 
@@ -301,7 +448,18 @@ def build_rows(filtered_dict, requested_fields):
             elif field == "state":
                 row["state"] = {
                     "power_state": filtered_dict[vm].get("power_state", ""),
-                    "vm_resource_state": filtered_dict[vm].get("vm_resource_state", ""),
+                    "vm_resource_state": filtered_dict[vm].get(
+                        "vm_resource_state",
+                        "",
+                    ),
+                    "has_execution_issues": filtered_dict[vm].get(
+                        "has_execution_issues",
+                        False,
+                    ),
+                    "execution_issue_count": filtered_dict[vm].get(
+                        "execution_issue_count",
+                        0,
+                    ),
                     "display": filtered_dict[vm].get("state_display", ""),
                 }
             elif field == "image":
@@ -348,9 +506,16 @@ def collect_vm_list_data(raw_fields):
             "vm_data_unavailable",
         ) from exc
 
-    filtered_dict = filter_basic_vm_data(basic_dict, requested_fields)
-    filtered_dict = enrich_time_data(filtered_dict, requested_fields)
-    filtered_dict = enrich_state_data(filtered_dict, requested_fields)
+    try:
+        filtered_dict = filter_basic_vm_data(basic_dict, requested_fields)
+        filtered_dict = enrich_time_data(filtered_dict, requested_fields)
+        filtered_dict = enrich_state_data(filtered_dict, requested_fields)
+    except OSError as exc:
+        raise VmListError(
+            f"Unable to retrieve VM resource manager data: {exc}",
+            "vm_resource_data_unavailable",
+        ) from exc
+
     rows = build_rows(filtered_dict, requested_fields)
 
     return {
@@ -374,10 +539,13 @@ def get_console_fields(vm_list_data):
         list[str]: Ordered output fields with ``name`` first.
     """
     console_fields = ["name"]
+
     for field in vm_list_data["query"]["fields"]:
         if field != "name":
             console_fields.append(field)
+
     return console_fields
+
 
 LABEL_MAP = {
     "name": "Name",
@@ -389,6 +557,28 @@ LABEL_MAP = {
     "time": "Time",
     "ip": "Control IP",
 }
+
+
+def render_state_for_table(state_data):
+    """Render state data for Rich table output.
+
+    Args:
+        state_data (dict): Structured state data.
+
+    Returns:
+        str: Rich-styled state display.
+    """
+    vm_resource_status = {
+        "state": state_data.get("vm_resource_state", "status missing"),
+        "has_execution_issues": state_data.get("has_execution_issues", False),
+        "execution_issue_count": state_data.get("execution_issue_count", 0),
+    }
+
+    return _formatted_state_string(
+        state_data.get("power_state", ""),
+        vm_resource_status,
+    )
+
 
 def build_vm_list_table(vm_list_data):
     """Build a Rich table for VM list output.
@@ -415,7 +605,7 @@ def build_vm_list_table(vm_list_data):
 
         for field in console_fields[1:]:
             if field == "state":
-                rendered_row.append(style_state_display(row["state"]["display"]))
+                rendered_row.append(render_state_for_table(row["state"]))
             elif field == "time":
                 rendered_row.append(row["time"]["display"])
             else:
