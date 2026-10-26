@@ -14,7 +14,10 @@ permissions:
 jobs:
   call-firewheel-linting:
     name: FIREWHEEL Linting
-    # Use the FIREWHEEL CI repo for both the workflow and its composite actions
+    permissions:
+      contents: read
+    # Use the FIREWHEEL CI repo for both the workflow and its composite actions.
+    # zizmor: ignore[unpinned-uses] sandialabs/firewheel_ci is org-controlled; v1 is the intentionally maintained stable interface for FIREWHEEL consumers.
     uses: sandialabs/firewheel_ci/.github/workflows/linting.yml@v1
     with:
       actions-ref: v1

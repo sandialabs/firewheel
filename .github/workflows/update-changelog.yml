@@ -13,9 +13,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.release.target_commitish }}
+          persist-credentials: false
 
       - name: Update Changelog
         uses: stefanzweifel/changelog-updater-action@b3a7ae7d4afc1d6982949a79bcd939fbcb245871
