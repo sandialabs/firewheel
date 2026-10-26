@@ -16,18 +16,18 @@ class TestUtilsTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_graph_structures({}, {})
         with self.assertRaises(ValueError):
-            compare_graph_structures({"nodes": [], "links": []}, {})
+            compare_graph_structures({"nodes": [], "edges": []}, {})
 
     def test_simple_equal(self):
         a = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
         b = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
@@ -37,13 +37,13 @@ class TestUtilsTestCase(unittest.TestCase):
     def test_equal_odd_lists(self):
         a = {
             "nodes": [{"key1": 1}, {"key2": 2}],
-            "links": [{"k1": 1, "k2": 2}],
+            "edges": [{"k1": 1, "k2": 2}],
             "other1": "val1",
             "other2": "val2",
         }
         b = {
             "nodes": [{"key1": 1}, {"key2": 2}],
-            "links": [{"k1": 1, "k2": 2}],
+            "edges": [{"k1": 1, "k2": 2}],
             "other1": "val1",
             "other2": "val2",
         }
@@ -53,19 +53,19 @@ class TestUtilsTestCase(unittest.TestCase):
     def test_different_nodes(self):
         a = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
         b = {
             "nodes": [{"id": 1}, {"id": 3}],
-            "links": [{"source": 1, "target": 3}],
+            "edges": [{"source": 1, "target": 3}],
             "other1": "val1",
             "other2": "val2",
         }
         c = {
             "nodes": [{"id": 1}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
@@ -77,22 +77,22 @@ class TestUtilsTestCase(unittest.TestCase):
         self.assertFalse(compare_graph_structures(b, c))
         self.assertFalse(compare_graph_structures(c, b))
 
-    def test_different_links(self):
+    def test_different_edges(self):
         a = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
         b = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [],
+            "edges": [],
             "other1": "val1",
             "other2": "val2",
         }
         c = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}, {"source": 2, "target": 1}],
+            "edges": [{"source": 1, "target": 2}, {"source": 2, "target": 1}],
             "other1": "val1",
             "other2": "val2",
         }
@@ -107,19 +107,19 @@ class TestUtilsTestCase(unittest.TestCase):
     def test_different_other(self):
         a = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
             "other2": "val2",
         }
         b = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "other_val",
             "other2": "val2",
         }
         c = {
             "nodes": [{"id": 1}, {"id": 2}],
-            "links": [{"source": 1, "target": 2}],
+            "edges": [{"source": 1, "target": 2}],
             "other1": "val1",
         }
 

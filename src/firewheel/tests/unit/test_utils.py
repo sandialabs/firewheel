@@ -16,9 +16,9 @@ def cleanup_repo_db(repository_db):
 
 
 def compare_graph_structures(a, b):
-    if "nodes" not in a or "links" not in a:
+    if "nodes" not in a or "edges" not in a:
         raise ValueError("First structure is not a valid graph structure.")
-    if "nodes" not in b or "links" not in b:
+    if "nodes" not in b or "edges" not in b:
         raise ValueError("Second structure is not a valid graph structure.")
 
     for n in a["nodes"]:
@@ -38,17 +38,17 @@ def compare_graph_structures(a, b):
         if not found:
             return False
 
-    for n in a["links"]:
+    for n in a["edges"]:
         found = False
-        for m in b["links"]:
+        for m in b["edges"]:
             if n == m:
                 found = True
                 break
         if not found:
             return False
-    for m in b["links"]:
+    for m in b["edges"]:
         found = False
-        for n in a["links"]:
+        for n in a["edges"]:
             if n == m:
                 found = True
                 break
@@ -56,7 +56,7 @@ def compare_graph_structures(a, b):
             return False
 
     for key in a:
-        if key in ("nodes", "links"):
+        if key in ("nodes", "edges"):
             continue
         try:
             if a[key] != b[key]:
@@ -64,7 +64,7 @@ def compare_graph_structures(a, b):
         except KeyError:
             return False
     for key in b:
-        if key in ("nodes", "links"):
+        if key in ("nodes", "edges"):
             continue
         try:
             # No need to compare here--if the key exists in both a and b, then
