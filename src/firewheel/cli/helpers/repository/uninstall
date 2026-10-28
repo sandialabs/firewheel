@@ -24,26 +24,32 @@ from rich.console import Console
 
 from firewheel.control.repository_db import RepositoryDb
 
-con = Console()
-parser = argparse.ArgumentParser(
-    description="Uninstall a new Model Component repository!"
-)
 
-parser.add_argument("path", help="The path to the repository to uninstall.")
-
-args = parser.parse_args()
-
-PATH = Path(args.path)
-# Convert whatever path we were given to an absolute path.
-REPO_ENTRY = {"path": str(PATH.resolve())}
-
-RESULT = RepositoryDb().delete_repository(REPO_ENTRY)
-if RESULT is None:
-    con.print(
-        f"[yellow]Attempted to uninstall repository [cyan]{PATH}[/cyan]. Operation pending."
+def main():
+    con = Console()
+    parser = argparse.ArgumentParser(
+        description="Uninstall a new Model Component repository!"
     )
-elif RESULT > 0:
-    con.print(f"[b green]Removed repository: [cyan]{PATH}[/cyan]")
-else:
-    con.print(f"[b red]Failed to remove repository: [cyan]{PATH}[/cyan]")
+
+    parser.add_argument("path", help="The path to the repository to uninstall.")
+
+    args = parser.parse_args()
+
+    PATH = Path(args.path)
+    # Convert whatever path we were given to an absolute path.
+    REPO_ENTRY = {"path": str(PATH.resolve())}
+
+    RESULT = RepositoryDb().delete_repository(REPO_ENTRY)
+    if RESULT is None:
+        con.print(
+            f"[yellow]Attempted to uninstall repository [cyan]{PATH}[/cyan]. Operation pending."
+        )
+    elif RESULT > 0:
+        con.print(f"[b green]Removed repository: [cyan]{PATH}[/cyan]")
+    else:
+        con.print(f"[b red]Failed to remove repository: [cyan]{PATH}[/cyan]")
+
+
+if __name__ == "__main__":
+    main()
 DONE

@@ -50,41 +50,47 @@ from firewheel.control.image_store import ImageStore
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
-parser = argparse.ArgumentParser(description="Clear minimega FileStores.")
-parser.add_argument(
-    "--all",
-    action="store_true",
-    default=False,
-    required=False,
-    help="Clear all caches, including images, schedules, and vm_resources",
-)
-parser.add_argument("stores", nargs="*", default=None)
 
-cmd_args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description="Clear minimega FileStores.")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        required=False,
+        help="Clear all caches, including images, schedules, and vm_resources",
+    )
+    parser.add_argument("stores", nargs="*", default=None)
 
-if not (cmd_args.all or cmd_args.stores):
-    raise Exception("A list of caches must be provided or the --all flag must be set.")
+    cmd_args = parser.parse_args()
 
-valid_stores = ["images", "schedules", "vm_resources"]
-if cmd_args.all:
-    stores = valid_stores
-else:
-    stores = [store.lower() for store in cmd_args.stores]
+    if not (cmd_args.all or cmd_args.stores):
+        raise Exception("A list of caches must be provided or the --all flag must be set.")
 
-for store in stores:
-    if store not in valid_stores:
-        raise Exception(
-            f"Invalid store={store}. Provided stores must be one of the following={valid_stores}."
-        )
+    valid_stores = ["images", "schedules", "vm_resources"]
+    if cmd_args.all:
+        stores = valid_stores
+    else:
+        stores = [store.lower() for store in cmd_args.stores]
 
-for store in stores:
-    if store == "images":
-        image_store = ImageStore()
-        image_store.remove_file("*")
-    if store == "vm_resources":
-        vm_resource_store = VmResourceStore()
-        vm_resource_store.remove_file("*")
-    if store == "schedules":
-        schedule_db = ScheduleDb()
-        schedule_db.destroy_all()
+    for store in stores:
+        if store not in valid_stores:
+            raise Exception(
+                f"Invalid store={store}. Provided stores must be one of the following={valid_stores}."
+            )
+
+    for store in stores:
+        if store == "images":
+            image_store = ImageStore()
+            image_store.remove_file("*")
+        if store == "vm_resources":
+            vm_resource_store = VmResourceStore()
+            vm_resource_store.remove_file("*")
+        if store == "schedules":
+            schedule_db = ScheduleDb()
+            schedule_db.destroy_all()
+
+
+if __name__ == "__main__":
+    main()
 DONE
