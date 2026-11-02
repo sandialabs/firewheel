@@ -43,6 +43,12 @@ Arguments
 .. option::  -i, --insecure
 
     Automatically run all Model Component INSTALL scripts. Must be run with the :option:`repository install -s` option to take effect.
+    In this mode the INSTALL output is not shown on the terminal; it is saved to a log file for each Model Component, and the end of the log for any failed Model Component is shown in the final summary.
+
+.. option::  -f, --fail-fast
+
+    Stop at the first Model Component INSTALL that fails, rather than continuing with the remaining Model Components.
+    Must be run with the :option:`repository install -s` option to take effect.
 
 .. option:: -h, --help
 
@@ -56,6 +62,11 @@ Examples
 
 ``firewheel repository install --script <directory>``
 
+``firewheel repository install --script --insecure --fail-fast``
+
+When INSTALL scripts are run, a summary is printed at the end listing every Model Component that has an INSTALL, its outcome, and the path of the log containing its output.
+The command exits with a non-zero code if any INSTALL failed.
+
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
@@ -65,34 +76,26 @@ import time
 import argparse
 from pathlib import Path
 
-from rich.table import Column
+from rich.text import Text
+from rich.table import Table, Column
 from rich.console import Console
 from rich.progress import Progress, TextColumn
 
 from firewheel.control.repository_db import RepositoryDb
-from firewheel.control.model_component_install import ModelComponentInstall
+from firewheel.control.model_component_install import (
+    InstallStatus,
+    ModelComponentInstall,
+)
 from firewheel.control.model_component_iterator import ModelComponentIterator
 
+LOG_TAIL_LINES = 20
 
-def install_all_mcs(insecure=False):
-    """
-    Ask the user to run the install script for all the Model Components
-    of all repositories.
-
-    Args:
-        insecure (bool): Whether to automatically install all Model Components without asking
-            for each one.
-
-    Returns:
-        bool: True if all MCs in every repository were installed successfully,
-        False otherwise.
-    """
-    repo_db = RepositoryDb()
-    # Use a list (not a generator) so every repository is processed even if one fails.
-    results = [
-        run_install_script(repo, insecure) for repo in repo_db.list_repositories()
-    ]
-    return all(results)
+STATUS_STYLES = {
+    InstallStatus.INSTALLED: "green",
+    InstallStatus.ALREADY_INSTALLED: "green",
+    InstallStatus.SKIPPED: "yellow",
+    InstallStatus.FAILED: "b red",
+}
 
 
 def install_repo(repo):
@@ -110,38 +113,108 @@ def install_repo(repo):
         Console().print("[yellow]Duplicate repositories cannot be installed!")
 
 
-def run_install_script(repo, insecure):
+def run_install_scripts(repos, insecure=False, fail_fast=False):
     """
     Ask the user to run the install script for all the Model Components
-    of the provided repository.
+    of the provided repositories.
 
     Args:
-        repo (dict): A dictionary object which can be added as a new FIREWHEEL repository.
+        repos (list): Repository dictionaries whose Model Components should be installed.
         insecure (bool): Whether to automatically install all Model Components without asking
-            for each one.
+            for each one. This also hides the INSTALL output on the terminal.
+        fail_fast (bool): Whether to stop after the first Model Component that fails.
 
     Returns:
-        bool: True if all MCs were installed successfully, False otherwise
+        list: A ``(mc_name, repo_path, status, log_path)`` tuple for each Model Component
+        that has an INSTALL.
+    """
+    results = []
+    for repo in repos:
+        for mc in ModelComponentIterator(iter([repo])):
+            mci = ModelComponentInstall(mc, quiet=insecure)
+            mci.run_install_script(insecure=insecure)
+            if mci.status is None:
+                # The Model Component has no INSTALL.
+                continue
+            results.append((mc.name, repo["path"], mci.status, mci.log_path))
+            if fail_fast and mci.status is InstallStatus.FAILED:
+                return results
+    return results
+
+
+def read_log_tail(log_path, num_lines=LOG_TAIL_LINES):
+    """
+    Read the last lines of a log file.
+
+    Args:
+        log_path (pathlib.Path): The log file to read.
+        num_lines (int): The number of lines to return.
+
+    Returns:
+        str: The last ``num_lines`` lines of the file, or :py:data:`None` if it is
+        unreadable.
+    """
+    try:
+        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return "\n".join(text.splitlines()[-num_lines:])
+
+
+def print_summary(results, fail_fast=False):
+    """
+    Print the outcome of every attempted Model Component INSTALL.
+
+    The end of the log for each failure is printed first, followed by a table of all
+    results, so that the failures are the last thing on the screen rather than buried
+    in the INSTALL output.
+
+    Args:
+        results (list): The results from :py:func:`run_install_scripts`.
+        fail_fast (bool): Whether the run stopped at the first failure.
+
+    Returns:
+        bool: :py:data:`True` if no Model Component failed to install,
+        :py:data:`False` otherwise.
     """
     console = Console()
-    failed = []
-    for mc in ModelComponentIterator(iter([repo])):
-        mci = ModelComponentInstall(mc)
+    failed = [result for result in results if result[2] is InstallStatus.FAILED]
 
-        if insecure:
-            success = mci.run_install_script(insecure=True)
-            if not success:
-                failed.append(mc.name)
-        else:
-            success = mci.run_install_script()
-            if not success:
-                failed.append(mc.name)
+    for name, _repo_path, _status, log_path in failed:
+        tail = read_log_tail(log_path) if log_path else None
+        if tail is None:
+            continue
+        console.rule(f"[b red]Last {LOG_TAIL_LINES} lines of output for {name}")
+        console.print(Text.from_ansi(tail))
+
+    if results:
+        table = Table(title="Model Component INSTALL Summary")
+        table.add_column("Model Component", style="cyan")
+        table.add_column("Repository")
+        table.add_column("Status")
+        table.add_column("Log", overflow="fold")
+        # Show failures last, so they are closest to the prompt.
+        for name, repo_path, status, log_path in sorted(
+            results, key=lambda result: result[2] is InstallStatus.FAILED
+        ):
+            table.add_row(
+                name,
+                repo_path,
+                f"[{STATUS_STYLES[status]}]{status.value}",
+                str(log_path) if log_path else "",
+            )
+        console.print(table)
 
     if failed:
-        console.print(f"[red]The following MC's failed to fully install in {repo['path']}: {failed}")
+        console.print(
+            f"[b red]{len(failed)} of {len(results)} Model Component INSTALLs failed: "
+            f"{', '.join(result[0] for result in failed)}"
+        )
+        if fail_fast:
+            console.print("[b red]Stopped after the first failure (--fail-fast).")
         return False
 
-    console.print(f"[green]All model components for {repo['path']} were installed or skipped!")
+    console.print("[green]All Model Components were installed or skipped!")
     return True
 
 
@@ -170,6 +243,18 @@ if __name__ == "__main__":
         action="store_true",
         help=str(
             "Automatically run all Model Component INSTALL scripts. "
+            "Must be run with the '-s/--script' option to take effect."
+        ),
+        default=False,
+    )
+    parser.add_argument(
+        "--fail-fast",
+        "-f",
+        required=False,
+        action="store_true",
+        dest="fail_fast",
+        help=str(
+            "Stop at the first Model Component INSTALL that fails. "
             "Must be run with the '-s/--script' option to take effect."
         ),
         default=False,
@@ -217,10 +302,9 @@ if __name__ == "__main__":
                     time.sleep(1)
             con.print("[green]Continuing...")  # noqa: FS003
 
-        if PATH is None:
-            SUCCESS = install_all_mcs(args.insecure)
-        else:
-            SUCCESS = run_install_script(REPO_ENTRY, args.insecure)
+        REPOS = RepositoryDb().list_repositories() if PATH is None else [REPO_ENTRY]
+        RESULTS = run_install_scripts(REPOS, args.insecure, args.fail_fast)
+        SUCCESS = print_summary(RESULTS, args.fail_fast)
 
     if PATH is not None and SUCCESS:
         install_repo(REPO_ENTRY)
