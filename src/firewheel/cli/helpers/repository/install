@@ -60,6 +60,7 @@ DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
+import sys
 import time
 import argparse
 from pathlib import Path
@@ -81,10 +82,17 @@ def install_all_mcs(insecure=False):
     Args:
         insecure (bool): Whether to automatically install all Model Components without asking
             for each one.
+
+    Returns:
+        bool: True if all MCs in every repository were installed successfully,
+        False otherwise.
     """
     repo_db = RepositoryDb()
-    for repo in repo_db.list_repositories():
-        run_install_script(repo, insecure)
+    # Use a list (not a generator) so every repository is processed even if one fails.
+    results = [
+        run_install_script(repo, insecure) for repo in repo_db.list_repositories()
+    ]
+    return all(results)
 
 
 def install_repo(repo):
@@ -170,14 +178,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.path is None and not args.script:
+        parser.error("a path is required unless --script is given")
+
     PATH = None
     REPO_ENTRY = None
     if args.path:
         PATH = Path(args.path)
         REPO_ENTRY = {"path": str(PATH.resolve())}
-        SUCCESS = True
-    else:
-        SUCCESS = False
+
+    SUCCESS = True
 
     if args.script:
         con.print(
@@ -208,11 +218,12 @@ if __name__ == "__main__":
             con.print("[green]Continuing...")  # noqa: FS003
 
         if PATH is None:
-            install_all_mcs(args.insecure)
-            SUCCESS = False
+            SUCCESS = install_all_mcs(args.insecure)
         else:
             SUCCESS = run_install_script(REPO_ENTRY, args.insecure)
 
-    if SUCCESS:
+    if PATH is not None and SUCCESS:
         install_repo(REPO_ENTRY)
+
+    sys.exit(0 if SUCCESS else 1)
 DONE
