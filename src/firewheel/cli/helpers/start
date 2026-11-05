@@ -14,16 +14,23 @@ DONE
 
 RUN Python ON compute
 #!/usr/bin/env python
+
 import os
 
 from firewheel.config import config
 
-vm_resource_logs = os.path.join(
-    config["logging"]["root_dir"], config["logging"]["vmr_log_dir"]
-)
 
-# Ensure that this directory exists and is owned by the correct user
-os.makedirs(vm_resource_logs, exist_ok=True)
+def main():
+    vm_resource_logs = os.path.join(
+        config["logging"]["root_dir"], config["logging"]["vmr_log_dir"]
+    )
+
+    # Ensure that this directory exists and is owned by the correct user
+    os.makedirs(vm_resource_logs, exist_ok=True)
+
+
+if __name__ == "__main__":
+    main()
 DONE
 
 RUN Helpers ON control
@@ -86,13 +93,20 @@ DONE
 
 RUN Python ON control
 #!/usr/bin/env python
+
 import sys
 import errno
 
 from firewheel.lib.discovery.api import discoveryAPI
 
-discovery_api = discoveryAPI()
-if not discovery_api.start_discovery():
-    sys.exit(errno.ECONNREFUSED)
-discovery_api.delete_all()
+
+def main():
+    discovery_api = discoveryAPI()
+    if not discovery_api.start_discovery():
+        sys.exit(errno.ECONNREFUSED)
+    discovery_api.delete_all()
+
+
+if __name__ == "__main__":
+    main()
 DONE

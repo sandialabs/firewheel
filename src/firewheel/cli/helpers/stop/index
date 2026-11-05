@@ -21,10 +21,16 @@ import firewheel.vm_resource_manager.vm_resource_handler
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.vm_resource_manager import api
 
-api.destroy_all(ignore_grpc_connection_errors=True)
-mm_api = minimegaAPI()
-vm_resource_handler_path = firewheel.vm_resource_manager.vm_resource_handler.__file__
-mm_api.ns_kill_processes(vm_resource_handler_path)
+
+def main():
+    api.destroy_all(ignore_grpc_connection_errors=True)
+    mm_api = minimegaAPI()
+    vm_resource_handler_path = firewheel.vm_resource_manager.vm_resource_handler.__file__
+    mm_api.ns_kill_processes(vm_resource_handler_path)
+
+
+if __name__ == "__main__":
+    main()
 DONE
 
 RUN Shell ON control
