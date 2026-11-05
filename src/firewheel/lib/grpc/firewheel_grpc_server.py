@@ -305,7 +305,12 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             vmm (firewheel_grpc_pb2.SetVMStateByUUIDRequest): The VMM request object.
             db (str): The database that this client will be using. (e.g. "prod" or "test")
         """
-        if vmm.state not in self.dbs[db]["ready_states"]:
+        state = vmm.state
+        if isinstance(state, VMState):
+            state = state.value
+        state = str(state).lower()
+
+        if state not in {ready_state.lower() for ready_state in self.dbs[db]["ready_states"]}:
             self.dbs[db]["not_ready_vmms"].add(vmm.server_uuid)
         else:
             with contextlib.suppress(KeyError):

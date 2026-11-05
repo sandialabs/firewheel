@@ -65,6 +65,104 @@ from firewheel.cli.utils import RichDefaultTable
 from firewheel.lib.minimega.api import minimegaAPI
 
 
+def _state_text(state):
+    """Return a display-safe state string.
+
+    Args:
+        state: State value, potentially an enum.
+
+    Returns:
+        str: State text.
+    """
+    return state.value if hasattr(state, "value") else str(state)
+
+
+def _execution_issue_label(vm_resource_status):
+    """Return the execution-issue display suffix, if applicable.
+
+    Args:
+        vm_resource_status (dict): VM resource status dictionary.
+
+    Returns:
+        str: Execution issue suffix.
+    """
+    if vm_resource_status and vm_resource_status.get("has_execution_issues", False):
+        return " (execution issues)"
+
+    return ""
+
+
+def _display_vmr_state(vm_resource_status):
+    """Return a plain display string for the VM resource state.
+
+    Args:
+        vm_resource_status (dict): VM resource status dictionary.
+
+    Returns:
+        str: Plain VM resource state display string.
+    """
+    vm_resource_state = "status missing"
+
+    if vm_resource_status:
+        vm_resource_state = _state_text(
+            vm_resource_status.get("state", "status missing")
+        )
+
+    return f"{vm_resource_state}{_execution_issue_label(vm_resource_status)}"
+
+
+def _style_power_state(power_state):
+    """Apply Rich styling to a minimega power state.
+
+    Args:
+        power_state (str): Minimega power state.
+
+    Returns:
+        str: Rich-styled power state.
+    """
+    power_state = str(power_state)
+
+    if "run" in power_state.lower():
+        return f"[green]{power_state}[/green]"
+    if "error" in power_state.lower():
+        return f"[red]{power_state}[/red]"
+    if "pause" in power_state.lower():
+        return f"[yellow]{power_state}[/yellow]"
+
+    return power_state
+
+
+def _style_vmr_state(vm_resource_state):
+    """Apply Rich styling to a VM resource state.
+
+    Args:
+        vm_resource_state (str): VM resource state display string.
+
+    Returns:
+        str: Rich-styled VM resource state.
+    """
+    vm_resource_state = str(vm_resource_state)
+    lowered = vm_resource_state.lower()
+
+    if (
+        "failed" in lowered
+        or "error" in lowered
+        or "unknown" in lowered
+        or "missing" in lowered
+    ):
+        return f"[red]{vm_resource_state}[/red]"
+    if "execution issues" in lowered:
+        return f"[yellow]{vm_resource_state}[/yellow]"
+    if "testing" in lowered:
+        return f"[cyan]{vm_resource_state}[/cyan]"
+    if "configuring" in lowered or "uninitialized" in lowered:
+        return f"[yellow]{vm_resource_state}[/yellow]"
+    if "configured" in lowered:
+        return f"[green]{vm_resource_state}[/green]"
+
+    return vm_resource_state
+
+
 def collect_vm_mix_data():
     """
     Collect structured VM mix data for the current experiment.
@@ -84,27 +182,28 @@ def collect_vm_mix_data():
     total_scheduled = 0
 
     if active_exp_present:
-        vm_resource_vms = vm_resource_api.get_vm_states()
+        vm_resource_statuses = vm_resource_api.get_vm_statuses()
 
         grouped = {}
+
         for vm_name, vm_dict in mm_vms.items():
-            mm_state = vm_dict["state"]
-            vm_resource_state = vm_resource_vms.get(vm_name, "None")
+            power_state = vm_dict["state"]
             image = vm_dict["image"]
 
-            if vm_resource_state == "None":
-                continue
+            vm_resource_status = vm_resource_statuses.get(vm_name)
+            vm_resource_state = _display_vmr_state(vm_resource_status)
 
-            key = (image, mm_state, vm_resource_state)
+            key = (image, power_state, vm_resource_state)
             grouped[key] = grouped.get(key, 0) + 1
 
-        for image, mm_state, vm_resource_state in sorted(grouped.keys()):
-            count = grouped[(image, mm_state, vm_resource_state)]
+        for image, power_state, vm_resource_state in sorted(grouped.keys()):
+            count = grouped[(image, power_state, vm_resource_state)]
             total_scheduled += count
+
             rows.append(
                 {
                     "vm_image": image,
-                    "power_state": mm_state,
+                    "power_state": power_state,
                     "vm_resource_state": vm_resource_state,
                     "count": count,
                 }
@@ -116,46 +215,6 @@ def collect_vm_mix_data():
         "rows": rows,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
-
-
-def style_power_state(mm_state):
-    """
-    Add Rich styling to a minimega power state for table output.
-
-    Args:
-        mm_state (str): The raw power state.
-
-    Returns:
-        str: The styled power state string.
-    """
-    if "run" in mm_state.lower():
-        return f"[green]{mm_state}"
-    if "error" in mm_state.lower():
-        return f"[red]{mm_state}"
-    if "pause" in mm_state.lower():
-        return f"[yellow]{mm_state}"
-    return mm_state
-
-
-def style_vm_resource_state(vm_resource_state):
-    """
-    Add Rich styling to a VM resource state for table output.
-
-    Args:
-        vm_resource_state (str): The raw VM resource state.
-
-    Returns:
-        str: The styled VM resource state string.
-    """
-    if "configuring" in vm_resource_state.lower():
-        return f"[yellow]{vm_resource_state}"
-    if "configured" in vm_resource_state.lower():
-        return f"[green]{vm_resource_state}"
-    if "uninitialized" in vm_resource_state.lower():
-        return f"[yellow]{vm_resource_state}"
-    if "error" in vm_resource_state.lower():
-        return f"[red]{vm_resource_state}"
-    return vm_resource_state
 
 
 def build_table(vm_mix_data):
@@ -178,8 +237,10 @@ def build_table(vm_mix_data):
     table.add_column("VM Resource State", footer="[b]Total Scheduled")
     table.add_column("Count", footer=f"[b]{vm_mix_data['total_scheduled']}")
 
-    if not vm_mix_data["rows"]:
-        vm_mix_data["rows"] = [
+    rows = vm_mix_data["rows"]
+
+    if not rows:
+        rows = [
             {
                 "vm_image": "N/A",
                 "power_state": "N/A",
@@ -187,11 +248,12 @@ def build_table(vm_mix_data):
                 "count": 0,
             }
         ]
-    for row in vm_mix_data["rows"]:
+
+    for row in rows:
         table.add_row(
             row["vm_image"],
-            style_power_state(row["power_state"]),
-            style_vm_resource_state(row["vm_resource_state"]),
+            _style_power_state(row["power_state"]),
+            _style_vmr_state(row["vm_resource_state"]),
             str(row["count"]),
         )
 
@@ -241,7 +303,13 @@ def main():
         return
 
     console = Console()
-    with Live(build_table(collect_vm_mix_data()), console=console, screen=False, refresh_per_second=1) as live:
+
+    with Live(
+        build_table(collect_vm_mix_data()),
+        console=console,
+        screen=False,
+        refresh_per_second=1,
+    ) as live:
         while True:
             sleep(2)
             live.update(build_table(collect_vm_mix_data()))
