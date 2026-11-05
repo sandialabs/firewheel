@@ -305,19 +305,6 @@ class QemuGuestAgentDriver(AbstractDriver):
                     self.log.exception(exp)
                     raise OSError(str(exp)) from exp
 
-                # If error is in the dictionary returned then an error happened
-                if "error" in result:
-                    elapsed = time.monotonic() - start_time
-                    self.log.error(
-                        "QGA file write returned an error for %s at chunk=%s, "
-                        "bytes_written=%s, elapsed_sec=%.2f",
-                        filename,
-                        chunk_index,
-                        bytes_written,
-                        elapsed,
-                    )
-                    raise RuntimeError(f"File write: {result['error']['desc']}")
-
                 # Make sure there is a byte count in the returned status
                 if "count" not in result:
                     elapsed = time.monotonic() - start_time
