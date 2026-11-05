@@ -35,13 +35,19 @@ import firewheel.vm_resource_manager.vm_resource_handler
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.vm_resource_manager import api
 
-try:
-    api.destroy_all(ignore_grpc_connection_errors=True)
-    mm_api = minimegaAPI(skip_retry=True)
-    vm_resource_handler_path = firewheel.vm_resource_manager.vm_resource_handler.__file__
-    mm_api.ns_kill_processes(vm_resource_handler_path)
-except RuntimeError:
-    print("Minimega socket unavailable, proceeding with manually ending processes.")
+
+def main():
+    try:
+        api.destroy_all(ignore_grpc_connection_errors=True)
+        mm_api = minimegaAPI(skip_retry=True)
+        vm_resource_handler_path = firewheel.vm_resource_manager.vm_resource_handler.__file__
+        mm_api.ns_kill_processes(vm_resource_handler_path)
+    except RuntimeError:
+        print("Minimega socket unavailable, proceeding with manually ending processes.")
+
+
+if __name__ == "__main__":
+    main()
 DONE
 
 RUN Shell ON compute
