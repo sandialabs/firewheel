@@ -158,13 +158,16 @@ class FirewheelGrpcClient:
 
     def set_experiment_start_time(self, start_time_dt):
         """
-        Requests to set the `experiment_start_time`.
+        Requests to atomically initialize the `experiment_start_time`.
+
+        If the experiment start time has already been set, the existing value
+        is returned unchanged.
 
         Args:
-            start_time_dt (datetime.datetime): The datetime that the experiment was started.
+            start_time_dt (datetime.datetime): The proposed experiment start time.
 
         Returns:
-            datetime.datetime: The datetime that the experiment was started.
+            datetime.datetime: The stored experiment start time.
         """
         start_time_msg = Timestamp()
         start_time_msg.FromDatetime(start_time_dt)
@@ -194,7 +197,7 @@ class FirewheelGrpcClient:
 
     def initialize_experiment_start_time(self):
         """
-        Requests to initialize the `experiment_start_time`.
+        Requests to initialize the experiment start time state.
 
         Returns:
             dict: Dictionary representation of
