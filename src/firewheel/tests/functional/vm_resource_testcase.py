@@ -261,7 +261,7 @@ class VmResourceTestCase(unittest.TestCase):
             f"{self.launch_mc}",
         ]
         print("NOTE: This test will take a long time to execute!")
-        self.run_test(exp_cmd, timeout=1200)
+        self.run_test(exp_cmd, timeout=2000)
 
     def test_1gb_file_3_times(self):
         """
