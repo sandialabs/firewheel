@@ -1,3 +1,4 @@
+import base64
 from unittest.mock import ANY, Mock, MagicMock, call, patch
 
 import pytest
@@ -36,6 +37,26 @@ class TestQemuGuestAgentDriver:
         mock_driver.reboot()
         mock_driver.qga.cmd.assert_called_once()
         assert mock_driver.output_cache == {}
+
+    def test_store_captured_output_decodes_with_backslashreplace(self, mock_driver):
+        pid = 42
+        smart_quotes = "mkdir: cannot create directory ‘/tmp/t2/True’\n".encode(
+            "utf-8"
+        )
+        invalid_bytes = b"bad\xffbytes"
+
+        mock_driver.store_captured_output(
+            pid,
+            {
+                "out-data": base64.b64encode(smart_quotes).decode("ascii"),
+                "err-data": base64.b64encode(invalid_bytes).decode("ascii"),
+            },
+        )
+
+        assert mock_driver.output_cache[pid]["stdout"] == (
+            "mkdir: cannot create directory ‘/tmp/t2/True’\n"
+        )
+        assert mock_driver.output_cache[pid]["stderr"] == r"bad\xffbytes"
 
     def test_file_write_from_file_aborts_after_transient_write_exception(
         self, mock_driver, tmp_path

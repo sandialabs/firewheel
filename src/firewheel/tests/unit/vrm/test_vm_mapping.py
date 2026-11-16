@@ -211,6 +211,9 @@ def test_get_all_filter_time_works(vmmapping):
                 "server_name": "vm-2",
                 "state": VMState.TESTING,
                 "current_time": "0",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
             },
         ]
     )
