@@ -46,6 +46,7 @@ DONE
 
 RUN Python ON compute
 #!/usr/bin/env python
+
 import os
 import sys
 import argparse
@@ -53,61 +54,67 @@ from pathlib import Path
 
 from firewheel.config import config
 
-parser = argparse.ArgumentParser(description="Clear lock files and optionally the related cache.")
-parser.add_argument(
-    "--clear",
-    action="store_true",
-    default=False,
-    required=False,
-    help="Clear any cache files associated with the existing lock files.",
-)
-parser.add_argument(
-    "--all",
-    action="store_true",
-    default=False,
-    required=False,
-    help="Clear all caches, including images, schedules, and vm_resources",
-)
-parser.add_argument("stores", nargs="*", default=None)
 
-cmd_args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description="Clear lock files and optionally the related cache.")
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        default=False,
+        required=False,
+        help="Clear any cache files associated with the existing lock files.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        required=False,
+        help="Clear all caches, including images, schedules, and vm_resources",
+    )
+    parser.add_argument("stores", nargs="*", default=None)
 
-if not (cmd_args.all or cmd_args.stores):
-    raise Exception("A list of caches must be provided or the --all flag must be set.")
+    cmd_args = parser.parse_args()
 
-valid_stores = {"images", "schedules", "vm_resources"}
-if cmd_args.all:
-    stores = valid_stores
-else:
-    stores = {store.lower() for store in cmd_args.stores}
-    if not stores.issubset(valid_stores):
-        print(f"The only valid caches are {valid_stores}")
-        sys.exit(1)
+    if not (cmd_args.all or cmd_args.stores):
+        raise Exception("A list of caches must be provided or the --all flag must be set.")
+
+    valid_stores = {"images", "schedules", "vm_resources"}
+    if cmd_args.all:
+        stores = valid_stores
+    else:
+        stores = {store.lower() for store in cmd_args.stores}
+        if not stores.issubset(valid_stores):
+            print(f"The only valid caches are {valid_stores}")
+            sys.exit(1)
 
 
-locks = []
-for cache_type in stores:
-    cache = Path(os.path.join(config["minimega"]["files_dir"], cache_type))
+    locks = []
+    for cache_type in stores:
+        cache = Path(os.path.join(config["minimega"]["files_dir"], cache_type))
 
-    if not cache.exists():
-        print(f"The {cache} cache doesn't exist.")
-        continue
+        if not cache.exists():
+            print(f"The {cache} cache doesn't exist.")
+            continue
 
-    for f in cache.iterdir():
-        if f.name.endswith("-lock"):
-            locks.append(f.resolve())
+        for f in cache.iterdir():
+            if f.name.endswith("-lock"):
+                locks.append(f.resolve())
 
-    for lock in locks:
-        # Clear the associated file as well
-        if cmd_args.clear:
-            cache_file = Path(str(lock)[:-5])
-            if cache_type == "images":
-                compressed_image = Path(str(cache_file) + ".xz")
-                if compressed_image.exists():
-                    compressed_image.unlink()
-            if cache_file.exists():
-                cache_file.unlink()
-        # Clear the lock file
-        if lock.exists():
-            lock.rmdir()
+        for lock in locks:
+            # Clear the associated file as well
+            if cmd_args.clear:
+                cache_file = Path(str(lock)[:-5])
+                if cache_type == "images":
+                    compressed_image = Path(str(cache_file) + ".xz")
+                    if compressed_image.exists():
+                        compressed_image.unlink()
+                if cache_file.exists():
+                    cache_file.unlink()
+            # Clear the lock file
+            if lock.exists():
+                lock.rmdir()
+
+
+if __name__ == "__main__":
+    main()
 DONE

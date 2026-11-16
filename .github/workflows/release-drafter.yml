@@ -4,13 +4,23 @@ on:
   push:
     branches:
       - main
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - reopened
       - synchronize
       - labeled
       - unlabeled
+  # This workflow uses pull_request_target only for release-drafter autolabeling on fork PRs.
+  # It does not check out PR code or run PR-supplied scripts, and it is limited to
+  # metadata operations through pinned actions with minimal job-scoped permissions.
+  # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
 
 permissions:
   contents: read
@@ -18,34 +28,39 @@ permissions:
 jobs:
   update_release_draft:
     name: Update the release notes
+    if: github.event_name == 'push'
     permissions:
       contents: write
-      pull-requests: write
+      pull-requests: read
     runs-on: ubuntu-latest
-    outputs:
-      latest_version: ${{ steps.draft_release.outputs.tag_name }}
-      release_notes: ${{ steps.draft_release.outputs.body }}
     steps:
       - name: Draft Release Notes
         id: draft_release
-        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0
         with:
-          publish: ${{ steps.check-version.outputs.tag != '' }}
-          tag: ${{ steps.check-version.outputs.tag }}
-          disable-autolabeler: false
-          commitish: main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  pr-checker:
-    name: Ensure Proper Pull Request Labels
+          config-name: release-drafter.yml
+
+  auto-label-pr:
+    name: Auto-label pull requests
     if: github.event_name == 'pull_request_target'
-    needs: update_release_draft
     permissions:
-      pull-requests: read
-      checks: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: docker://agilepathway/pull-request-label-checker:v1.6.65
+      - name: Apply configured PR labels
+        uses: release-drafter/release-drafter/autolabeler@978bb0b30c5ee8cdd332ced253758157150d43f0
+        with:
+          config-name: release-drafter.yml
+
+  pr-checker:
+    name: Ensure Proper Pull Request Labels
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: agilepathway/label-checker@4c9ac452d37ed7c95024603468bd9de06e566a13
         with:
           any_of: feature,fix,style,changed,refactor,perf,test,build,ci,chore,revert,deprecated,removed,security,documentation,dependencies
           repo_token: ${{ secrets.GITHUB_TOKEN }}

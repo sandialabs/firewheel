@@ -76,7 +76,7 @@ def state_text(state):
     """Return a display-safe state string.
 
     Args:
-        state: State value, potentially an enum.
+        state (object): State value, potentially an enum.
 
     Returns:
         str: State text.
