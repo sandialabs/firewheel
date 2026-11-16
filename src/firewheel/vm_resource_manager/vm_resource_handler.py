@@ -692,7 +692,9 @@ class VMResourceHandler:
                 log=self.log,
             )
         except Exception as exp:  # noqa: BLE001
-            self.log.error("Unable to record vm_resource execution issue: %s", issue_message)
+            self.log.error(
+                "Unable to record vm_resource execution issue: %s", issue_message
+            )
             self.log.exception(exp)
 
     def _best_effort_set_failed_state(self, reason):
@@ -1181,7 +1183,9 @@ class VMResourceHandler:
             stream_name (str): ``stdout`` or ``stderr``.
         """
         if isinstance(stream, bytes):
-            stream_text = stream.decode(sys.getdefaultencoding(), errors="backslashreplace")
+            stream_text = stream.decode(
+                sys.getdefaultencoding(), errors="backslashreplace"
+            )
         else:
             stream_text = str(stream)
 

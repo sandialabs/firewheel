@@ -105,7 +105,9 @@ def add_execution_issue(vm_uuid, issue_message, mapping=None, log=None):
         mapping.close()
 
     if log:
-        log.debug("Recorded vm_resource execution issue on VM %s: %s", vm_uuid, issue_message)
+        log.debug(
+            "Recorded vm_resource execution issue on VM %s: %s", vm_uuid, issue_message
+        )
 
 
 def get_vm_count_not_ready(mapping=None, log=None):

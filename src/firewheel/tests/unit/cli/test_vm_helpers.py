@@ -492,3 +492,67 @@ class VmHelperDisplayTestCase(unittest.TestCase):
         self.assertIn("[red]failed[/red]", vmr_cells)
         self.assertIn("[cyan]testing[/cyan]", vmr_cells)
         self.assertIn("[red]status missing[/red]", vmr_cells)
+
+    @patch("firewheel.lib.minimega.api.minimegaAPI")
+    @patch("firewheel.vm_resource_manager.api.get_experiment_start_time")
+    @patch("firewheel.vm_resource_manager.api.get_vm_statuses")
+    def test_vm_list_styles_paused_power_state(
+        self,
+        mock_get_vm_statuses,
+        mock_get_experiment_start_time,
+        mock_minimega_api,
+    ):
+        mock_minimega_api.return_value.mm_vms.return_value = {
+            "vm-paused": {
+                "state": "PAUSED",
+                "uuid": "uuid-1",
+                "image": "image.qcow2",
+                "hostname": "host-1",
+                "vnc": "5901",
+                "name": "vm-paused",
+                "control_ip": "10.0.0.1",
+                "devices": [],
+            }
+        }
+        mock_get_experiment_start_time.return_value = None
+        mock_get_vm_statuses.return_value = {
+            "vm-paused": {
+                "state": "configured",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
+            }
+        }
+
+        table = self._run_vm_list(["state"])
+
+        self.assertEqual(
+            self._table_rows(table),
+            [("vm-paused", "[yellow]PAUSED[/yellow]/[green]configured[/green]")],
+        )
+
+    @patch("firewheel.lib.minimega.api.minimegaAPI")
+    @patch("firewheel.vm_resource_manager.api.get_experiment_launch_time")
+    @patch("firewheel.vm_resource_manager.api.get_vm_statuses")
+    def test_vm_mix_styles_paused_power_state(
+        self,
+        mock_get_vm_statuses,
+        mock_get_experiment_launch_time,
+        mock_minimega_api,
+    ):
+        mock_minimega_api.return_value.mm_vms.return_value = {
+            "vm-paused": {"state": "PAUSED", "image": "image.qcow2"}
+        }
+        mock_get_experiment_launch_time.return_value = object()
+        mock_get_vm_statuses.return_value = {
+            "vm-paused": {
+                "state": "configured",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
+            }
+        }
+
+        table = self._run_vm_mix()
+
+        self.assertIn("[yellow]PAUSED[/yellow]", table.columns[1]._cells)

@@ -50,6 +50,95 @@ class RichDefaultTable(Table):
         super().__init__(*args, **kwargs)
 
 
+def style_minimega_power_state(power_state):
+    """Apply Rich styling to a minimega power state.
+
+    Args:
+        power_state (str): Minimega power state.
+
+    Returns:
+        str: Rich-styled power state.
+    """
+    power_state_message = str(power_state)
+    normalized_power_state = power_state_message.lower()
+
+    if normalized_power_state == "running":
+        power_state_message = f"[green]{power_state_message}[/green]"
+    elif normalized_power_state == "error":
+        power_state_message = f"[red]{power_state_message}[/red]"
+    elif normalized_power_state == "paused":
+        power_state_message = f"[yellow]{power_state_message}[/yellow]"
+
+    return power_state_message
+
+
+def state_text(state):
+    """Return a display-safe state string.
+
+    Args:
+        state: State value, potentially an enum.
+
+    Returns:
+        str: State text.
+    """
+    return getattr(state, "value", str(state))
+
+
+def execution_issue_suffix(vm_resource_status, show_count=True):
+    """Build an execution-issue suffix for state display.
+
+    Args:
+        vm_resource_status (dict): VM resource status dictionary.
+        show_count (bool): Whether to include issue count when greater than one.
+
+    Returns:
+        str: Display suffix.
+    """
+    if not vm_resource_status.get("has_execution_issues", False):
+        return ""
+
+    try:
+        issue_count = int(vm_resource_status.get("execution_issue_count", 0))
+    except (TypeError, ValueError):
+        issue_count = 0
+
+    if show_count and issue_count > 1:
+        return f" (execution issues: {issue_count})"
+
+    return " (execution issues)"
+
+
+def style_vm_resource_state(vm_resource_state):
+    """Apply Rich styling to a VM resource manager state.
+
+    Args:
+        vm_resource_state (str): VM resource manager state.
+
+    Returns:
+        str: Rich-styled VM resource manager state.
+    """
+    vm_resource_state = str(vm_resource_state)
+    lowered = vm_resource_state.lower()
+
+    if (
+        "failed" in lowered
+        or "error" in lowered
+        or "unknown" in lowered
+        or "missing" in lowered
+    ):
+        return f"[red]{vm_resource_state}[/red]"
+    if "execution issues" in lowered:
+        return f"[yellow]{vm_resource_state}[/yellow]"
+    if "testing" in lowered:
+        return f"[cyan]{vm_resource_state}[/cyan]"
+    if "configuring" in lowered or "uninitialized" in lowered:
+        return f"[yellow]{vm_resource_state}[/yellow]"
+    if "configured" in lowered:
+        return f"[green]{vm_resource_state}[/green]"
+
+    return vm_resource_state
+
+
 class HelperNotFoundError(Exception):
     """
     Error thrown when we cannot locate a referenced Helper.

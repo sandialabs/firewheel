@@ -61,35 +61,14 @@ from rich.live import Live
 from rich.console import Console
 
 import firewheel.vm_resource_manager.api as vm_resource_api
-from firewheel.cli.utils import RichDefaultTable
+from firewheel.cli.utils import (
+    RichDefaultTable,
+    execution_issue_suffix,
+    state_text,
+    style_minimega_power_state,
+    style_vm_resource_state,
+)
 from firewheel.lib.minimega.api import minimegaAPI
-
-
-def _state_text(state):
-    """Return a display-safe state string.
-
-    Args:
-        state: State value, potentially an enum.
-
-    Returns:
-        str: State text.
-    """
-    return state.value if hasattr(state, "value") else str(state)
-
-
-def _execution_issue_label(vm_resource_status):
-    """Return the execution-issue display suffix, if applicable.
-
-    Args:
-        vm_resource_status (dict): VM resource status dictionary.
-
-    Returns:
-        str: Execution issue suffix.
-    """
-    if vm_resource_status and vm_resource_status.get("has_execution_issues", False):
-        return " (execution issues)"
-
-    return ""
 
 
 def _display_vmr_state(vm_resource_status):
@@ -104,63 +83,11 @@ def _display_vmr_state(vm_resource_status):
     vm_resource_state = "status missing"
 
     if vm_resource_status:
-        vm_resource_state = _state_text(
+        vm_resource_state = state_text(
             vm_resource_status.get("state", "status missing")
         )
 
-    return f"{vm_resource_state}{_execution_issue_label(vm_resource_status)}"
-
-
-def _style_power_state(power_state):
-    """Apply Rich styling to a minimega power state.
-
-    Args:
-        power_state (str): Minimega power state.
-
-    Returns:
-        str: Rich-styled power state.
-    """
-    power_state = str(power_state)
-
-    if "run" in power_state.lower():
-        return f"[green]{power_state}[/green]"
-    if "error" in power_state.lower():
-        return f"[red]{power_state}[/red]"
-    if "pause" in power_state.lower():
-        return f"[yellow]{power_state}[/yellow]"
-
-    return power_state
-
-
-def _style_vmr_state(vm_resource_state):
-    """Apply Rich styling to a VM resource state.
-
-    Args:
-        vm_resource_state (str): VM resource state display string.
-
-    Returns:
-        str: Rich-styled VM resource state.
-    """
-    vm_resource_state = str(vm_resource_state)
-    lowered = vm_resource_state.lower()
-
-    if (
-        "failed" in lowered
-        or "error" in lowered
-        or "unknown" in lowered
-        or "missing" in lowered
-    ):
-        return f"[red]{vm_resource_state}[/red]"
-    if "execution issues" in lowered:
-        return f"[yellow]{vm_resource_state}[/yellow]"
-    if "testing" in lowered:
-        return f"[cyan]{vm_resource_state}[/cyan]"
-    if "configuring" in lowered or "uninitialized" in lowered:
-        return f"[yellow]{vm_resource_state}[/yellow]"
-    if "configured" in lowered:
-        return f"[green]{vm_resource_state}[/green]"
-
-    return vm_resource_state
+    return f"{vm_resource_state}{execution_issue_suffix(vm_resource_status, show_count=False)}"
 
 
 def collect_vm_mix_data():
@@ -190,7 +117,7 @@ def collect_vm_mix_data():
             power_state = vm_dict["state"]
             image = vm_dict["image"]
 
-            vm_resource_status = vm_resource_statuses.get(vm_name)
+            vm_resource_status = vm_resource_statuses.get(vm_name, {})
             vm_resource_state = _display_vmr_state(vm_resource_status)
 
             key = (image, power_state, vm_resource_state)
@@ -252,8 +179,8 @@ def build_table(vm_mix_data):
     for row in rows:
         table.add_row(
             row["vm_image"],
-            _style_power_state(row["power_state"]),
-            _style_vmr_state(row["vm_resource_state"]),
+            style_minimega_power_state(row["power_state"]),
+            style_vm_resource_state(row["vm_resource_state"]),
             str(row["count"]),
         )
 

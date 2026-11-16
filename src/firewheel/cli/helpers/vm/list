@@ -85,7 +85,13 @@ from datetime import datetime, timezone
 from rich.console import Console
 
 import firewheel.vm_resource_manager.api as vm_resource_api
-from firewheel.cli.utils import RichDefaultTable
+from firewheel.cli.utils import (
+    RichDefaultTable,
+    execution_issue_suffix,
+    state_text,
+    style_minimega_power_state,
+    style_vm_resource_state,
+)
 from firewheel.lib.minimega.api import minimegaAPI
 
 
@@ -109,92 +115,6 @@ class VmListError(Exception):
         self.error_type = error_type
 
 
-def _state_text(state):
-    """Return a display-safe state string.
-
-    Args:
-        state: State value, potentially an enum.
-
-    Returns:
-        str: State text.
-    """
-    return state.value if hasattr(state, "value") else str(state)
-
-
-def _execution_issue_suffix(vm_resource_status, show_count=True):
-    """Build an execution-issue suffix for state display.
-
-    Args:
-        vm_resource_status (dict): VM resource status dictionary.
-        show_count (bool): Whether to include issue count when greater than one.
-
-    Returns:
-        str: Display suffix.
-    """
-    if not vm_resource_status or not vm_resource_status.get(
-        "has_execution_issues", False
-    ):
-        return ""
-
-    try:
-        issue_count = int(vm_resource_status.get("execution_issue_count", 0))
-    except (TypeError, ValueError):
-        issue_count = 0
-
-    if show_count and issue_count > 1:
-        return f" (execution issues: {issue_count})"
-
-    return " (execution issues)"
-
-
-def _style_power_state(power_state):
-    """Apply Rich styling to a minimega power state.
-
-    Args:
-        power_state (str): Minimega power state.
-
-    Returns:
-        str: Rich-styled power state.
-    """
-    power_state = str(power_state)
-
-    if "run" in power_state.lower():
-        return f"[green]{power_state}[/green]"
-    if "error" in power_state.lower():
-        return f"[red]{power_state}[/red]"
-
-    return power_state
-
-
-def _style_vmr_state(vmr_state):
-    """Apply Rich styling to a VM resource manager state.
-
-    Args:
-        vmr_state (str): VM resource manager state.
-
-    Returns:
-        str: Rich-styled VM resource manager state.
-    """
-    vmr_state = str(vmr_state)
-    lowered = vmr_state.lower()
-
-    if (
-        "failed" in lowered
-        or "error" in lowered
-        or "unknown" in lowered
-        or "missing" in lowered
-    ):
-        return f"[red]{vmr_state}[/red]"
-    if "testing" in lowered:
-        return f"[cyan]{vmr_state}[/cyan]"
-    if "configuring" in lowered or "uninitialized" in lowered:
-        return f"[yellow]{vmr_state}[/yellow]"
-    if "configured" in lowered:
-        return f"[green]{vmr_state}[/green]"
-
-    return vmr_state
-
-
 def _plain_state_string(power_state, vm_resource_status):
     """Build an unstyled combined state string.
 
@@ -208,13 +128,13 @@ def _plain_state_string(power_state, vm_resource_status):
     vm_resource_state = "status missing"
 
     if vm_resource_status:
-        vm_resource_state = _state_text(
+        vm_resource_state = state_text(
             vm_resource_status.get("state", "status missing")
         )
 
     return (
         f"{power_state}/{vm_resource_state}"
-        f"{_execution_issue_suffix(vm_resource_status)}"
+        f"{execution_issue_suffix(vm_resource_status)}"
     )
 
 
@@ -228,21 +148,21 @@ def _formatted_state_string(power_state, vm_resource_status):
     Returns:
         str: Combined Rich-styled state string.
     """
-    styled_power_state = _style_power_state(power_state)
+    styled_power_state = style_minimega_power_state(power_state)
 
     vm_resource_state = "status missing"
     if vm_resource_status:
-        vm_resource_state = _state_text(
+        vm_resource_state = state_text(
             vm_resource_status.get("state", "status missing")
         )
 
-    styled_vmr_state = _style_vmr_state(vm_resource_state)
+    styled_vmr_state = style_vm_resource_state(vm_resource_state)
 
-    execution_issue_suffix = _execution_issue_suffix(vm_resource_status)
-    if execution_issue_suffix:
-        execution_issue_suffix = f"[yellow]{execution_issue_suffix}[/yellow]"
+    issue_suffix = execution_issue_suffix(vm_resource_status)
+    if issue_suffix:
+        issue_suffix = f"[yellow]{issue_suffix}[/yellow]"
 
-    return f"{styled_power_state}/{styled_vmr_state}{execution_issue_suffix}"
+    return f"{styled_power_state}/{styled_vmr_state}{issue_suffix}"
 
 
 def parse_requested_fields(raw_fields):
@@ -386,20 +306,20 @@ def enrich_state_data(filtered_dict, requested_fields):
             if state_filter.lower()
             in _plain_state_string(
                 vm_dict.get("state", ""),
-                vm_resource_statuses.get(vm_name),
+                vm_resource_statuses.get(vm_name, {}),
             ).lower()
         }
 
     for vm_name, vm_dict in filtered_dict.items():
         power_state = vm_dict.get("state", "")
-        vm_resource_status = vm_resource_statuses.get(vm_name)
+        vm_resource_status = vm_resource_statuses.get(vm_name, {})
 
         vm_resource_state = "status missing"
         has_execution_issues = False
         execution_issue_count = 0
 
         if vm_resource_status:
-            vm_resource_state = _state_text(
+            vm_resource_state = state_text(
                 vm_resource_status.get("state", "status missing")
             )
             has_execution_issues = bool(
