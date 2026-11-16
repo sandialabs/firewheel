@@ -1,12 +1,24 @@
-import copy
 from unittest.mock import patch
 
 import pytest
 
-from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
+from firewheel.lib.grpc import firewheel_grpc_pb2
+from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
+from firewheel.lib.grpc.firewheel_grpc_resources import msg_to_dict
 
 
 class FakeGrpcClient:
+    """
+    In-memory stand-in for ``FirewheelGrpcClient``.
+
+    Records are stored as real ``firewheel_grpc_pb2.VMMapping`` messages and
+    every response is passed through the real ``msg_to_dict`` so that proto
+    field coercion (e.g. ``str(None) -> "None" -> None``) matches the real
+    client. Server-side bookkeeping such as the not-ready count is deliberately
+    not reimplemented here; that is covered against the real servicer in
+    ``test_vm_mapping_grpc_integration.py``.
+    """
+
     def __init__(self, _hostname=None, _port=None, db="test"):
         self.db = db
         self.mappings = {}
@@ -14,24 +26,26 @@ class FakeGrpcClient:
     def close(self):
         return None
 
-    def _serialize(self, vmm):
-        serialized = copy.deepcopy(vmm)
-        serialized["db"] = self.db
-        state = serialized.get("state")
-        if isinstance(state, VMState):
-            serialized["state"] = state.value
-        return serialized
-
     def set_vm_mapping(self, vmm):
-        serialized = self._serialize(vmm)
-        self.mappings[serialized["server_uuid"]] = serialized
-        return copy.deepcopy(serialized)
+        mapping = firewheel_grpc_pb2.VMMapping(
+            server_uuid=vmm["server_uuid"],
+            server_name=vmm["server_name"],
+            control_ip=vmm["control_ip"],
+            state=vmm["state"],
+            current_time=vmm["current_time"],
+            has_execution_issues=vmm.get("has_execution_issues", False),
+            execution_issue_count=vmm.get("execution_issue_count", 0),
+            last_execution_issue=vmm.get("last_execution_issue", ""),
+            db=self.db,
+        )
+        self.mappings[mapping.server_uuid] = mapping
+        return msg_to_dict(mapping)
 
     def get_vm_mapping_by_uuid(self, vm_uuid):
-        value = self.mappings.get(vm_uuid)
-        if value is None:
+        mapping = self.mappings.get(vm_uuid)
+        if mapping is None:
             return None
-        return copy.deepcopy(value)
+        return msg_to_dict(mapping)
 
     def destroy_vm_mapping_by_uuid(self, vm_uuid):
         self.mappings.pop(vm_uuid, None)
@@ -42,28 +56,21 @@ class FakeGrpcClient:
         return {}
 
     def list_vm_mappings(self):
-        return [copy.deepcopy(value) for value in self.mappings.values()]
+        return [msg_to_dict(mapping) for mapping in self.mappings.values()]
 
     def set_vm_state_by_uuid(self, vmm):
-        current = self.mappings.get(vmm["server_uuid"])
-        if current is None:
+        mapping = self.mappings.get(str(vmm["server_uuid"]))
+        if mapping is None:
             return None
-        current["state"] = str(vmm["state"])
-        return copy.deepcopy(current)
+        mapping.state = str(vmm["state"])
+        return msg_to_dict(mapping)
 
     def set_vm_time_by_uuid(self, vmm):
-        current = self.mappings.get(vmm["server_uuid"])
-        if current is None:
+        mapping = self.mappings.get(str(vmm["server_uuid"]))
+        if mapping is None:
             return None
-        current["current_time"] = str(vmm["current_time"])
-        return copy.deepcopy(current)
-
-    def count_vm_mappings_not_ready(self):
-        count = 0
-        for value in self.mappings.values():
-            if value.get("state") not in {VMState.NA.value, VMState.CONFIGURED.value}:
-                count += 1
-        return {"count": count}
+        mapping.current_time = str(vmm["current_time"])
+        return msg_to_dict(mapping)
 
 
 @pytest.fixture
@@ -162,6 +169,20 @@ def test_prepare_put_requires_uuid_and_name(vmmapping, entry):
         vmmapping.prepare_put(entry)
 
 
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"server_name": "vm-1", "control_ip": "10.0.0.1"},
+        {"server_uuid": "1234", "control_ip": "10.0.0.1"},
+    ],
+)
+def test_batch_put_requires_uuid_and_name(vmmapping, entry):
+    with pytest.raises(ValueError):
+        vmmapping.batch_put([entry])
+
+    assert vmmapping.get_all() == []
+
+
 def test_get_requires_server_uuid(vmmapping):
     with pytest.raises(ValueError):
         vmmapping.get()
@@ -211,6 +232,9 @@ def test_get_all_filter_time_works(vmmapping):
                 "server_name": "vm-2",
                 "state": VMState.TESTING,
                 "current_time": "0",
+                "has_execution_issues": False,
+                "execution_issue_count": 0,
+                "last_execution_issue": "",
             },
         ]
     )
@@ -323,13 +347,13 @@ def test_set_vm_time_by_uuid_updates_time(vmmapping):
     assert vmmapping.get(server_uuid="1234")["current_time"] == "404"
 
 
-def test_set_vm_time_by_uuid_stringifies_none(vmmapping):
+def test_set_vm_time_by_uuid_none(vmmapping):
     vmmapping.put("1234", "vm-1", current_time="0")
 
     result = vmmapping.set_vm_time_by_uuid("1234", None)
 
-    assert result["current_time"] == "None"
-    assert vmmapping.get(server_uuid="1234")["current_time"] == "None"
+    assert result["current_time"] is None
+    assert vmmapping.get(server_uuid="1234")["current_time"] is None
 
 
 def test_set_vm_time_by_uuid_returns_none_when_missing(vmmapping):
@@ -354,8 +378,14 @@ def test_add_execution_issue_by_uuid_returns_none_when_missing(vmmapping):
     assert vmmapping.add_execution_issue_by_uuid("missing", "copy failed") is None
 
 
-def test_get_count_vm_not_ready_ignores_execution_issue_only_updates(vmmapping):
-    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURED)
-    vmmapping.add_execution_issue_by_uuid("1234", "copy failed")
+def test_get_count_vm_not_ready_returns_server_count(vmmapping):
+    # The not-ready rule lives on the server; VMMapping only unwraps the count.
+    with patch.object(
+        vmmapping.grpc_client,
+        "count_vm_mappings_not_ready",
+        create=True,
+        return_value={"count": 3},
+    ) as count:
+        assert vmmapping.get_count_vm_not_ready() == 3
 
-    assert vmmapping.get_count_vm_not_ready() == 0
+    count.assert_called_once_with()

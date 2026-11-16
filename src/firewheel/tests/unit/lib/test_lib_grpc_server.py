@@ -10,6 +10,7 @@ import grpc
 import pytest
 
 from firewheel.lib.grpc.firewheel_grpc_server import FirewheelServicer
+from firewheel.vm_resource_manager.vm_mapping import VMState
 
 
 class _AbortContext:
@@ -196,6 +197,30 @@ def test_update_not_ready_vmms_add_and_remove(servicer) -> None:
     assert "uuid" not in servicer.dbs["prod"]["not_ready_vmms"]
 
 
+def test_update_not_ready_vmms_accepts_vmstate_enum(servicer) -> None:
+    """Verify VMState enum input is normalized for readiness tracking."""
+    vmm = Mock()
+    vmm.state = VMState.CONFIGURING
+    vmm.server_uuid = "uuid"
+    servicer._update_not_ready_vmms(vmm, "prod")
+    assert "uuid" in servicer.dbs["prod"]["not_ready_vmms"]
+
+    vmm.state = VMState.CONFIGURED
+    servicer._update_not_ready_vmms(vmm, "prod")
+    assert "uuid" not in servicer.dbs["prod"]["not_ready_vmms"]
+
+
+def test_update_not_ready_vmms_ignores_execution_issue_fields(servicer) -> None:
+    """Verify execution-issue metadata does not affect readiness accounting."""
+    vmm = Mock()
+    vmm.state = "configured"
+    vmm.server_uuid = "uuid"
+    vmm.has_execution_issues = True
+    vmm.execution_issue_count = 3
+    servicer._update_not_ready_vmms(vmm, "prod")
+    assert "uuid" not in servicer.dbs["prod"]["not_ready_vmms"]
+
+
 def test_set_vm_state_by_uuid(servicer) -> None:
     """Verify VM state updates modify stored mappings."""
     vm = Mock()
@@ -232,6 +257,9 @@ def test_set_vm_mapping(servicer) -> None:
     request.db = "prod"
     request.server_uuid = "uuid"
     request.state = "BOOTING"
+    request.has_execution_issues = True
+    request.execution_issue_count = 2
+    request.last_execution_issue = "warning text"
 
     response = servicer.SetVMMapping(request, Mock())
     assert response is request
@@ -297,6 +325,33 @@ def test_set_vm_state_by_uuid_missing_aborts(servicer) -> None:
         servicer.SetVMStateByUUID(request, _AbortContext())
 
     assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+
+
+def test_set_vm_state_by_uuid_missing_does_not_mark_not_ready(servicer) -> None:
+    """Verify an unknown uuid does not leave a phantom not-ready entry."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.state = "configuring"
+
+    with pytest.raises(RuntimeError):
+        servicer.SetVMStateByUUID(request, _AbortContext())
+
+    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+
+
+def test_set_vm_time_by_uuid_missing_aborts(servicer) -> None:
+    """Verify missing VM mapping during time update aborts with OUT_OF_RANGE."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.current_time = "10"
+
+    with pytest.raises(RuntimeError) as exc:
+        servicer.SetVMTimeByUUID(request, _AbortContext())
+
+    assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+    assert servicer.dbs["prod"]["vm_mappings"] == {}
 
 
 def test_serve_returns_when_bind_fails() -> None:

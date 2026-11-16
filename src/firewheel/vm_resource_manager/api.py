@@ -77,10 +77,11 @@ def destroy_all(
             connecting to the gRPC server.
     """
     skip_mapping = False
+    close_mapping = False
     if mapping is None:
-        close = True
         try:
             mapping = VMMapping()
+            close_mapping = True
         except ConnectionError as exp:
             if ignore_grpc_connection_errors:
                 skip_mapping = True
@@ -89,14 +90,16 @@ def destroy_all(
 
     if not skip_mapping:
         mapping.destroy_all()
+        if close_mapping:
+            mapping.close()
 
-    close = False
+    close_schedule = False
     if schedule is None:
-        close = True
+        close_schedule = True
         schedule = ScheduleDb()
 
     schedule.destroy_all()
-    if close:
+    if close_schedule:
         schedule.close()
 
     skip_start = False
@@ -134,8 +137,6 @@ def get_vm_times(filter_time=None, mapping=None, log=None):
         close = True
         mapping = VMMapping()
 
-    results = mapping.get_all(filter_time=filter_time)
-
     project_dict = {"_id": 0, "server_name": 1, "current_time": 1}
     results = mapping.get_all(filter_time=filter_time, project_dict=project_dict)
 
@@ -166,12 +167,38 @@ def get_vm_states(filter_state=None, mapping=None, log=None):
         dict: A dictionary keyed on the VM server name, with string values for
         the vm resources state.
     """
+    vm_dict = get_vm_statuses(filter_state=filter_state, mapping=mapping, log=log)
+    return {vm_name: vm_info["state"] for vm_name, vm_info in vm_dict.items()}
+
+
+def get_vm_statuses(filter_state=None, mapping=None, log=None):
+    """
+    Get the current vm resources lifecycle state and execution issue metadata of all
+    known VMs.
+
+    Args:
+        filter_state (str): Only return VMs in this state.
+        mapping (firewheel.vm_resource_manager.vm_mapping.VMMapping): VMMapping instance
+            to use as a database. Present for unit testing, safely ignored.
+        log (logging.Logger): An optional logger that can to output results.
+
+    Returns:
+        dict: Dictionary keyed on VM server name, where each value contains the
+        vm_resource lifecycle state and execution issue metadata.
+    """
     close = False
     if mapping is None:
         close = True
         mapping = VMMapping()
 
-    project_dict = {"_id": 0, "server_name": 1, "state": 1}
+    project_dict = {
+        "_id": 0,
+        "server_name": 1,
+        "state": 1,
+        "has_execution_issues": 1,
+        "execution_issue_count": 1,
+        "last_execution_issue": 1,
+    }
     results = mapping.get_all(filter_state=filter_state, project_dict=project_dict)
 
     if close:
@@ -179,10 +206,15 @@ def get_vm_states(filter_state=None, mapping=None, log=None):
 
     vm_dict = {}
     for vm in results:
-        vm_dict[vm["server_name"]] = vm["state"]
+        vm_dict[vm["server_name"]] = {
+            "state": vm["state"],
+            "has_execution_issues": vm.get("has_execution_issues", False),
+            "execution_issue_count": vm.get("execution_issue_count", 0),
+            "last_execution_issue": vm.get("last_execution_issue", ""),
+        }
 
     if log:
-        log.debug("Got the vm states.")
+        log.debug("Got the vm statuses.")
 
     return vm_dict
 
@@ -317,15 +349,10 @@ def vm_resource_list(store=None, log=None):
     Returns:
         list: A list of (unique) file names in the VmResourceStore.
     """
-    close = False
     if store is None:
-        close = True
         store = VmResourceStore()
 
     items = list(store.list_distinct_contents())
-
-    if close:
-        store.close()
 
     if log:
         log.debug("Got the vm resource list: %s", items)

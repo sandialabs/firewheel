@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch
+from datetime import datetime, timezone, timedelta
+from unittest.mock import Mock, patch, create_autospec
 
 import pytest
 
 from firewheel.vm_resource_manager import api
 from firewheel.vm_resource_manager.vm_mapping import VMState
-
+from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
 VM_STATUS_PROJECT_DICT = {
     "_id": 0,
@@ -105,40 +105,42 @@ def test_get_vm_statuses_closes_mapping_when_created_internally():
 
 def test_get_vm_times_returns_times_by_server_name():
     mapping = Mock()
-    mapping.get_all.side_effect = [
-        [],
-        [
-            {"server_name": "vm-1", "current_time": "-50"},
-            {"server_name": "vm-2", "current_time": "0"},
-        ],
+    mapping.get_all.return_value = [
+        {"server_name": "vm-1", "current_time": "-50"},
+        {"server_name": "vm-2", "current_time": "0"},
     ]
 
     times = api.get_vm_times(mapping=mapping)
 
     assert times == {"vm-1": "-50", "vm-2": "0"}
-    assert mapping.get_all.call_count == 2
-    mapping.get_all.assert_any_call(filter_time=None)
-    mapping.get_all.assert_any_call(
+    mapping.get_all.assert_called_once_with(
         filter_time=None,
         project_dict={"_id": 0, "server_name": 1, "current_time": 1},
     )
+    mapping.close.assert_not_called()
 
 
 def test_get_vm_times_passes_filter():
     mapping = Mock()
-    mapping.get_all.side_effect = [
-        [],
-        [{"server_name": "vm-1", "current_time": "0"}],
-    ]
+    mapping.get_all.return_value = [{"server_name": "vm-1", "current_time": "0"}]
 
     times = api.get_vm_times(filter_time="0", mapping=mapping)
 
     assert times == {"vm-1": "0"}
-    mapping.get_all.assert_any_call(filter_time="0")
-    mapping.get_all.assert_any_call(
+    mapping.get_all.assert_called_once_with(
         filter_time="0",
         project_dict={"_id": 0, "server_name": 1, "current_time": 1},
     )
+
+
+def test_get_vm_times_closes_mapping_when_created_internally():
+    mapping = Mock()
+    mapping.get_all.return_value = []
+
+    with patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping):
+        assert api.get_vm_times() == {}
+
+    mapping.close.assert_called_once()
 
 
 def test_add_vm_uses_uninitialized_when_vm_manager_enabled():
@@ -252,6 +254,24 @@ def test_destroy_all_raises_mapping_connection_error_by_default():
             api.destroy_all()
 
 
+def test_destroy_all_does_not_close_caller_mapping():
+    mapping = Mock()
+
+    api.destroy_all(mapping=mapping, schedule=Mock(), start=Mock())
+
+    mapping.close.assert_not_called()
+
+
+def test_destroy_all_creates_and_closes_mapping():
+    mapping = Mock()
+
+    with patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping):
+        api.destroy_all(schedule=Mock(), start=Mock())
+
+    mapping.destroy_all.assert_called_once()
+    mapping.close.assert_called_once()
+
+
 def test_destroy_all_creates_and_closes_schedule():
     mapping = Mock()
     schedule = Mock()
@@ -264,6 +284,7 @@ def test_destroy_all_creates_and_closes_schedule():
         api.destroy_all(mapping=mapping)
 
     mapping.destroy_all.assert_called_once()
+    mapping.close.assert_not_called()
     schedule.destroy_all.assert_called_once()
     schedule.close.assert_called_once()
     start.clear_start_time.assert_called_once()
@@ -347,29 +368,49 @@ def test_experiment_time_wrappers_create_start_when_needed():
 
 
 def test_vm_resource_list_returns_distinct_contents():
-    store = Mock()
+    store = create_autospec(VmResourceStore, instance=True)
     store.list_distinct_contents.return_value = ["a.sh", "b.sh"]
 
     contents = api.vm_resource_list(store=store)
 
     assert contents == ["a.sh", "b.sh"]
     store.list_distinct_contents.assert_called_once_with()
-    store.close.assert_not_called()
 
 
-def test_vm_resource_list_creates_and_closes_store():
-    store = Mock()
+def test_vm_resource_list_collapses_duplicate_store_entries():
+    # Use the real list_distinct_contents with a stubbed minimega file list in
+    # which the same file is present on multiple mesh hosts.
+    store = object.__new__(VmResourceStore)
+    store.store = "vm_resources"
+    store.log = Mock()
+    store.mm_api = Mock()
+    store.mm_api.mm.file_list.return_value = [
+        {
+            "Tabular": [
+                ["host1", "vm_resources/a.sh", "10"],
+                ["host2", "vm_resources/a.sh", "10"],
+                ["host1", "vm_resources/b.sh", "20"],
+            ]
+        }
+    ]
+
+    contents = api.vm_resource_list(store=store)
+
+    assert sorted(contents) == ["a.sh", "b.sh"]
+
+
+def test_vm_resource_list_creates_store_when_needed():
+    store = create_autospec(VmResourceStore, instance=True)
     store.list_distinct_contents.return_value = ["a.sh"]
 
     with patch("firewheel.vm_resource_manager.api.VmResourceStore", return_value=store):
         contents = api.vm_resource_list()
 
     assert contents == ["a.sh"]
-    store.close.assert_called_once()
 
 
 def test_add_vm_resource_file_delegates_to_store():
-    store = Mock()
+    store = create_autospec(VmResourceStore, instance=True)
 
     api.add_vm_resource_file("/tmp/script.sh", store=store)
 
@@ -377,7 +418,7 @@ def test_add_vm_resource_file_delegates_to_store():
 
 
 def test_add_vm_resource_file_creates_store_when_needed():
-    store = Mock()
+    store = create_autospec(VmResourceStore, instance=True)
 
     with patch("firewheel.vm_resource_manager.api.VmResourceStore", return_value=store):
         api.add_vm_resource_file("/tmp/script.sh")

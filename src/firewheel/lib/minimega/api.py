@@ -418,8 +418,7 @@ class minimegaAPI:  # noqa: N801
         """
         header, rows = table_output[0], table_output[1:-1]
         return [
-            {title: row[col_i] for col_i, title in enumerate(header)}
-            for row in rows
+            {title: row[col_i] for col_i, title in enumerate(header)} for row in rows
         ]
 
     def _cmd_to_dict(self, cmd: list[str]) -> list[dict[str, str]]:
@@ -461,7 +460,9 @@ class minimegaAPI:  # noqa: N801
         result = subprocess.run(new_args, capture_output=True, check=True)
         return result.stdout.decode("utf-8")
 
-    def _parse_host(self, host_item: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    def _parse_host(
+        self, host_item: tuple[str, list[dict[str, Any]]]
+    ) -> dict[str, Any]:
         """
         Parses a host response item from minimega.
 
