@@ -1,7 +1,10 @@
+import datetime
+
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Optional, Union as _Union
+from collections.abc import Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -39,7 +42,7 @@ class ExperimentLaunchTime(_message.Message):
     LAUNCH_TIME_FIELD_NUMBER: _ClassVar[int]
     db: str
     launch_time: _timestamp_pb2.Timestamp
-    def __init__(self, db: _Optional[str] = ..., launch_time: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, db: _Optional[str] = ..., launch_time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class GetExperimentStartTimeRequest(_message.Message):
     __slots__ = ("db",)
@@ -53,7 +56,7 @@ class ExperimentStartTime(_message.Message):
     START_TIME_FIELD_NUMBER: _ClassVar[int]
     db: str
     start_time: _timestamp_pb2.Timestamp
-    def __init__(self, db: _Optional[str] = ..., start_time: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, db: _Optional[str] = ..., start_time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class InitializeExperimentStartTimeRequest(_message.Message):
     __slots__ = ("db",)
@@ -66,20 +69,26 @@ class InitializeExperimentStartTimeResponse(_message.Message):
     def __init__(self) -> None: ...
 
 class VMMapping(_message.Message):
-    __slots__ = ("db", "server_uuid", "server_name", "control_ip", "state", "current_time")
+    __slots__ = ("db", "server_uuid", "server_name", "control_ip", "state", "current_time", "has_execution_issues", "execution_issue_count", "last_execution_issue")
     DB_FIELD_NUMBER: _ClassVar[int]
     SERVER_UUID_FIELD_NUMBER: _ClassVar[int]
     SERVER_NAME_FIELD_NUMBER: _ClassVar[int]
     CONTROL_IP_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     CURRENT_TIME_FIELD_NUMBER: _ClassVar[int]
+    HAS_EXECUTION_ISSUES_FIELD_NUMBER: _ClassVar[int]
+    EXECUTION_ISSUE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    LAST_EXECUTION_ISSUE_FIELD_NUMBER: _ClassVar[int]
     db: str
     server_uuid: str
     server_name: str
     control_ip: str
     state: str
     current_time: str
-    def __init__(self, db: _Optional[str] = ..., server_uuid: _Optional[str] = ..., server_name: _Optional[str] = ..., control_ip: _Optional[str] = ..., state: _Optional[str] = ..., current_time: _Optional[str] = ...) -> None: ...
+    has_execution_issues: bool
+    execution_issue_count: int
+    last_execution_issue: str
+    def __init__(self, db: _Optional[str] = ..., server_uuid: _Optional[str] = ..., server_name: _Optional[str] = ..., control_ip: _Optional[str] = ..., state: _Optional[str] = ..., current_time: _Optional[str] = ..., has_execution_issues: bool = ..., execution_issue_count: _Optional[int] = ..., last_execution_issue: _Optional[str] = ...) -> None: ...
 
 class CountVMMappingsNotReadyResponse(_message.Message):
     __slots__ = ("db", "count")

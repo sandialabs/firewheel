@@ -111,6 +111,14 @@ class VMMapping:
             serialized["state"] = serialized["state"].value
         return serialized
 
+    @staticmethod
+    def _default_execution_issue_fields():
+        return {
+            "has_execution_issues": False,
+            "execution_issue_count": 0,
+            "last_execution_issue": "",
+        }
+
     def _deserialize_vm_mapping_state(self, vmm):
         """
         Convert a serialized VM mapping state string back into a VMState enum.
@@ -122,10 +130,16 @@ class VMMapping:
             dict: The VM mapping with ``state`` converted to ``VMState`` when
             present.
         """
-        if not vmm or "state" not in vmm or vmm["state"] is None:
+        if not vmm:
             return vmm
 
         deserialized = dict(vmm)
+        for key, value in self._default_execution_issue_fields().items():
+            deserialized.setdefault(key, value)
+
+        if "state" not in deserialized or deserialized["state"] is None:
+            return deserialized
+
         state = deserialized["state"]
 
         if isinstance(state, VMState):
@@ -223,6 +237,9 @@ class VMMapping:
         state=VMState.UNINITIALIZED,
         current_time="",
         server_address="",
+        has_execution_issues=False,
+        execution_issue_count=0,
+        last_execution_issue="",
     ):
         """
         Add a set of new VM information to the database.
@@ -235,6 +252,12 @@ class VMMapping:
             current_time (str): The current (relative) time for the VM.
                 Defaults to '', meaning the VM has not contacted the server yet.
             server_address (str): The `control_ip` of the host where the VM Resource is found.
+            has_execution_issues (bool): Whether non-fatal vm_resource execution issues
+                have been observed for the VM.
+            execution_issue_count (int): The number of non-fatal vm_resource execution
+                issues recorded.
+            last_execution_issue (str): The most recent non-fatal vm_resource execution
+                issue message.
         """
         state = VMState(state)
 
@@ -244,6 +267,9 @@ class VMMapping:
             "state": state,
             "current_time": current_time,
             "control_ip": server_address,
+            "has_execution_issues": has_execution_issues,
+            "execution_issue_count": execution_issue_count,
+            "last_execution_issue": last_execution_issue,
         }
         self.grpc_client.set_vm_mapping(self._serialize_vm_mapping_state(document))
 
@@ -279,6 +305,31 @@ class VMMapping:
         vmm = {"server_uuid": uuid, "current_time": time}
         ret = self.grpc_client.set_vm_time_by_uuid(vmm)
         return self._deserialize_vm_mapping_state(ret)
+
+    def add_execution_issue_by_uuid(self, uuid, issue_message):
+        """
+        Record a non-fatal vm_resource execution issue on a VM mapping.
+
+        Args:
+            uuid (str): UUID of the VM.
+            issue_message (str): A short description of the execution issue.
+
+        Returns:
+            dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`.
+        """
+        current = self.get(server_uuid=uuid)
+        if current is None:
+            return None
+
+        issue_count = int(current.get("execution_issue_count", 0)) + 1
+        updated = {
+            **current,
+            "has_execution_issues": True,
+            "execution_issue_count": issue_count,
+            "last_execution_issue": issue_message,
+        }
+        self.grpc_client.set_vm_mapping(self._serialize_vm_mapping_state(updated))
+        return self._deserialize_vm_mapping_state(updated)
 
     def get_count_vm_not_ready(self):
         """
@@ -328,6 +379,7 @@ class VMMapping:
         new_entry = {
             "server_uuid": entry["server_uuid"],
             "server_name": entry["server_name"],
+            **self._default_execution_issue_fields(),
         }
 
         if "state" not in entry:
@@ -344,6 +396,13 @@ class VMMapping:
             new_entry["control_ip"] = ""
         else:
             new_entry["control_ip"] = entry["control_ip"]
+
+        if "has_execution_issues" in entry:
+            new_entry["has_execution_issues"] = bool(entry["has_execution_issues"])
+        if "execution_issue_count" in entry:
+            new_entry["execution_issue_count"] = int(entry["execution_issue_count"])
+        if "last_execution_issue" in entry:
+            new_entry["last_execution_issue"] = entry["last_execution_issue"]
         return new_entry
 
     def batch_put(self, server_list):
@@ -375,6 +434,9 @@ class VMMapping:
                 state=new_entry["state"],
                 current_time=new_entry["current_time"],
                 server_address=new_entry["control_ip"],
+                has_execution_issues=new_entry["has_execution_issues"],
+                execution_issue_count=new_entry["execution_issue_count"],
+                last_execution_issue=new_entry["last_execution_issue"],
             )
 
     def destroy_one(self, server_uuid):
