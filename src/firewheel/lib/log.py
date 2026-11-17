@@ -3,7 +3,6 @@ import grp
 import time
 import getpass
 import logging
-from typing import Union
 
 from firewheel.config import config
 
@@ -59,8 +58,9 @@ class Log:
             self.log_file_path = os.path.join(
                 config["logging"]["root_dir"], self.log_file
             )
-            handler_type = Union[logging.FileHandler, logging.NullHandler]
-            handler: handler_type = logging.FileHandler(filename=self.log_file_path)
+            handler: logging.FileHandler | logging.NullHandler = logging.FileHandler(
+                filename=self.log_file_path
+            )
 
             # Check and fix the group on the log file.
             if config["system"]["default_group"]:

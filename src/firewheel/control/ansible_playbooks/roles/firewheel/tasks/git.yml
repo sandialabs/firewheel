@@ -19,6 +19,12 @@
 #   - server_url: "https://user:ACCESS-TOKEN@github.com/"
 #     repositories:
 #       - path: "firewheel/mc_repo4"
+#
+# Note:
+#   The user-facing FIREWHEEL configuration uses the nested structure shown
+#   above. `model_component_install.py` flattens that structure before passing
+#   `git_servers` to this Ansible role.
+#
 ###################################################################################################
 
 - name: Attempt to use Git cache

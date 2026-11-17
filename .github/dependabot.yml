@@ -12,3 +12,5 @@ updates:
     commit-message:
       prefix: "deps:"
     open-pull-requests-limit: 20
+    cooldown:
+      default-days: 7

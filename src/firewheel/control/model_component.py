@@ -1,7 +1,7 @@
 import os
 import pprint
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 import yaml
 from rich.progress import Progress, TextColumn, SpinnerColumn, TimeElapsedColumn
@@ -408,7 +408,7 @@ class ModelComponent:
         path = os.path.join(self.path, resource)
         try:
             modified_time = os.path.getmtime(path)
-            last_modified_date = datetime.utcfromtimestamp(modified_time)
+            last_modified_date = datetime.fromtimestamp(modified_time, timezone.utc)
             self.log.debug(
                 "Resource %s in %s has modified time of %s",
                 resource,
@@ -543,7 +543,9 @@ class ModelComponent:
                 path = os.path.join(self.path, end_path)
                 try:
                     modified_time = os.path.getmtime(path)
-                    last_modified_date = datetime.utcfromtimestamp(modified_time)
+                    last_modified_date = datetime.fromtimestamp(
+                        modified_time, timezone.utc
+                    )
                 except OSError as exp:
                     # The image does not exist. This is a problem...unless the
                     # image is already in the file store then it may or may not be an

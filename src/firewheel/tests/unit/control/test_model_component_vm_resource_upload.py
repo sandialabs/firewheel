@@ -3,7 +3,7 @@ import time
 import shutil
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 import yaml
 
@@ -372,7 +372,7 @@ echo 'Hello, World!'
             vm_resource_store=self.vm_resource_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         pre_hash = hash_file(self.resource1_path)
 
         result = mcp._upload_vm_resource(self.resource_file_name)
@@ -390,7 +390,7 @@ echo 'Hello, World!'
         with open(self.resource1_path, "w", encoding="utf8") as fname:
             fname.write(self.resource1)
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         post_hash = hash_file(self.resource1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -409,7 +409,7 @@ echo 'Hello, World!'
             vm_resource_store=self.vm_resource_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         pre_hash = hash_file(self.resource1_path)
 
         result = mcp._upload_vm_resource(self.resource_file_name)
@@ -427,7 +427,7 @@ echo 'Hello, World!'
         with open(self.resource1_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         post_hash = hash_file(self.resource1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -446,7 +446,7 @@ echo 'Hello, World!'
             vm_resource_store=self.vm_resource_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         pre_hash = hash_file(self.resource1_path)
 
         result = mcp._upload_vm_resource(self.resource_file_name)
@@ -470,7 +470,7 @@ echo 'Hello, World!'
         with open(self.resource1_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         post_hash = hash_file(self.resource1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -490,11 +490,11 @@ echo 'Hello, World!'
         time.sleep(2)
 
         # Revert to previous file
-        rev_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        rev_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         rev_hash = hash_file(self.resource1_path)
         shutil.move(tmp_path[1], self.resource1_path)
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         post_hash = hash_file(self.resource1_path)
 
         # The file was moved so the pre/post time should be the same
@@ -532,7 +532,7 @@ echo 'Hello, World!'
         with open(second_vm_resource_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        second_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        second_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         second_hash = hash_file(second_vm_resource_path)
 
         # Sleep so we are sure we get a new time.
@@ -720,7 +720,7 @@ echo 'Hello, World!'
             vm_resource_store=self.vm_resource_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         pre_hash = hash_file(self.resource1_path)
 
         result = mcp._upload_vm_resources()
@@ -738,7 +738,7 @@ echo 'Hello, World!'
         with open(self.resource1_path, "w", encoding="utf8") as fname:
             fname.write(self.resource1)
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.resource1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.resource1_path), timezone.utc)
         post_hash = hash_file(self.resource1_path)
 
         self.assertNotEqual(pre_time, post_time)

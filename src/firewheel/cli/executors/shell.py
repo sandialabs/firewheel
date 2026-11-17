@@ -1,7 +1,6 @@
 import os
 import sys
 import shlex
-from typing import Dict, List, Optional
 from decimal import Decimal
 
 import firewheel.cli.firewheel_cli
@@ -20,8 +19,8 @@ class Shell(AbstractExecutor):
     def execute(
         self,
         cache_file: str,
-        session: Dict[str, Decimal],
-        arguments: Optional[List[str]],
+        session: dict[str, Decimal],
+        arguments: list[str] | None,
     ) -> int:
         """
         Execute Shell scripts via the :class:`firewheel.cli.host_accessor.HostAccessor`.

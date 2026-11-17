@@ -3,7 +3,7 @@ import time
 import shutil
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 import yaml
 
@@ -176,7 +176,7 @@ echo 'Hello, World!'
             image_store=self.image_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
@@ -192,7 +192,7 @@ echo 'Hello, World!'
         with open(self.image1_path, "w", encoding="utf8") as fname:
             fname.write(self.image1)
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         post_hash = hash_file(self.image1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -211,7 +211,7 @@ echo 'Hello, World!'
             image_store=self.image_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
@@ -227,7 +227,7 @@ echo 'Hello, World!'
         with open(self.image1_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         post_hash = hash_file(self.image1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -254,7 +254,7 @@ echo 'Hello, World!'
         with open(second_image_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        second_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        second_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         second_hash = hash_file(second_image_path)
 
         # Sleep so we are sure we get a new time.
@@ -282,7 +282,7 @@ echo 'Hello, World!'
             image_store=self.image_store,
         )
 
-        pre_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        pre_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         pre_hash = hash_file(self.image1_path)
 
         result = mcp._upload_images()
@@ -304,7 +304,7 @@ echo 'Hello, World!'
         with open(self.image1_path, "w", encoding="utf8") as fname:
             fname.write("different contents")
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         post_hash = hash_file(self.image1_path)
 
         self.assertNotEqual(pre_time, post_time)
@@ -323,11 +323,11 @@ echo 'Hello, World!'
         time.sleep(2)
 
         # Revert to previous file
-        rev_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        rev_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         rev_hash = hash_file(self.image1_path)
         shutil.move(tmp_path[1], self.image1_path)
 
-        post_time = datetime.utcfromtimestamp(os.path.getmtime(self.image1_path))
+        post_time = datetime.fromtimestamp(os.path.getmtime(self.image1_path), timezone.utc)
         post_hash = hash_file(self.image1_path)
 
         # The file was moved so the pre/post time should be the same

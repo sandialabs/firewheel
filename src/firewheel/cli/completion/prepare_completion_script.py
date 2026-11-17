@@ -15,8 +15,6 @@ Examples:
         $ python -m firewheel.cli.completion.prepare_completion_script
 """
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

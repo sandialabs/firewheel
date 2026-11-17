@@ -103,6 +103,12 @@ message VMMapping {
     string state = 5;
     // The current time in the VM.
     string current_time = 6;
+    // Whether the VM encountered non-fatal vm_resource execution issues.
+    bool has_execution_issues = 7;
+    // The number of non-fatal vm_resource execution issues observed.
+    uint32 execution_issue_count = 8;
+    // The most recent non-fatal vm_resource execution issue message.
+    string last_execution_issue = 9;
     }
 
 message CountVMMappingsNotReadyResponse {

@@ -97,7 +97,7 @@ This provides FIREWHEEL access to the actual location of the model components so
     ]
     description = "A small example package"
     readme = "README.rst"
-    requires-python = ">=3.9"
+    requires-python = ">=3.10"
     classifiers = [
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

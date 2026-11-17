@@ -101,7 +101,7 @@ These get passed to the program on the command line.
 Finally, the ``vm_resource`` parameter is an optional Boolean that indicates if ``program`` is the name of a script that needs to be loaded on to the VM before execution.
 If ``vm_resource`` is ``True`` then the specified program name is assumed to be the local filename of the file (i.e. not the full path, just the filename) to load on to the VM.
 In this case, like :py:meth:`drop_file <base_objects.VMEndpoint.drop_file>`, the file that corresponds to ``program`` must be part of the ``vm_resources`` list in a model component's ``MANIFEST`` file (see :ref:`vm_resources_field`).
-The user does not need to specify where the file will be dropped on the VM since it will be placed in the appropriate ``/var/launch`` or ``C:\launch`` location (see :ref:`vmr-location`).
+The user does not need to specify where the file will be dropped on the VM since it will be placed in the appropriate launch directory for the VM's communication driver. For QGA Linux guests this is ``/var/launch``; for Windows guests this is ``C:\launch``; for Android guests using the ADB driver this is ``/data/local/tmp/firewheel/launch`` (see :ref:`vmr-location`).
 
 Examples
 """"""""
@@ -183,13 +183,22 @@ Another concrete example of how this can be done is shown in the example below w
 
 Finally, the :ref:`tests.reboot_mc` has various examples of Python VMRs requesting a reboot.
 
+.. note::
+
+   Guest reboot effects are OS-specific. On Android, runtime network configuration
+   such as IP addresses, routes, policy routing rules, and firewall rules is
+   generally lost after reboot. Installed APKs typically persist across a normal
+   Android reboot. Android resources that need networking after reboot should
+   rerun the Android network configuration resources.
+
 .. [#] For more details about why this is the case see https://www.howtogeek.com/182817/htg-explains-why-does-windows-want-to-reboot-so-often/
 
 .. _vmr-env:
 
 VMRs In-Experiment Environment
 ------------------------------
-Because of how the VM Resources are executed within the VMs by the :ref:`QEMU Guest Agent <qga-driver>`, users should not make any assumptions about the `environment variables <https://en.wikipedia.org/wiki/Environment_variable>`_ which are available.
+Because VM Resources are executed through a VM Resource Handler driver, users should not make assumptions about the `environment variables <https://en.wikipedia.org/wiki/Environment_variable>`_ available inside the VM.
+The exact environment depends on the guest OS and driver. For example, :ref:`QEMU Guest Agent <qga-driver>` Linux execution and Android ADB execution expose different shell environments.
 That is, users should **NOT** assume that standard Environment variables (e.g. ``$HOME``, ``$USER``, ``$SHELL``, etc.) are available.
 Some software may make assumptions that these common environment variables exist, which may result in odd failures when attempting to run the software.
 Below are some examples of environments which *might* be available.
@@ -211,13 +220,19 @@ Example output from :py:meth:`run_executable <base_objects.VMEndpoint.run_execut
    OLDPWD=/
    _=/usr/bin/printenv
 
+Android ADB-based VM resources should generally assume ``/system/bin/sh`` is available, but should **not** assume Bash or Python are installed.
 
 .. _vmr-location:
 
 Location of VMRs within the VM
 ------------------------------
 Prior to the start of :ref:`schedule-negative-time`, VMRs are uploaded onto the VM.
-FIREWHEEL uses the ``/var/launch`` directory on Linux based VMs and the ``C:\launch`` directory on Windows based VMs.
+FIREWHEEL uses driver- and OS-specific launch directories. Common locations include:
+
+* ``/var/launch`` for QGA Linux guests
+* ``C:\launch`` for Windows guests
+* ``/data/local/tmp/firewheel/launch`` for Android guests using the ADB driver
+
 Inside these directories is a series of directories with :ref:`start times <start-time>` that are used by the scheduled VMRs.
 
 For example, if there are VMRs scheduled at -300, -250, -100, and 5 then ``/var/launch`` would look like:
@@ -227,7 +242,7 @@ For example, if there are VMRs scheduled at -300, -250, -100, and 5 then ``/var/
    $ ls /var/launch
    -100 -250 -300 5
 
-Inside these ref:`<start-time>` directories is a directory for each VMR which is scheduled at the given time.
+Inside these :ref:`start time <start-time>` directories is a directory for each VMR which is scheduled at the given time.
 
 For example, if ``set_hostname.sh`` and ``get_stat.py`` both occurred at ``-250`` it would look like:
 
@@ -239,16 +254,17 @@ For example, if ``set_hostname.sh`` and ``get_stat.py`` both occurred at ``-250`
 .. note::
    To access negative time folders you will likely need to use either a full path (e.g. ``/var/launch/-100`` or a specific relative path ``./-100``. This is because the negative sign (i.e. the hyphen) is typically used to express a CLI option for most shell programs.
 
-Each of the folders with the VMR name contains a file called ``call_arguments.sh`` which is a dynamically-generated script which executes the VMR.
+Each VMR directory contains a dynamically-generated call-arguments file which executes the VMR.
+On Linux and Android guests this is typically ``call_arguments.sh``; on Windows guests this is typically ``call_arguments.bat``.
 Additionally, if there is other data, scripts, etc. which need to be executed for the given VMR, they are also located in this directory.
-For example, here is the ``/var/launch/-250/set_hostname.sh`` directory:
+For example, on a QGA Linux guest, here is the ``/var/launch/-250/set_hostname.sh`` directory:
 
  .. code-block:: bash
 
    $ ls /var/launch/-250/set_hostname.sh
    call_arguments.sh set_hostname.sh
 
-Here is an example ``call_arguments.sh`` file for ``set_hostname.sh``:
+Here is an example ``call_arguments.sh`` file on a QGA Linux guest for ``set_hostname.sh``:
 
 .. code-block:: bash
    :caption: Example ``call_arguments.sh``
@@ -258,13 +274,35 @@ Here is an example ``call_arguments.sh`` file for ``set_hostname.sh``:
    cd /var/launch/-250/set_hostname.sh
    /var/launch/-250/set_hostname.sh/set_hostname.sh host.root.net
 
-To re-run the VMR (for debugging purposes) a user can simply re-execute ``call_arguments.sh`` as the root user:
+Here is an example Android ADB ``call_arguments.sh`` file:
+
+.. code-block:: sh
+
+   #!/system/bin/sh
+   CURRENT_DIR="$(dirname "$0")"
+   cd /data/local/tmp/firewheel/launch/-250/set_hostname_android.sh
+   /data/local/tmp/firewheel/launch/-250/set_hostname_android.sh/set_hostname_android.sh android-0
+
+To re-run a VMR (for debugging purposes) a user can simply re-execute ``call_arguments.sh`` as the root user.
+For example, on a Linux VM might it might look like:
 
  .. code-block:: bash
 
    $ sudo /var/launch/-250/set_hostname.sh/call_arguments.sh
 
+On an Android guest using the ADB driver, a user can inspect or re-run the
+generated script with ADB:
+
+.. code-block:: bash
+
+   $ adb -s emulator-5554 shell /system/bin/sh /data/local/tmp/firewheel/launch/-250/set_hostname_android.sh/call_arguments.sh
+
 Becoming familiar with the locations of VMRs with the VMs is useful for developing and debugging new VMRs.
+
+.. note::
+
+   Android VMRs should generally use ``/system/bin/sh`` and should **not** assume
+   ``/bin/bash``, ``/bin/sh``, or Python are installed.
 
 .. _vmr-output:
 
@@ -299,6 +337,20 @@ This could include running a script that modifies the entire network topology or
 
 The primary method for scheduling host-based VM resources is through the use of the :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>` method, which creates a :py:class:`RunHostExecutableScheduleEntry <base_objects.RunHostExecutableScheduleEntry>` for executing Minimega commands.
 Additional interfaces into host-based scheduling may be added in the future to facilitate common tasks.
+
+Host-side VM resources receive several FIREWHEEL-specific environment variables:
+
+* ``FIREWHEEL_VM_NAME``
+* ``FIREWHEEL_VM_UUID``
+* ``FIREWHEEL_VM_CONFIG_JSON``
+* ``FIREWHEEL_PYTHON``
+
+For Android/ADB-backed VMs, the environment may also include:
+
+* ``FIREWHEEL_ADB_SERIAL``
+* ``FIREWHEEL_ANDROID_CONSOLE_PORT``
+
+These can be useful for host-side resources that need access to information about the scheduling VM.
 
 :py:meth:`run_host_mm_command <base_objects.VMEndpoint.run_host_mm_command>`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

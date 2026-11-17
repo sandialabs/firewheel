@@ -2,9 +2,8 @@ AUTHOR
 FIREWHEEL Team
 DONE
 DESCRIPTION
-
 Push a file to a VM using the VM resource handler. This does not require that
-the VM is running a SSH server. Also, unlike :ref:`helper_scp`, there is no need
+the VM is running an SSH server. Also, unlike :ref:`helper_scp`, there is no need
 to use the :ref:`control_network_mc` model component since the VM resource handler has access to
 the VM through a serial port.
 
@@ -18,8 +17,10 @@ All files get placed at the location specified on the command line.
 
     Any shell expansions (e.g. ``~``) used in the ``destination`` path are resolved **BEFORE** the file is pushed to the VM.
 
+This Helper supports both human-readable text output and machine-readable
+JSON output.
 
-**Usage:**  ``firewheel push file [-h] <filename> <vm hostname> <destination>``
+**Usage:**  ``firewheel push file [-h] [--format {text,json}] <filename> <vm hostname> <destination>``
 
 Arguments
 +++++++++
@@ -29,14 +30,21 @@ Named Arguments
 
 .. option:: -h, --help
 
-    Show this help message and exit
+    Show this help message and exit.
+
+.. option:: --format {text,json}
+
+    :default: ``text``
+
+    Select the output format. ``text`` prints a human-readable scheduling summary.
+    ``json`` returns a structured JSON response.
 
 Positional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
 .. option:: <filename>
 
-    The name of the file to push to the VM
+    The name of the file to push to the VM.
 
 .. option:: <vm hostname>
 
@@ -51,16 +59,22 @@ Example
 
 ``firewheel push file /tmp/test.txt host.root.net /tmp/myfile.txt``
 
-``firewheel push file /tmp/test.txt whost.root.net '/Users/User/Downloads/myfile.txt'``
+``firewheel push file /tmp/test.txt host.windows.net '/Users/User/Downloads/myfile.txt'``
+
+``firewheel push file --format json /tmp/test.txt host.root.net /tmp/myfile.txt``
 
 DONE
 RUN LocalPython ON control
 #!/usr/bin/env python
 
 import sys
+import json
 import pickle
 import argparse
 from pathlib import Path, PureWindowsPath
+from datetime import datetime, timezone
+
+from rich.console import Console
 
 import firewheel.vm_resource_manager.api as vrm_api
 from firewheel.lib.minimega.api import minimegaAPI
@@ -68,8 +82,54 @@ from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.schedule_entry import ScheduleEntry
 
 
-def handle_schedule_entry(name, file_name, destination, windows):
-    """Handle the scheduling of a VM resource file transfer.
+class PushFileError(Exception):
+    """Expected operational error for the push file helper."""
+
+    def __init__(self, message, error_type):
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+def build_error_result(filename, vm_name, destination, message, error_type):
+    """
+    Build a structured error result.
+
+    Args:
+        filename (str): Local source path.
+        vm_name (str): VM hostname.
+        destination (str): Destination path on VM.
+        message (str): Human-readable error message.
+        error_type (str): Machine-readable error type.
+
+    Returns:
+        dict: Structured error result.
+    """
+    source_path = Path(filename)
+
+    return {
+        "success": False,
+        "vm_name": vm_name,
+        "host_found": False,
+        "windows_vm": False,
+        "source": str(source_path),
+        "source_exists": source_path.exists(),
+        "source_basename": source_path.name,
+        "destination": destination,
+        "resource_added": False,
+        "schedule_entry_added": False,
+        "message": message,
+        "error": {
+            "type": error_type,
+            "detail": message,
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def schedule_file_transfer(name, file_name, destination, windows):
+    """
+    Schedule a VM resource file transfer.
 
     This function retrieves the schedule for a specified virtual machine (VM)
     from the schedule database, adds a new schedule entry for transferring a
@@ -77,44 +137,189 @@ def handle_schedule_entry(name, file_name, destination, windows):
     supports both Unix-like and Windows file transfer commands.
 
     Args:
-        name (str): The name of the VM for which the schedule is being handled.
-        file_name (str): The name of the resource file to be transferred.
-        destination (str): The destination path on the VM where the file will be transferred.
-        windows (bool): A flag indicating whether the destination is a Windows environment.
+        name (str): VM name.
+        file_name (str): Source file path on the local system.
+        destination (str): Destination path on the VM.
+        windows (bool): Whether the destination VM is a Windows VM.
+
+    Returns:
+        dict: Structured result data for the scheduled file transfer.
+
+    Raises:
+        PushFileError: For expected operational failures.
     """
     schedule_db = ScheduleDb()
-    pickled_schedule = schedule_db.get(name)
-    if not pickled_schedule:
-        print(f"Unable to get schedule for VM: {name}")
-        sys.exit(1)
-    schedule = pickle.loads(pickled_schedule)
 
-    print(f"Adding '{file_name}' as a VM Resource.")
+    try:
+        pickled_schedule = schedule_db.get(name)
+    except OSError as exc:
+        raise PushFileError(
+            f"Unable to access schedule database for VM '{name}': {exc}",
+            "schedule_db_error",
+        ) from exc
+
+    if not pickled_schedule:
+        raise PushFileError(
+            f"Unable to get schedule for VM: {name}",
+            "schedule_unavailable",
+        )
+
+    try:
+        schedule = pickle.loads(pickled_schedule)
+    except (pickle.PickleError, pickle.UnpicklingError, EOFError, ValueError, TypeError) as exc:
+        raise PushFileError(
+            f"Unable to decode schedule for VM '{name}': {exc}",
+            "schedule_decode_error",
+        ) from exc
+
+    try:
+        vrm_api.add_vm_resource_file(file_name)
+    except OSError as exc:
+        raise PushFileError(
+            f"Unable to add VM resource file '{file_name}': {exc}",
+            "vm_resource_add_error",
+        ) from exc
+
+    source_basename = Path(file_name).name
+
     se = ScheduleEntry(-100000, ignore_failure=True)
-    vrm_api.add_vm_resource_file(file_name)
-    file_name = Path(file_name).name
     if not windows:
-        print(f"Going to transfer '{Path(file_name)}' to destination "
-              f"'{Path(destination)}' on VM '{name}'.\n")
-        se.set_executable("mv", f"{file_name} {destination}")
+        se.set_executable("mv", f"{source_basename} {destination}")
+        rendered_destination = str(Path(destination))
+        transfer_command = "mv"
     else:
-        print(f"Going to transfer '{Path(file_name)}' to destination "
-              f"'{PureWindowsPath(destination)}' on VM '{name}'.\n")
-        se.set_executable("move", f"{file_name} {destination}")
-    se.add_file(file_name, file_name, False)
+        se.set_executable("move", f"{source_basename} {destination}")
+        rendered_destination = str(PureWindowsPath(destination))
+        transfer_command = "move"
+
+    se.add_file(source_basename, source_basename, False)
     schedule.append(se)
-    schedule_db.put(name, pickle.dumps(schedule), None)
-    print(
+
+    try:
+        schedule_db.put(name, pickle.dumps(schedule), None)
+    except (pickle.PickleError, OSError, TypeError, ValueError) as exc:
+        raise PushFileError(
+            f"Unable to store updated schedule for VM '{name}': {exc}",
+            "schedule_store_error",
+        ) from exc
+
+    return {
+        "resource_added": True,
+        "schedule_entry_added": True,
+        "source_basename": source_basename,
+        "rendered_destination": rendered_destination,
+        "transfer_command": transfer_command,
+    }
+
+
+def collect_push_file_result(filename, vm_name, destination):
+    """
+    Execute validation and scheduling for push file.
+
+    Args:
+        filename (str): Local source path.
+        vm_name (str): VM hostname.
+        destination (str): Destination path on VM.
+
+    Returns:
+        dict: Structured result information.
+
+    Raises:
+        PushFileError: For expected operational failures.
+    """
+    source_path = Path(filename)
+    if not source_path.exists():
+        raise PushFileError(
+            f"The file being pushed to the VM '{source_path}' does not exist!",
+            "file_not_found",
+        )
+
+    mm_api = minimegaAPI()
+    mm_dict = mm_api.mm_vms()
+
+    if vm_name not in mm_dict:
+        raise PushFileError(
+            f"No VM '{vm_name}' found.",
+            "vm_not_found",
+        )
+
+    vm_info = mm_dict[vm_name]
+    windows_vm = "windows" in vm_info["image"]
+
+    result = {
+        "success": False,
+        "vm_name": vm_name,
+        "host_found": True,
+        "windows_vm": windows_vm,
+        "source": str(source_path),
+        "source_exists": True,
+        "source_basename": source_path.name,
+        "destination": destination,
+        "resource_added": False,
+        "schedule_entry_added": False,
+        "message": "",
+        "error": None,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    schedule_result = schedule_file_transfer(
+        vm_name,
+        str(source_path),
+        destination,
+        windows_vm,
+    )
+    result.update(schedule_result)
+
+    result["success"] = True
+    result["message"] = (
         "Successfully added a new schedule entry. "
         "Pending any errors, the file will be added shortly. "
         "To investigate the progress, visit the VM's resource log file."
     )
 
+    return result
 
-if __name__ == "__main__":
+
+def render_text(result):
+    """
+    Render human-readable output using Rich.
+    """
+    console = Console()
+
+    if not result["success"]:
+        console.print("[bold red]Push failed[/bold red]")
+        console.print(f"[red]{result['message']}[/red]")
+        console.print(f"[cyan]Source:[/cyan] {result['source']}")
+        console.print(f"[cyan]VM:[/cyan] {result['vm_name']}")
+        console.print(f"[cyan]Destination:[/cyan] {result['destination']}")
+        return
+
+    console.print("[bold green]Push scheduled successfully[/bold green]")
+    console.print(f"[cyan]Source:[/cyan] {result['source']}")
+    console.print(f"[cyan]VM:[/cyan] {result['vm_name']}")
+    console.print(f"[cyan]Destination:[/cyan] {result['rendered_destination']}")
+    console.print(f"[cyan]Transfer command:[/cyan] {result['transfer_command']}")
+    console.print(f"\n[green]{result['message']}[/green]")
+
+
+def render_json(result):
+    """
+    Render machine-readable JSON output.
+    """
+    print(json.dumps(result, indent=2))
+
+
+def main():
     parser = argparse.ArgumentParser(
         description="Push a file to a VM using the VM resource handler.",
         prog="firewheel push file",
+    )
+
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Defaults to text.",
     )
 
     parser.add_argument(
@@ -135,20 +340,25 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not Path(args.filename).exists():
-        raise FileNotFoundError(f"The file being pushed to the VM "
-                                f"'{Path(args.filename)}' does not exist!")
-
-    mm_api = minimegaAPI()
-    mm_dict = mm_api.mm_vms()
-    windows_vm = False
     try:
-        if "windows" in mm_dict[args.vm_name]["image"]:
-            windows_vm = True
-    except KeyError:
-        print(f"No VM '{args.vm_name}' found.")
-        sys.exit(1)
+        result = collect_push_file_result(args.filename, args.vm_name, args.destination)
+    except PushFileError as exc:
+        result = build_error_result(
+            args.filename,
+            args.vm_name,
+            args.destination,
+            exc.message,
+            exc.error_type,
+        )
 
-    handle_schedule_entry(args.vm_name, args.filename, args.destination,
-                          windows_vm)
+    if args.format == "json":
+        render_json(result)
+    else:
+        render_text(result)
+
+    sys.exit(0 if result["success"] else 1)
+
+
+if __name__ == "__main__":
+    main()
 DONE

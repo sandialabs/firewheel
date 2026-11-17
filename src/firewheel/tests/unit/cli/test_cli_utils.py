@@ -2,13 +2,18 @@ import io
 import os
 import tempfile
 import unittest
+from enum import Enum
 from unittest.mock import patch
 
 from firewheel.cli.utils import (
     HelperNotFoundError,
+    execution_issue_suffix,
     load_helper,
     parse_to_helper,
     process_helper_group,
+    state_text,
+    style_minimega_power_state,
+    style_vm_resource_state,
 )
 from firewheel.cli.helper import Helper
 from firewheel.cli.helper_group import HelperGroup
@@ -360,3 +365,63 @@ class CliUtilsTestCase(unittest.TestCase):
         msg_2 = "Continuing without Helper"
         self.assertIn(msg_1, mock_stdout.getvalue())
         self.assertIn(msg_2, mock_stdout.getvalue())
+
+    def test_style_minimega_power_state_styles_expected_states(self):
+        self.assertEqual(style_minimega_power_state("RUNNING"), "[green]RUNNING[/green]")
+        self.assertEqual(style_minimega_power_state("running"), "[green]running[/green]")
+        self.assertEqual(style_minimega_power_state("PAUSED"), "[yellow]PAUSED[/yellow]")
+        self.assertEqual(style_minimega_power_state("error"), "[red]error[/red]")
+
+    def test_style_minimega_power_state_leaves_other_values_unstyled(self):
+        self.assertEqual(style_minimega_power_state("building"), "building")
+        self.assertEqual(style_minimega_power_state("quit"), "quit")
+        self.assertEqual(
+            style_minimega_power_state("error: run failed"),
+            "error: run failed",
+        )
+
+    def test_state_text_prefers_enum_values(self):
+        class DemoState(Enum):
+            READY = "ready"
+
+        self.assertEqual(state_text(DemoState.READY), "ready")
+        self.assertEqual(state_text("configured"), "configured")
+
+    def test_execution_issue_suffix_handles_counts(self):
+        self.assertEqual(execution_issue_suffix({}), "")
+        self.assertEqual(
+            execution_issue_suffix(
+                {"has_execution_issues": True, "execution_issue_count": 1}
+            ),
+            " (execution issues)",
+        )
+        self.assertEqual(
+            execution_issue_suffix(
+                {"has_execution_issues": True, "execution_issue_count": 2}
+            ),
+            " (execution issues: 2)",
+        )
+        self.assertEqual(
+            execution_issue_suffix(
+                {"has_execution_issues": True, "execution_issue_count": 2},
+                show_count=False,
+            ),
+            " (execution issues)",
+        )
+
+    def test_style_vm_resource_state_styles_expected_states(self):
+        self.assertEqual(style_vm_resource_state("configured"), "[green]configured[/green]")
+        self.assertEqual(style_vm_resource_state("testing"), "[cyan]testing[/cyan]")
+        self.assertEqual(
+            style_vm_resource_state("configuring"),
+            "[yellow]configuring[/yellow]",
+        )
+        self.assertEqual(style_vm_resource_state("failed"), "[red]failed[/red]")
+        self.assertEqual(
+            style_vm_resource_state("status missing"),
+            "[red]status missing[/red]",
+        )
+        self.assertEqual(
+            style_vm_resource_state("configured (execution issues)"),
+            "[yellow]configured (execution issues)[/yellow]",
+        )

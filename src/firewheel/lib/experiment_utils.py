@@ -1,14 +1,12 @@
 """Utilities for FIREWHEEL save/load archive layout handling."""
 
-from __future__ import annotations
-
 import sys
 import json
 import math
 import pickle
 import shutil
 import tarfile
-from typing import Any, Optional
+from typing import Any
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -80,10 +78,10 @@ class SavedExperimentInfo:
 
     name: str
     path: Path
-    created_at: Optional[datetime]
-    seconds_since_start: Optional[int]
-    schedule_count: Optional[int]
-    complete: Optional[bool]
+    created_at: datetime | None
+    seconds_since_start: int | None
+    schedule_count: int | None
+    complete: bool | None
 
 
 def list_saved_experiments() -> list[SavedExperimentInfo]:

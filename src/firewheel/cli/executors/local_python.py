@@ -2,7 +2,6 @@ import os
 import sys
 import shutil
 import tempfile
-from typing import Dict, List, Optional
 from decimal import Decimal
 from subprocess import call
 
@@ -19,8 +18,8 @@ class LocalPython(AbstractExecutor):
     def execute(
         self,
         _cache_file: str,
-        _session: Dict[str, Decimal],
-        arguments: Optional[List[str]],
+        _session: dict[str, Decimal],
+        arguments: list[str] | None,
     ) -> int:
         """
         Execute Python scripts via the current Python environment.

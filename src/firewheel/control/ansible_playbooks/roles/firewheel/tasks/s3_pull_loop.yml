@@ -1,7 +1,7 @@
 ---
 ###################################################################################################
-# This playbook will loop through all values in the `required_files` variable
-# and collected those files from an S3 instance.
+# This playbook will loop through all cacheable files and collect those files
+# from an S3 instance.
 # The user will need to provide all relevant information.
 # An example configuration is shown below:
 #
@@ -24,13 +24,13 @@
     - name: "Attempt to download cached files from {{ firewheel_s3_bucket }}"
       amazon.aws.s3_object:
         bucket: "{{ firewheel_s3_bucket }}"
-        object: "{{ item.source if item.source is defined else mc_name + '/' + item.destination | basename }}"
+        object: "{{ item.source if item.source is defined else mc_name + '/' + (item.destination | basename) }}"
         dest: "{{ item.destination }}"
         mode: get
         aws_access_key: "{{ firewheel_aws_access_key_id }}"
         aws_secret_key: "{{ firewheel_aws_secret_access_key }}"
         endpoint_url: "{{ firewheel_s3_endpoint }}"
-      loop: "{{ required_files }}"
+      loop: "{{ firewheel_cache_files | default(required_files) }}"
       register: s3_download_result
       ignore_errors: true
   rescue:

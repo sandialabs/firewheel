@@ -90,9 +90,9 @@ Build environment setup
       # please change those first.
       ./install.sh -d
 
-   * If you just need to install FIREWHEEL's development dependencies you can use::
+   * If you just need to install FIREWHEEL's development dependencies for the local checkout you can use::
 
-      python -m pip install firewheel[dev]
+      python -m pip install -e ".[dev]"
 
 #. FIREWHEEL will now be install/configured using your version of the code.
 
@@ -147,6 +147,9 @@ Our tests can be executed either via `tox <https://tox.wiki/en/latest/>`_ or usi
    firewheel test unit
    firewheel test e2e
 
+When running ``pytest`` directly instead of through ``tox`` or the FIREWHEEL CLI, first install the local checkout in editable mode as described in `Build environment setup`_.
+Running ``pytest`` from an environment where FIREWHEEL has not been installed can fail during collection because required Python packages such as ``PyYAML`` and ``qemu.qmp`` are unavailable.
+
 Test coverage
 -------------
 
@@ -154,7 +157,7 @@ Tests for a module should ideally cover all code in that module, i.e., statement
 
 To measure the test coverage, install FIREWHEEL with development dependencies and then run::
 
-  tox -e py39
+  tox -e py310
 
 This will generate a `coverage <https://coverage.readthedocs.io/en/latest/>`_ report and also exit if the tests fail.
 

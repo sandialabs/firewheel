@@ -16,40 +16,47 @@ DONE
 
 RUN Python ON compute
 #!/usr/bin/env python
+
 import os
 import shutil
 from pathlib import Path
 
 from firewheel.config import config
 
-vm_resource_logs = Path(config["logging"]["root_dir"]) / config["logging"]["vmr_log_dir"]
 
-# Remove the entire ``vmr_log_dir`` directory.
-try:
-    shutil.rmtree(vm_resource_logs)
-except FileNotFoundError:
-    pass
-except PermissionError:
-    print(
-        f"WARNING: Cannot remove {vm_resource_logs} due to a permissions error. "
-        f"Please manually run 'sudo rm -rf {vm_resource_logs}'."
-    )
+def main():
+    vm_resource_logs = Path(config["logging"]["root_dir"]) / config["logging"]["vmr_log_dir"]
+
+    # Remove the entire ``vmr_log_dir`` directory.
+    try:
+        shutil.rmtree(vm_resource_logs)
+    except FileNotFoundError:
+        pass
+    except PermissionError:
+        print(
+            f"WARNING: Cannot remove {vm_resource_logs} due to a permissions error. "
+            f"Please manually run 'sudo rm -rf {vm_resource_logs}'."
+        )
 
 
-# Remove the "transfers" directory
-transfer_path = Path(config["logging"]["root_dir"]) / "transfers"
-try:
-    shutil.rmtree(transfer_path)
-except FileNotFoundError:
-    pass
-except PermissionError:
-    print(
-        f"WARNING: Cannot remove {transfer_path} due to a permissions error. "
-        f"Please manually run 'sudo rm -rf {transfer_path}'."
-    )
+    # Remove the "transfers" directory
+    transfer_path = Path(config["logging"]["root_dir"]) / "transfers"
+    try:
+        shutil.rmtree(transfer_path)
+    except FileNotFoundError:
+        pass
+    except PermissionError:
+        print(
+            f"WARNING: Cannot remove {transfer_path} due to a permissions error. "
+            f"Please manually run 'sudo rm -rf {transfer_path}'."
+        )
 
-# Recreate the removed directory
-os.makedirs(vm_resource_logs, exist_ok=True)
+    # Recreate the removed directory
+    os.makedirs(vm_resource_logs, exist_ok=True)
+
+
+if __name__ == "__main__":
+    main()
 DONE
 
 RUN Helpers ON control

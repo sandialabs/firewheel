@@ -20,6 +20,6 @@ Examples:
     firewheel.log
 """
 
-from ._config import Config
+from ._config import Config, FirewheelConfig
 
-config = Config().get_config()
+config: FirewheelConfig = Config().get_config()
