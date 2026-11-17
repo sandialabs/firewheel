@@ -1,6 +1,7 @@
 import sys
 import stat
 import subprocess
+from enum import Enum
 from pathlib import Path
 
 import ansible_runner
@@ -27,6 +28,15 @@ class InstallPrompt(PromptBase[str]):
     )
     illegal_choice_message = msg
     validate_error_message = msg
+
+
+class InstallStatus(str, Enum):
+    """The outcome of attempting to run a Model Component's ``INSTALL``."""
+
+    INSTALLED = "installed"
+    ALREADY_INSTALLED = "already installed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 class ModelComponentInstall:
@@ -60,12 +70,19 @@ class ModelComponentInstall:
 
     """
 
-    def __init__(self, mc=None):
+    def __init__(self, mc=None, quiet=False):
         """
         Initialize the object.
 
+        After :py:meth:`run_install_script` is called, :py:attr:`status` holds the
+        :py:class:`InstallStatus` of the attempt (or :py:data:`None` if the Model
+        Component has no ``INSTALL``) and :py:attr:`log_path` holds the path of the
+        file containing the ``INSTALL`` output (or :py:data:`None` if it was not run).
+
         Args:
             mc (ModelComponent): The :py:class:`ModelComponent` to install.
+            quiet (bool): Whether to suppress the ``INSTALL`` output on the terminal.
+                The output is always written to :py:attr:`log_path`.
 
         Raises:
             ValueError: Caused if a user didn't specify ``mc``.
@@ -74,6 +91,9 @@ class ModelComponentInstall:
             raise ValueError("Must specify a Model Component.")
 
         self.mc = mc
+        self.quiet = quiet
+        self.status = None
+        self.log_path = None
         self.log = Log(name="ModelComponentInstall").log
 
     def install_mc(self, install_path):
@@ -106,23 +126,57 @@ class ModelComponentInstall:
             install_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         )
 
-        try:
-            # We have already checked with the user to ensure that they want to run
-            # this script.
-            subprocess.run(  # nosec
-                [str(install_path)], cwd=install_path.parent, check=True
-            )
+        self.log_path = (
+            Path(config["system"]["default_output_dir"])
+            / "install_logs"
+            / f"{self.mc.name}.log"
+        )
+        # We have already checked with the user to ensure that they want to run
+        # this script.
+        returncode = self.run_script(install_path, self.log_path)
+        if returncode == 0:
             console.print(f"[b green]Installed [cyan]{self.mc.name}[/cyan]!")
             return True
-        except subprocess.CalledProcessError as exp:
-            if exp.returncode == 117:  # Structure needs cleaning
-                console.print(
-                    f"[b yellow][cyan]{self.mc.name}[/cyan] is already installed!"
-                )
-                return True
+        if returncode == 117:  # Structure needs cleaning
+            console.print(
+                f"[b yellow][cyan]{self.mc.name}[/cyan] is already installed!"
+            )
+            self.status = InstallStatus.ALREADY_INSTALLED
+            return True
 
-            console.print(f"[b red]Failed to install [cyan]{self.mc.name}[/cyan]!")
-            return False
+        console.print(f"[b red]Failed to install [cyan]{self.mc.name}[/cyan]!")
+        return False
+
+    def run_script(self, install_path, log_path):
+        """
+        Execute an ``INSTALL`` script, writing its combined stdout and stderr to
+        ``log_path`` and, unless :py:attr:`quiet` is set, to the terminal as well.
+
+        Args:
+            install_path (pathlib.Path): The path of the executable ``INSTALL`` file.
+            log_path (pathlib.Path): The file in which to save the script output.
+
+        Returns:
+            int: The return code of the script.
+        """
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with (
+            log_path.open("wb") as log_file,
+            subprocess.Popen(  # nosec
+                [str(install_path)],
+                cwd=install_path.parent,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            ) as proc,
+        ):
+            # Read in chunks rather than lines so that prompts which do not end
+            # in a newline still reach the terminal.
+            for chunk in iter(lambda: proc.stdout.read1(4096), b""):
+                log_file.write(chunk)
+                if not self.quiet:
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+        return proc.returncode
 
     def has_shebang(self, install_path):
         """
@@ -336,7 +390,10 @@ class ModelComponentInstall:
             playbook=str(playbook_path),
             extravars=ansible_config,
             roles_path=(str(playbook_path.parent / "roles")),
+            quiet=self.quiet,
         )
+        # ansible-runner always saves the full playbook output in its artifacts.
+        self.log_path = Path(ret.config.artifact_dir) / "stdout"
 
         if ret.rc == 0:
             console.print(
@@ -363,17 +420,23 @@ class ModelComponentInstall:
         install_script = Path(self.mc.path) / "INSTALL"
         install_flag = Path(self.mc.path) / f".{self.mc.name}.installed"
 
+        self.status = None
+        self.log_path = None
+
         if not install_script.exists():
             return True
 
         if install_flag.exists():
+            self.status = InstallStatus.ALREADY_INSTALLED
             return True
 
         if insecure is True:
             success = self.install_mc(install_script)
             if not success:
+                self.status = InstallStatus.FAILED
                 console.print(f"[b red]Failed to install [cyan]{self.mc.name}[/cyan].")
                 return False
+            self.status = self.status or InstallStatus.INSTALLED
             return True
 
         choices = ["y", "n", "v", "vc", "q"]
@@ -383,6 +446,7 @@ class ModelComponentInstall:
             if value == "y":
                 success = self.install_mc(install_script)
                 if not success:
+                    self.status = InstallStatus.FAILED
                     console.print(
                         f"[b red]Failed to install [cyan]{self.mc.name}[/cyan]"
                         " this may cause downstream issues!"
@@ -393,8 +457,10 @@ class ModelComponentInstall:
                 # we should do it here.
                 if not install_flag.exists():
                     install_flag.touch()
+                self.status = self.status or InstallStatus.INSTALLED
                 break
             if value == "n":
+                self.status = InstallStatus.SKIPPED
                 console.print(
                     f"[b red]Continuing WITHOUT running [cyan]{install_script}[/cyan]"
                     " this may cause downstream issues!"
