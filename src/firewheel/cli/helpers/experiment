@@ -54,6 +54,15 @@ Positional Arguments
     If no name is provided, these arguments are treated as positional.
     No spaces are allowed when providing MC parameters.
 
+    Command-line examples:
+
+    .. code-block:: bash
+
+        $ # Single MC positional argument
+        $ firewheel experiment tests.router_tree:3 minimega.launch
+        $ # Muliple MC named arguments
+        $ firewheel experiment tests.router_tree:3 tests.large_resource:size=1024:location_dir=/tmp:preload=True minimega.launch
+
 Named Arguments
 ^^^^^^^^^^^^^^^
 
@@ -70,23 +79,23 @@ Named Arguments
 
 .. option:: -f, --force
 
-    Always clear the current testbed by running ``firewheel restart`` before starting the experiment.
+    Force the experiment to launch even if there is an existing experiment. This essentially clears the testbed by running ``firewheel restart``. (optional)
 
 .. option:: -r, --restart
 
-    Clear the testbed by running ``firewheel restart`` only if an active experiment is detected.
-
-.. option:: --dry-run
-
-    Resolve and import model components, but do not run their plugins.
+    Similar to :option:`-f`, but only restarts if an active experiment is detected. If an experiment is detected, runs ``firewheel restart`` before starting the experiment. (optional)
 
 .. option:: --profile
 
-    Write graph construction profiling information to ``firewheel_profile.prof``.
+    Output profiling info for experiment graph construction. It creates a ``firewheel_profile.prof`` file in the current working directory. (optional)
+
+.. option:: --dry-run
+
+    Output the ModelComponent sequence that would be evaluated, but don't actually evaluate the components. (optional)
 
 .. option:: -ni, --no-install
 
-    Continue regardless of whether Model Components have been installed.
+    Continue regardless of if Model Components within the experiment have been "installed" (i.e., the ``INSTALL`` file executed). Defaults to None. (optional)
 
 Examples
 ++++++++
