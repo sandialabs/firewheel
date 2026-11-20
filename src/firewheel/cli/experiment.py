@@ -1,14 +1,12 @@
 """Implementation for the ``firewheel experiment`` helper."""
 
 import os
-import io
 import sys
 import json
-import errno
 import argparse
 import cProfile
-import traceback
 import tempfile
+import traceback
 from datetime import datetime, timezone
 
 from rich.align import Align
@@ -142,14 +140,18 @@ class OutputCapture:
             try:
                 if self._stdout_tmp is not None:
                     self._stdout_tmp.seek(0)
-                    self.stdout = self._stdout_tmp.read().decode("utf-8", errors="replace")
+                    self.stdout = self._stdout_tmp.read().decode(
+                        "utf-8", errors="replace"
+                    )
             except OSError:
                 self.stdout = ""
 
             try:
                 if self._stderr_tmp is not None:
                     self._stderr_tmp.seek(0)
-                    self.stderr = self._stderr_tmp.read().decode("utf-8", errors="replace")
+                    self.stderr = self._stderr_tmp.read().decode(
+                        "utf-8", errors="replace"
+                    )
             except OSError:
                 self.stderr = ""
 
@@ -353,9 +355,7 @@ def build_table_result(dependency_graph_time=0.0, total_time=0.0, exp_result=Non
             - table (RichDefaultTable): The rendered results table.
             - exit_code (int): Exit code based on model component failures.
     """
-    caption = (
-        f"Dependency graph resolution took [cyan]{dependency_graph_time:.3f}[/ cyan] seconds"
-    )
+    caption = f"Dependency graph resolution took [cyan]{dependency_graph_time:.3f}[/ cyan] seconds"
 
     table = RichDefaultTable(
         title="Model Components Executed",
@@ -402,9 +402,7 @@ def render_table(console, dependency_graph_time=0.0, total_time=0.0, exp_result=
     Returns:
         int: Exit code.
     """
-    table, exit_code = build_table_result(
-        dependency_graph_time, total_time, exp_result
-    )
+    table, exit_code = build_table_result(dependency_graph_time, total_time, exp_result)
     console.print("\n", table, "\n")
     return exit_code
 
@@ -729,7 +727,9 @@ def main():
             )
             append_phase_capture(captured_output, "execution", stdout_text, stderr_text)
         else:
-            exp_result = run_experiment(mcm, console, cmd_args.dry_run, cmd_args.profile)
+            exp_result = run_experiment(
+                mcm, console, cmd_args.dry_run, cmd_args.profile
+            )
 
         total_end = datetime.now()
         total_time = (total_end - total_start).total_seconds()
@@ -773,6 +773,7 @@ def main():
 
         console.print(f"[error]ERROR:[/error] {exc.message}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
