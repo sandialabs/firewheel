@@ -17,6 +17,40 @@ class ScheduleDbTimeoutError(Exception):
 retry_exception = retry(30, (ScheduleDbTimeoutError,))
 
 
+def _build_schedule_document(server_name, text, vm_resources_ip):
+    """
+    Build the stored schedule document for a VM.
+
+    Args:
+        server_name (str): The name of the VM to assign this schedule to.
+        text (bytes): The schedule payload.
+        vm_resources_ip (str): The IP of the VM.
+
+    Returns:
+        dict: JSON-serializable schedule document.
+    """
+    return {
+        "server_name": server_name,
+        "text": base64.b64encode(text).decode(),
+        "ip": vm_resources_ip,
+    }
+
+
+def _decode_schedule_document(document):
+    """
+    Decode a stored schedule document.
+
+    Args:
+        document (dict): Stored schedule document loaded from JSON.
+
+    Returns:
+        dict: A copy of the document with the schedule payload decoded to bytes.
+    """
+    decoded_document = dict(document)
+    decoded_document["text"] = base64.b64decode(decoded_document["text"])
+    return decoded_document
+
+
 class ScheduleDb:
     """
     Class to represent the experiment schedule database. This is currently
@@ -78,10 +112,7 @@ class ScheduleDb:
             schedule_path = self.cache.get_path(match)
             try:
                 with open(schedule_path, "r", encoding="utf8") as f_name:
-                    schedule = json.load(f_name)
-                    decoded_text = base64.b64decode(schedule["text"])
-                    schedule["text"] = decoded_text
-                    schedules.append(schedule)
+                    schedules.append(_decode_schedule_document(json.load(f_name)))
             except Exception as exp:
                 self.log.exception(exp)
                 raise exp
@@ -108,8 +139,8 @@ class ScheduleDb:
             return None
         try:
             with open(schedule_path, "r", encoding="utf8") as f_name:
-                schedule = json.load(f_name)
-                return base64.b64decode(schedule["text"])
+                schedule = _decode_schedule_document(json.load(f_name))
+                return schedule["text"]
         except Exception as exp:
             self.log.exception(exp)
             raise exp
@@ -130,11 +161,7 @@ class ScheduleDb:
             Exception: If minimega has an error.
         """
         try:
-            document = {
-                "server_name": server_name,
-                "text": base64.b64encode(text).decode(),
-                "ip": vm_resources_ip,
-            }
+            document = _build_schedule_document(server_name, text, vm_resources_ip)
             self.cache.add_file_from_content(
                 json.dumps(document), server_name, broadcast=broadcast
             )
