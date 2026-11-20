@@ -77,7 +77,7 @@ def cache_vms():
     mc_manager = ModelComponentManager()
     mc_obj_list = build_mc_list(["tests.vm_gen:1"])
     mc_manager.build_dependency_graph(mc_obj_list, install_mcs=False)
-    mc_manager.build_experiment_graph()
+    mc_manager.build_experiment_graph_result()
 
 
 class TestPerformance:
@@ -172,7 +172,7 @@ class TestPerformance:
         profile = cProfile.Profile()
         profile.enable()
 
-        mc_manager.build_experiment_graph()
+        mc_manager.build_experiment_graph_result()
 
         # End profiling
         profile.disable()

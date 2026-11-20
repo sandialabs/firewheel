@@ -114,7 +114,7 @@ class Plugin(AbstractPlugin):
             repository_db=self.repository_db,
         )
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time.
         for e in errors:
@@ -140,7 +140,7 @@ class Plugin(AbstractPlugin):
             repository_db=self.repository_db,
         )
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time.
         for e in errors:
@@ -166,7 +166,7 @@ class Plugin(AbstractPlugin):
             repository_db=self.repository_db,
         )
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time.
         for e in errors:
@@ -192,7 +192,7 @@ class Plugin(AbstractPlugin):
             repository_db=self.repository_db,
         )
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time.
         for e in errors:
@@ -218,7 +218,7 @@ class Plugin(AbstractPlugin):
             repository_db=self.repository_db,
         )
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time.
         for e in errors:
@@ -245,7 +245,7 @@ class Plugin(AbstractPlugin):
         )
         mcm.build_dependency_graph([comp])
         with self.assertRaises(TypeError):
-            mcm.build_experiment_graph()
+            mcm.build_experiment_graph_result()
 
     def test_invalid_args_no_dict(self):
         with self.assertRaises(ValueError):

@@ -366,6 +366,29 @@ class ModelComponent:
 
         return self.manifest["model_components"]["depends"]
 
+    def describe(self, grouping=None):
+        """Return a serializable description of this model component.
+
+        Args:
+            grouping (int | None): Optional dependency graph grouping value.
+
+        Returns:
+            dict: Model component metadata useful for provenance and diagnostics.
+        """
+        return {
+            "name": self.name,
+            "path": str(self.path),
+            "dependency_graph_id": self.get_dependency_graph_id(),
+            "grouping": grouping,
+            "manifest": self.manifest,
+            "arguments": self.arguments,
+            "attribute_depends": self.get_attribute_depends(),
+            "attribute_provides": self.get_attribute_provides(),
+            "attribute_precedes": self.get_attribute_precedes(),
+            "model_component_depends": self.get_model_component_depends(),
+            "model_component_precedes": self.get_model_component_precedes(),
+        }
+
     def upload_files(self):
         """
         Upload any VM Resources and Images needed for the experiment to the cache.

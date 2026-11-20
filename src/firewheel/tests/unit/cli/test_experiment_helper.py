@@ -5,54 +5,26 @@ from unittest.mock import ANY, Mock
 import pytest
 
 import firewheel.cli.experiment as experiment
+from firewheel.control.model_component_spec import ModelComponentSpecError
 
 
-def test_get_mc_list_parses_model_component_arguments(monkeypatch):
-    created = []
+def test_get_mc_list_delegates_to_core_model_component_builder(monkeypatch):
+    builder = Mock(return_value=["mc"])
+    monkeypatch.setattr(experiment, "build_model_components", builder)
 
-    class FakeModelComponent:
-        def __init__(self, name, arguments, install):
-            self.name = name
-            self.arguments = arguments
-            self.install = install
-            created.append(self)
+    result = experiment.get_mc_list(["tests.vm_gen:3"], install_mcs=False)
 
-    monkeypatch.setattr(experiment, "ModelComponent", FakeModelComponent)
+    assert result == ["mc"]
+    builder.assert_called_once_with(["tests.vm_gen:3"], install_mcs=False)
 
-    result = experiment.get_mc_list(
-        ["tests.vm_gen:3:key=value"], install_mcs=False
+
+def test_get_mc_list_rejects_malformed_keyword_arguments(monkeypatch):
+    monkeypatch.setattr(
+        experiment,
+        "build_model_components",
+        Mock(side_effect=ModelComponentSpecError("bad args")),
     )
 
-    assert result == created
-    assert result[0].name == "tests.vm_gen"
-    assert result[0].arguments == {"plugin": {"key": "value", "": ["3"]}}
-    assert result[0].install is False
-
-
-def test_get_mc_list_parses_multiple_components(monkeypatch):
-    created = []
-
-    class FakeModelComponent:
-        def __init__(self, name, arguments, install):
-            self.name = name
-            self.arguments = arguments
-            self.install = install
-            created.append(self)
-
-    monkeypatch.setattr(experiment, "ModelComponent", FakeModelComponent)
-
-    result = experiment.get_mc_list(
-        ["tests.vm_gen:size=3", "minimega.launch"], install_mcs=None
-    )
-
-    assert result == created
-    assert result[0].name == "tests.vm_gen"
-    assert result[0].arguments == {"plugin": {"size": "3"}}
-    assert result[1].name == "minimega.launch"
-    assert result[1].arguments == {"plugin": {}}
-
-
-def test_get_mc_list_rejects_malformed_keyword_arguments():
     with pytest.raises(experiment.ExperimentHelperError) as excinfo:
         experiment.get_mc_list(["tests.vm_gen:a=b=c"], install_mcs=False)
 
@@ -310,17 +282,17 @@ def test_maybe_restart_environment_translates_restart_errors(monkeypatch):
 
 def test_run_experiment_calls_model_component_manager():
     mcm = Mock()
-    mcm.build_experiment_graph.return_value = ["result"]
+    mcm.build_experiment_graph_result.return_value = (["result"], None)
 
     result = experiment.run_experiment(mcm, Mock(), dry_run=True, is_profile=False)
 
     assert result == ["result"]
-    mcm.build_experiment_graph.assert_called_once_with(dry_run=True)
+    mcm.build_experiment_graph_result.assert_called_once_with(dry_run=True)
 
 
 def test_run_experiment_translates_plugin_argument_type_error():
     mcm = Mock()
-    mcm.build_experiment_graph.side_effect = TypeError("bad args")
+    mcm.build_experiment_graph_result.side_effect = TypeError("bad args")
     console = Mock()
 
     with pytest.raises(experiment.ExperimentHelperError) as excinfo:

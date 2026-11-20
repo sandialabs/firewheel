@@ -16,8 +16,11 @@ import firewheel.vm_resource_manager.api as vrm_api
 from firewheel.cli.utils import RichDefaultTable, cli_output_theme
 from firewheel.lib.minimega.api import minimegaAPI
 from firewheel.cli.firewheel_cli import FirewheelCLI
-from firewheel.control.model_component import ModelComponent
 from firewheel.control.dependency_graph import UnsatisfiableDependenciesError
+from firewheel.control.model_component_spec import (
+    ModelComponentSpecError,
+    build_model_components,
+)
 from firewheel.control.model_component_manager import ModelComponentManager
 
 
@@ -229,31 +232,14 @@ def get_mc_list(cli_args, install_mcs=None):
     Raises:
         ExperimentHelperError: If a model component argument is malformed.
     """
-    initial_mc_list = []
-    for init_mc in cli_args:
-        sp = init_mc.split(":")
-        init_mc_name = sp[0]
-
-        args = {"plugin": {}}
-        anon_args = []
-        for arg in sp[1:]:
-            arg_sp = arg.split("=")
-            if len(arg_sp) == 2:
-                args["plugin"][arg_sp[0]] = arg_sp[1]
-            elif len(arg_sp) == 1:
-                anon_args.append(arg_sp[0])
-            else:
-                raise ExperimentHelperError(
-                    f"Malformed argument for ModelComponent {init_mc_name}.",
-                    "malformed_model_component_argument",
-                    "model_component_resolution",
-                )
-        if len(anon_args) > 0:
-            args["plugin"][""] = anon_args
-
-        mc = ModelComponent(name=init_mc_name, arguments=args, install=install_mcs)
-        initial_mc_list.append(mc)
-    return initial_mc_list
+    try:
+        return build_model_components(cli_args, install_mcs=install_mcs)
+    except ModelComponentSpecError as exp:
+        raise ExperimentHelperError(
+            str(exp),
+            "malformed_model_component_argument",
+            "model_component_resolution",
+        ) from exp
 
 
 def create_cli_parser():
@@ -522,7 +508,9 @@ def run_experiment(mcm, console, dry_run=False, is_profile=False):
             profile = cProfile.Profile()
             profile.enable()
 
-        exp_result = mcm.build_experiment_graph(dry_run=dry_run)
+        exp_result, _experiment_graph = mcm.build_experiment_graph_result(
+            dry_run=dry_run
+        )
 
         if is_profile:
             profile.disable()
