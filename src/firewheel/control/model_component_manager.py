@@ -503,7 +503,9 @@ class ModelComponentManager:
 
         return found_plugin_class
 
-    def process_model_component(self, mc, experiment_graph, dry_run=False):
+    def process_model_component(
+        self, mc, experiment_graph, dry_run=False, upload_files=True
+    ):
         """
         This method helps process model components for execution. It:
         * Uploads/prepares any necessary files (images/vm_resources).
@@ -516,6 +518,8 @@ class ModelComponentManager:
                 to the plugin and also returned by this method.
             dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
                 or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
+            upload_files (bool): Indicates whether the model component's files should be uploaded
+                after plugin execution. Defaults to :py:data:`True` to preserve existing behavior.
 
         Returns:
             tuple: Tuple containing a bool of whether errors occurred and the
@@ -609,10 +613,52 @@ class ModelComponentManager:
             experiment_graph = plugin_instance.get_experiment_graph()
 
         # Upload/prepare any necessary files.
-        if not dry_run:
+        if not dry_run and upload_files:
             mc.upload_files()
 
         return (errors, experiment_graph)
+
+    def build_experiment_graph_result(self, dry_run=False, upload_files=True):
+        """
+        Builds the experiment graph by processing all the model components and
+        returns the final graph along with per-model-component execution records.
+
+        This is intended for library callers that need the built
+        :class:`ExperimentGraph` without using the CLI's launch/restart behavior.
+
+        Args:
+            dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
+                or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
+            upload_files (bool): Indicates whether model component files should be uploaded
+                after plugin execution. Defaults to :py:data:`True` to preserve existing behavior.
+
+        Returns:
+            tuple: ``(errors_list, experiment_graph)``.
+
+        Raises:
+            InvalidStateError: If the dependency graph does not exist.
+        """
+        errors_list = []
+        if self.dg is None:
+            raise InvalidStateError("No dependency graph generated yet.")
+        experiment_graph = None
+
+        for mc in self.get_ordered_model_component_list():
+            self.log.debug("Processing model component %s", mc.name)
+            start = datetime.now()
+            error, experiment_graph = self.process_model_component(
+                mc, experiment_graph, dry_run=dry_run, upload_files=upload_files
+            )
+            end = datetime.now()
+            errors_list.append(
+                {
+                    "model_component": mc.name,
+                    "errors": error,
+                    "time": (end - start).total_seconds(),
+                }
+            )
+
+        return errors_list, experiment_graph
 
     def _print_plugin_initialization_help(
         self, mc_name, plugin_instance, call_args, call_kwargs
@@ -645,40 +691,3 @@ class ModelComponentManager:
             "\n\nThe expected initialization signature for the plugin is:"
             f"\n[cyan]{filled_sig}[/cyan]"
         )
-
-    def build_experiment_graph(self, dry_run=False):
-        """
-        Builds the experiment graph by processing all the model components.
-
-        Args:
-            dry_run (bool): Indicates whether the model components should be run (:py:data:`False`)
-                or simply imported (i.e. checked for syntax errors). Defaults to :py:data:`False`.
-
-        Returns:
-            list: A list of errors that were reported when trying to execute.
-
-
-        Raises:
-            InvalidStateError: If the dependency graph does not exist.
-        """
-        errors_list = []
-        if self.dg is None:
-            raise InvalidStateError("No dependency graph generated yet.")
-        experiment_graph = None
-
-        for mc in self.get_ordered_model_component_list():
-            self.log.debug("Processing model component %s", mc.name)
-            start = datetime.now()
-            error, experiment_graph = self.process_model_component(
-                mc, experiment_graph, dry_run
-            )
-            end = datetime.now()
-            errors_list.append(
-                {
-                    "model_component": mc.name,
-                    "errors": error,
-                    "time": (end - start).total_seconds(),
-                }
-            )
-
-        return errors_list

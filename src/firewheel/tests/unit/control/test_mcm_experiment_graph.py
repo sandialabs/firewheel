@@ -111,7 +111,7 @@ class Grapher(AbstractPlugin):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c11_provides[0])
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time so we can compare more easily.
         for e in errors:
@@ -128,13 +128,13 @@ class Grapher(AbstractPlugin):
     def test_no_dependency_graph(self):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         with self.assertRaises(InvalidStateError):
-            mcm.build_experiment_graph()
+            mcm.build_experiment_graph_result()
 
     def test_two_comp_graph_with_one_error(self):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c12_provides[0])
         mcm.build_dependency_graph([comp])
-        errors = mcm.build_experiment_graph()
+        errors, _graph = mcm.build_experiment_graph_result()
 
         # Clean up time so we can compare more easily.
         for e in errors:
@@ -155,3 +155,20 @@ class Grapher(AbstractPlugin):
         }
         expected_result = [c11_expected_result, c12_expected_result]
         self.assertEqual(expected_result, errors)
+
+
+def test_build_experiment_graph_result_returns_errors_and_graph():
+    test_case = MCMExperimentGraphTestCase()
+    test_case.setUp()
+    try:
+        mcm = ModelComponentManager(repository_db=test_case.repository_db)
+        comp = mcm.get_default_component_for_attribute(test_case.c11_provides[0])
+        mcm.build_dependency_graph([comp])
+
+        errors, graph = mcm.build_experiment_graph_result(upload_files=False)
+
+        assert graph is None
+        assert len(errors) == 1
+        assert errors[0]["model_component"] == test_case.c11_manifest["name"]
+    finally:
+        test_case.tearDown()

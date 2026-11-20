@@ -5,6 +5,7 @@ import sys
 import shutil
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 import yaml
 
@@ -239,3 +240,21 @@ class Grapher(AbstractPlugin):
         sys.modules["test.model_component"] = None
         errors = mcm.process_model_component(comp, None)
         self.assertTrue(errors)
+
+
+def test_upload_files_false_skips_upload_after_plugin_execution():
+    test_case = MCMProcessModelComponentTestCase()
+    test_case.setUp()
+    try:
+        mcm = ModelComponentManager(repository_db=test_case.repository_db)
+        comp = mcm.get_default_component_for_attribute(test_case.c11_provides[0])
+        comp.upload_files = Mock()
+
+        errors, _graph = mcm.process_model_component(
+            comp, None, dry_run=False, upload_files=False
+        )
+
+        assert errors is False
+        comp.upload_files.assert_not_called()
+    finally:
+        test_case.tearDown()
