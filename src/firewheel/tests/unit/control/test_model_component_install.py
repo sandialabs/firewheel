@@ -1,10 +1,12 @@
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from firewheel.control.model_component_install import ModelComponentInstall
+from firewheel.control.model_component_install import (
+    InstallStatus,
+    ModelComponentInstall,
+)
 
 
 @pytest.fixture
@@ -39,6 +41,24 @@ def install_component(mock_model_component):
     return ModelComponentInstall(mc=mock_model_component)
 
 
+def mock_popen(returncode, output=b"Installing...\n"):
+    """
+    Build a mock :py:class:`subprocess.Popen` for an INSTALL script.
+
+    Args:
+        returncode (int): The return code of the mocked script.
+        output (bytes): The output produced by the mocked script.
+
+    Returns:
+        MagicMock: A mock to be used in place of :py:class:`subprocess.Popen`.
+    """
+    proc = MagicMock(returncode=returncode)
+    proc.stdout.read1.side_effect = [output, b""]
+    popen = MagicMock()
+    popen.return_value.__enter__.return_value = proc
+    return popen
+
+
 @patch("firewheel.control.model_component_install.Path.open", new_callable=MagicMock)
 @patch(
     "firewheel.control.model_component_install.Path.stat",
@@ -62,8 +82,12 @@ def test_install_mc_success(mock_chmod, mock_stat, mock_open, install_component)
     mock_file.read.return_value = "#!/bin/bash\necho 'Installing...'"
     mock_open.return_value.__enter__.return_value = mock_file
 
-    with patch("firewheel.control.model_component_install.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0)
+    with (
+        patch(
+            "firewheel.control.model_component_install.subprocess.Popen", mock_popen(0)
+        ),
+        patch("firewheel.control.model_component_install.Path.mkdir"),
+    ):
         result = install_component.install_mc(Path("/mock/path/INSTALL"))
         assert result is True
 
@@ -91,8 +115,12 @@ def test_install_mc_failure(mock_chmod, mock_stat, mock_open, install_component)
     mock_file.read.return_value = "#!/bin/bash\necho 'Installing...'"
     mock_open.return_value.__enter__.return_value = mock_file
 
-    with patch("firewheel.control.model_component_install.subprocess.run") as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(1, "cmd")
+    with (
+        patch(
+            "firewheel.control.model_component_install.subprocess.Popen", mock_popen(1)
+        ),
+        patch("firewheel.control.model_component_install.Path.mkdir"),
+    ):
         result = install_component.install_mc(Path("/mock/path/INSTALL"))
         assert result is False
 
@@ -122,12 +150,18 @@ def test_install_mc_already_installed(
     mock_file.read.return_value = "#!/bin/bash\necho 'Installing...'"
     mock_open.return_value.__enter__.return_value = mock_file
 
-    with patch("firewheel.control.model_component_install.subprocess.run") as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(117, "cmd")
+    with (
+        patch(
+            "firewheel.control.model_component_install.subprocess.Popen",
+            mock_popen(117),
+        ),
+        patch("firewheel.control.model_component_install.Path.mkdir"),
+    ):
         result = install_component.install_mc(Path("/mock/path/INSTALL"))
         # Expecting True since the return code 117 indicates an already installed
         # model component
         assert result is True
+        assert install_component.status is InstallStatus.ALREADY_INSTALLED
 
 
 @patch("firewheel.control.model_component_install.Path.open", new_callable=MagicMock)
@@ -181,6 +215,7 @@ def test_run_install_script_no_install_script(mock_exists, install_component):
     result = install_component.run_install_script()
     # Expecting True since the install script does not exist
     assert result is True
+    assert install_component.status is None
 
 
 @patch(
@@ -198,6 +233,7 @@ def test_run_install_script_with_existing_install_flag(mock_exists, install_comp
     result = install_component.run_install_script()
     # Expecting True since the install flag exists
     assert result is True
+    assert install_component.status is InstallStatus.ALREADY_INSTALLED
 
 
 def test_model_component_install_init_raises_value_error():
@@ -236,6 +272,7 @@ def test_run_install_script_user_prompt(
     """
     result = install_component.run_install_script()
     assert result is False
+    assert install_component.status is InstallStatus.FAILED
 
 
 @patch(
@@ -260,6 +297,7 @@ def test_run_install_script_insecure_fail(
     """
     result = install_component.run_install_script(insecure=True)
     assert result is False
+    assert install_component.status is InstallStatus.FAILED
 
 
 @patch(
@@ -284,6 +322,7 @@ def test_run_install_script_insecure_pass(
     """
     result = install_component.run_install_script(insecure=True)
     assert result is True
+    assert install_component.status is InstallStatus.INSTALLED
 
 
 @patch("firewheel.control.model_component_install.Path.is_dir", return_value=False)
@@ -361,11 +400,13 @@ def test_run_ansible_playbook_failure(
     """
     mock_runner = MagicMock()
     mock_runner.rc = 1  # Failing return code
+    mock_runner.config.artifact_dir = "/mock/artifacts/1234"
     mock_run.return_value = mock_runner
 
     result = install_component.run_ansible_playbook(Path("/mock/path"))
     # Expecting False since the playbook execution fails
     assert result is False
+    assert install_component.log_path == Path("/mock/artifacts/1234/stdout")
 
 
 @patch(
@@ -389,10 +430,13 @@ def test_run_ansible_playbook_success(
     # Mock the return value of ansible_runner.run to simulate failure
     mock_runner = MagicMock()
     mock_runner.rc = 0  # Success return code
+    mock_runner.config.artifact_dir = "/mock/artifacts/1234"
     mock_run.return_value = mock_runner
 
     result = install_component.run_ansible_playbook(Path("/mock/path"))
-    assert result is True  # Expecting False since the playbook execution fails
+    assert result is True
+    assert install_component.log_path == Path("/mock/artifacts/1234/stdout")
+    assert mock_run.call_args.kwargs["quiet"] is False
 
 
 @patch(
@@ -516,3 +560,50 @@ def test_run_ansible_playbook_file_server_config(
     assert len(result) == 2
     assert result[0]["url"] == "https://files.example.com"
     assert result[0]["cache_path"] == "cache1"
+
+
+@patch(
+    "firewheel.control.model_component_install.Path.exists", side_effect=[True, False]
+)
+@patch("firewheel.control.model_component_install.InstallPrompt.ask", return_value="n")
+def test_run_install_script_user_skips(mock_ask, mock_exists, install_component):
+    """
+    Test that declining the prompt records the Model Component as skipped.
+
+    Args:
+        mock_ask (MagicMock): Mock for the :py:meth:`InstallPrompt.ask` method, declining.
+        mock_exists (MagicMock): Mock for the :py:meth:`pathlib.Path.exists` method.
+        install_component (ModelComponentInstall): The instance of :py:class:`ModelComponentInstall` to test.
+    """
+    result = install_component.run_install_script()
+    assert result is True
+    assert install_component.status is InstallStatus.SKIPPED
+    assert install_component.log_path is None
+
+
+@pytest.mark.parametrize("quiet", [False, True])
+def test_run_script_writes_log(quiet, tmp_path, mock_model_component, capfd):
+    """
+    Test that :py:meth:`run_script` saves the script output to the log file, and
+    echoes it to the terminal only when not quiet.
+
+    Args:
+        quiet (bool): Whether the install is run in quiet mode.
+        tmp_path (pathlib.Path): Temporary directory provided by pytest.
+        mock_model_component (MockModelComponent): A mock ModelComponent instance.
+        capfd (pytest.CaptureFixture): Captures output written to the terminal.
+    """
+    script = tmp_path / "INSTALL"
+    script.write_text("#!/bin/sh\necho to-stdout\necho to-stderr >&2\nexit 3\n")
+    script.chmod(0o755)
+    log_path = tmp_path / "logs" / "test_mc.log"
+
+    mci = ModelComponentInstall(mc=mock_model_component, quiet=quiet)
+    returncode = mci.run_script(script, log_path)
+
+    assert returncode == 3
+    log = log_path.read_text()
+    assert "to-stdout" in log
+    assert "to-stderr" in log
+    out = capfd.readouterr().out
+    assert ("to-stdout" in out) is not quiet
