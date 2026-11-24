@@ -57,14 +57,37 @@ class ExperimentStart:
     def close(self):
         """
         Safely close the gRPC connection (if it exists at all).
+
+        Safe to call more than once; subsequent calls are no-ops.
         """
         try:
             if self.grpc_client:
                 self.grpc_client.close()
+                self.grpc_client = None
         # pylint: disable=broad-except
         except Exception as exp:
             self.log.error("Error occurred when trying to close the GRPC Client")
             self.log.exception(exp)
+
+    def __enter__(self):
+        """
+        Use this object as a context manager that closes its connection on exit.
+
+        Returns:
+            ExperimentStart: This instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close the connection when leaving a ``with`` block, even on error.
+
+        Args:
+            exc_type (type): The exception type, if any.
+            exc_value (BaseException): The exception instance, if any.
+            traceback (types.TracebackType): The traceback, if any.
+        """
+        self.close()
 
     def add_start_time(self, custom_time=None):
         """

@@ -552,10 +552,10 @@ def save_vm_state(
         return 1
 
     output_dir = Path(saved_exp.get_file_path(experiment_name))
-    vm_mapping = VMMapping()
     schedule_db = ScheduleDb()
 
-    mapping = vm_mapping.get_all()
+    with VMMapping() as vm_mapping:
+        mapping = vm_mapping.get_all()
     files = schedule_db.cache.list_distinct_contents()
     schedule_db_paths = [Path(schedule_db.cache.get_path(file)) for file in files]
 

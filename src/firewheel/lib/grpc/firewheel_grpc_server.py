@@ -289,13 +289,17 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             context (grpc._server._Context): The gRPC context.
 
         Returns:
-            firewheel_grpc_pb2.VMMapping: The updated vm_mapping.
+            firewheel_grpc_pb2.VMMapping: The updated vm_mapping, or None after
+            aborting with ``OUT_OF_RANGE`` if no mapping exists for the uuid.
         """
         db = request.db
-        self.dbs[db]["vm_mappings"][
-            request.server_uuid
-        ].current_time = request.current_time
-        return self.dbs[db]["vm_mappings"][request.server_uuid]
+        vmm = self.dbs[db]["vm_mappings"].get(request.server_uuid)
+        if vmm is None:
+            error_details = f"IndexError. No vm_mapping found for {request.server_uuid}"
+            context.abort(code=grpc.StatusCode.OUT_OF_RANGE, details=error_details)
+            return None
+        vmm.current_time = request.current_time
+        return vmm
 
     def _update_not_ready_vmms(self, vmm, db):
         """
@@ -327,20 +331,20 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             context (grpc._server._Context): The gRPC context.
 
         Returns:
-            firewheel_grpc_pb2.VMMapping: The updated vm_mapping.
+            firewheel_grpc_pb2.VMMapping: The updated vm_mapping, or None after
+            aborting with ``OUT_OF_RANGE`` if no mapping exists for the uuid.
         """
-        try:
-            db = request.db
-            self._update_not_ready_vmms(request, db)
-            vmm = self.dbs[db]["vm_mappings"][request.server_uuid]
-            vmm.state = request.state
-            return vmm
-        except KeyError:
+        db = request.db
+        vmm = self.dbs[db]["vm_mappings"].get(request.server_uuid)
+        if vmm is None:
+            # Do not touch readiness bookkeeping for unknown VMs; otherwise a
+            # phantom entry would keep the not-ready count above zero forever.
             error_details = f"IndexError. No vm_mapping found for {request.server_uuid}"
-            error_code = grpc.StatusCode.OUT_OF_RANGE
-            context.abort(code=error_code, details=error_details)
-
-        return None
+            context.abort(code=grpc.StatusCode.OUT_OF_RANGE, details=error_details)
+            return None
+        self._update_not_ready_vmms(request, db)
+        vmm.state = request.state
+        return vmm
 
     def DestroyVMMappingByUUID(self, request, context):  # noqa: N802,ARG002
         """

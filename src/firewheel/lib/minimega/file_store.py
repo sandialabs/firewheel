@@ -654,21 +654,20 @@ class FileStore:
 
     def list_distinct_contents(self, pattern: str = "") -> list[str]:
         """
-        List the contents of the FileStore.
+        List the distinct file names in the FileStore.
 
         Args:
             pattern (str): The pattern to match filenames against.
 
         Returns:
-            list: A list of dictionaries, where each dictionary is an entry from the FileStore.
+            list: Unique file names (relative to the store) in first-seen order.
 
         Raises:
             Exception: If there is an error getting the file list.
         """
         try:
             mm_files = self.list_contents(pattern=pattern)
-            mm_filenames = [e[1] for e in mm_files]
-            return mm_filenames
+            return list(dict.fromkeys(e[1] for e in mm_files))
         except Exception as exp:
             self.log.error("Exception getting running file_list on %s", self.store)
             raise exp

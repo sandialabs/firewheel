@@ -254,8 +254,8 @@ def _restore_experiment_time(experiment_time_path: Path) -> None:
     seconds_since_start = int(time_obj["seconds_since_start"])
     new_start_time = datetime.now(timezone.utc) - timedelta(seconds=seconds_since_start)
 
-    start = ExperimentStart()
-    start.add_start_time(new_start_time)
+    with ExperimentStart() as start:
+        start.add_start_time(new_start_time)
 
 
 def _is_save_prepended_break(entry: Any) -> bool:
@@ -489,8 +489,9 @@ def _check_no_existing_experiment() -> None:
     if mm_api.mm_vms():
         raise RuntimeError(error_message)
 
-    experiment_start = ExperimentStart()
-    if experiment_start.get_launch_time() is not None:
+    with ExperimentStart() as experiment_start:
+        launch_time = experiment_start.get_launch_time()
+    if launch_time is not None:
         raise RuntimeError(error_message)
 
 def _resolve_backup_source(source: str) -> Path:
@@ -853,6 +854,48 @@ def _restore_from_layout(
         print_error(console, f"Failed to initialize restore dependencies: {exc}")
         return 1
 
+    # Ensure the gRPC channel is closed on every exit path, including errors.
+    with vm_mapping:
+        return _restore_with_dependencies(
+            layout=layout,
+            dry_run=dry_run,
+            force=force,
+            paused=paused,
+            saved_exp=saved_exp,
+            vm_mapping=vm_mapping,
+            schedule_db=schedule_db,
+            image_store=image_store,
+            vm_resource_store=vm_resource_store,
+        )
+
+
+def _restore_with_dependencies(
+    layout: BackupLayout,
+    dry_run: bool,
+    force: bool,
+    paused: bool,
+    saved_exp: FileStore,
+    vm_mapping: VMMapping,
+    schedule_db: ScheduleDb,
+    image_store: ImageStore,
+    vm_resource_store: VmResourceStore,
+) -> int:
+    """Perform the restore once all backing stores have been opened.
+
+    Args:
+        layout: Validated backup layout.
+        dry_run: Whether to validate only without modifying the system.
+        force: Whether to overwrite differing existing content.
+        paused: Whether to keep the VMs (and VMR Schedule) in a paused/break state after starting them.
+        saved_exp: FileStore for saved experiments.
+        vm_mapping: VM mapping database handle. Owned and closed by the caller.
+        schedule_db: Schedule database handle.
+        image_store: ImageStore handle.
+        vm_resource_store: VmResourceStore handle.
+
+    Returns:
+        ``0`` on success and ``1`` on failure.
+    """
     experiment_name = str(layout.manifest.get("experiment_name", layout.root_dir.name))
     saved_exp_path = Path(saved_exp.get_file_path(layout.root_dir.name))
     imagestore_cache = Path(image_store.cache)
