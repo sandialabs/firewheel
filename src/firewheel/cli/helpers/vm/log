@@ -159,11 +159,11 @@ def parse_text_log_entries(text):
     Returns:
         list[dict]: Structured parsed log entries.
     """
-    RawLogEntry = namedtuple("RawLogEntry", ["timestamp", "level", "lines"]
+    RawLogEntry = namedtuple("RawLogEntry", ["timestamp", "level", "lines"])
     raw_entries = []
 
     for line in text.splitlines():
-        if is_new_log_line := LOG_LINE_RE.match(line):
+        if match := LOG_LINE_RE.match(line):
             raw_entry = RawLogEntry(
                 timestamp=match.group("timestamp"),
                 level=match.group("level"),
@@ -182,8 +182,8 @@ def parse_text_log_entries(text):
             "level": entry.level,
             "message": entry.lines[0],
             "raw_message": "\n".join(entry.lines),
-         }
-         for entry in raw_entries
+        }
+        for entry in raw_entries
     ]
 
 
