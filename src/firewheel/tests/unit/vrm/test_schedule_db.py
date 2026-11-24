@@ -1,15 +1,97 @@
 import unittest
+import tempfile
+from fnmatch import fnmatch
+from pathlib import Path
+from unittest.mock import patch
 
-from firewheel.config import config
-from firewheel.lib.minimega.file_store import FileStore
-from firewheel.vm_resource_manager.schedule_db import ScheduleDb
+from firewheel.vm_resource_manager.schedule_db import (
+    ScheduleDb,
+    _build_schedule_document,
+    _decode_schedule_document,
+)
+
+
+class FakeScheduleCache:
+    def __init__(self, cache_name, log=None):  # noqa: ARG002
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmpdir.name)
+
+    def add_file_from_content(self, content, filename, broadcast=True):  # noqa: ARG002
+        self.root.joinpath(filename).write_text(content, encoding="utf8")
+
+    def get_path(self, filename):
+        path = self.root.joinpath(filename)
+        if not path.exists():
+            raise FileNotFoundError(filename)
+        return path
+
+    def list_distinct_contents(self, pattern=None):
+        filenames = sorted(path.name for path in self.root.iterdir() if path.is_file())
+        if pattern is None:
+            return filenames
+        return [filename for filename in filenames if fnmatch(filename, pattern)]
+
+    def remove_file(self, pattern):
+        for filename in self.list_distinct_contents(pattern):
+            self.root.joinpath(filename).unlink()
+
+    def cleanup(self):
+        self.tmpdir.cleanup()
+
+
+class ScheduleDocumentHelperTestCase(unittest.TestCase):
+    def test_build_schedule_document_encodes_payload(self):
+        document = _build_schedule_document("vm-1", b"schedule-bytes", "10.0.0.1")
+
+        self.assertEqual(
+            document,
+            {
+                "server_name": "vm-1",
+                "text": "c2NoZWR1bGUtYnl0ZXM=",
+                "ip": "10.0.0.1",
+            },
+        )
+
+    def test_decode_schedule_document_decodes_payload_without_mutating_input(self):
+        document = {
+            "server_name": "vm-1",
+            "text": "c2NoZWR1bGUtYnl0ZXM=",
+            "ip": "10.0.0.1",
+        }
+
+        decoded = _decode_schedule_document(document)
+
+        self.assertEqual(
+            decoded,
+            {
+                "server_name": "vm-1",
+                "text": b"schedule-bytes",
+                "ip": "10.0.0.1",
+            },
+        )
+        self.assertEqual(document["text"], "c2NoZWR1bGUtYnl0ZXM=")
+
+    def test_schedule_document_helpers_round_trip_empty_payload(self):
+        document = _build_schedule_document("vm-1", b"", "")
+
+        self.assertEqual(
+            _decode_schedule_document(document),
+            {
+                "server_name": "vm-1",
+                "text": b"",
+                "ip": "",
+            },
+        )
 
 
 class ScheduleDbTestCase(unittest.TestCase):
     def setUp(self):
-        self.test_schedule_db_name = config["test"]["schedule_test_database"]
-        self.schedule_db = ScheduleDb(cache_name=self.test_schedule_db_name)
-        self.schedule_db_cache = FileStore
+        self.file_store_patch = patch(
+            "firewheel.vm_resource_manager.schedule_db.FileStore",
+            FakeScheduleCache,
+        )
+        self.file_store_patch.start()
+        self.schedule_db = ScheduleDb(cache_name="testScheduleDB")
 
         # Create valid and invalid repository directories
         self.entries = [
@@ -26,7 +108,9 @@ class ScheduleDbTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.schedule_db.cache.remove_file("*")
+        self.schedule_db.cache.cleanup()
         self.schedule_db.close()
+        self.file_store_patch.stop()
 
     def test_put_schedule(self):
         self.schedule_db.put(self.entries[0]["server_name"], b"", self.entries[0]["ip"])
