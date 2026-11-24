@@ -4,6 +4,7 @@ functions should be callable with only information available from experiment
 *Control*.
 """
 
+from firewheel.vm_resource_manager.utils import managed_resource
 from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
 from firewheel.vm_resource_manager.schedule_db import ScheduleDb
 from firewheel.vm_resource_manager.experiment_start import ExperimentStart
@@ -35,18 +36,11 @@ def add_vm(
     else:
         state = VMState.NA
 
-    close = False
-    if mapping is None:
-        close = True
-        mapping = VMMapping()
-
-    mapping.put(server_uuid, server_name, state=state, server_address=control_ip)
+    with managed_resource(mapping, VMMapping) as vm_mapping:
+        vm_mapping.put(server_uuid, server_name, state=state, server_address=control_ip)
 
     if log:
         log.debug("Added VM %s to the VM mapping database.", server_uuid)
-
-    if close:
-        mapping.close()
 
 
 def destroy_all(
@@ -76,43 +70,26 @@ def destroy_all(
         ConnectionError: If `ignore_grpc_connection_errors=False` and there is an error
             connecting to the gRPC server.
     """
-    skip_mapping = False
-    close_mapping = False
-    if mapping is None:
-        try:
-            mapping = VMMapping()
-            close_mapping = True
-        except ConnectionError as exp:
-            if ignore_grpc_connection_errors:
-                skip_mapping = True
-            else:
-                raise exp
+    try:
+        mapping_ctx = managed_resource(mapping, VMMapping)
+    except ConnectionError:
+        if not ignore_grpc_connection_errors:
+            raise
+    else:
+        with mapping_ctx as vm_mapping:
+            vm_mapping.destroy_all()
 
-    if not skip_mapping:
-        mapping.destroy_all()
-        if close_mapping:
-            mapping.close()
+    with managed_resource(schedule, ScheduleDb) as schedule_db:
+        schedule_db.destroy_all()
 
-    close_schedule = False
-    if schedule is None:
-        close_schedule = True
-        schedule = ScheduleDb()
-
-    schedule.destroy_all()
-    if close_schedule:
-        schedule.close()
-
-    skip_start = False
-    if start is None:
-        try:
-            start = ExperimentStart()
-        except ConnectionError as exp:
-            if ignore_grpc_connection_errors:
-                skip_start = True
-            else:
-                raise exp
-    if not skip_start:
-        start.clear_start_time()
+    try:
+        start_ctx = managed_resource(start, ExperimentStart)
+    except ConnectionError:
+        if not ignore_grpc_connection_errors:
+            raise
+    else:
+        with start_ctx as experiment_start:
+            experiment_start.clear_start_time()
 
     if log:
         log.debug("Cleared all databases.")
@@ -123,7 +100,8 @@ def get_vm_times(filter_time=None, mapping=None, log=None):
     Get the current negative times of known VMs.
 
     Args:
-        filter_time (int): Return only VMs with this negative time value.
+        filter_time (int | str | None): Return only VMs with this time value. ``0`` and
+            ``"0"`` are equivalent. ``None`` or ``""`` returns all VMs.
         mapping (firewheel.vm_resource_manager.vm_mapping.VMMapping): VMMapping instance
             to use as a database. Present for unit testing, safely ignored.
         log (logging.Logger): An optional logger that can to output results.
@@ -132,16 +110,8 @@ def get_vm_times(filter_time=None, mapping=None, log=None):
         dict: Dictionary keyed on server name, values of the current negative time for
         that VM.
     """
-    close = False
-    if mapping is None:
-        close = True
-        mapping = VMMapping()
-
-    project_dict = {"_id": 0, "server_name": 1, "current_time": 1}
-    results = mapping.get_all(filter_time=filter_time, project_dict=project_dict)
-
-    if close:
-        mapping.close()
+    with managed_resource(mapping, VMMapping) as vm_mapping:
+        results = vm_mapping.get_all(filter_time=filter_time)
 
     vm_dict = {}
     for vm in results:
@@ -186,23 +156,8 @@ def get_vm_statuses(filter_state=None, mapping=None, log=None):
         dict: Dictionary keyed on VM server name, where each value contains the
         vm_resource lifecycle state and execution issue metadata.
     """
-    close = False
-    if mapping is None:
-        close = True
-        mapping = VMMapping()
-
-    project_dict = {
-        "_id": 0,
-        "server_name": 1,
-        "state": 1,
-        "has_execution_issues": 1,
-        "execution_issue_count": 1,
-        "last_execution_issue": 1,
-    }
-    results = mapping.get_all(filter_state=filter_state, project_dict=project_dict)
-
-    if close:
-        mapping.close()
+    with managed_resource(mapping, VMMapping) as vm_mapping:
+        results = vm_mapping.get_all(filter_state=filter_state)
 
     vm_dict = {}
     for vm in results:
@@ -234,9 +189,8 @@ def get_experiment_launch_time(start=None):
         currently running experiment. The time is defined to be in the UTC time zone.
         None if no launch time has been determined yet.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.get_launch_time()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.get_launch_time()
 
 
 def set_experiment_launch_time(start=None):
@@ -253,9 +207,8 @@ def set_experiment_launch_time(start=None):
         datetime.datetime: A datetime object containing the launch time for the
         currently running experiment. The time is defined to be in the UTC time zone.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.set_launch_time()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.set_launch_time()
 
 
 def get_experiment_start_time(start=None):
@@ -273,9 +226,8 @@ def get_experiment_start_time(start=None):
         currently running experiment. The time is defined to be in the UTC time zone.
         None if no start time has been determined yet.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.get_start_time()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.get_start_time()
 
 
 def add_experiment_start_time(start=None):
@@ -292,9 +244,8 @@ def add_experiment_start_time(start=None):
         datetime.datetime: A datetime object containing the start time for the
         currently running experiment. The time is defined to be in the UTC time zone.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.add_start_time()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.add_start_time()
 
 
 def get_experiment_time_to_start(start=None):
@@ -311,9 +262,8 @@ def get_experiment_time_to_start(start=None):
         int: The time in seconds from when the experiment launched to configured.
         None if experiment hasn't started yet.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.get_time_to_start()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.get_time_to_start()
 
 
 def get_experiment_time_since_start(start=None):
@@ -330,9 +280,8 @@ def get_experiment_time_since_start(start=None):
         int: The time in seconds since when the experiment configured.
         None if experiment hasn't started yet.
     """
-    if start is None:
-        start = ExperimentStart()
-    return start.get_time_since_start()
+    with managed_resource(start, ExperimentStart) as experiment_start:
+        return experiment_start.get_time_since_start()
 
 
 def vm_resource_list(store=None, log=None):

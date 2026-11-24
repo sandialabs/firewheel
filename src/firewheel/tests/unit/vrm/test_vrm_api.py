@@ -7,15 +7,6 @@ from firewheel.vm_resource_manager import api
 from firewheel.vm_resource_manager.vm_mapping import VMState
 from firewheel.vm_resource_manager.vm_resource_store import VmResourceStore
 
-VM_STATUS_PROJECT_DICT = {
-    "_id": 0,
-    "server_name": 1,
-    "state": 1,
-    "has_execution_issues": 1,
-    "execution_issue_count": 1,
-    "last_execution_issue": 1,
-}
-
 
 def test_get_vm_states_returns_legacy_shape():
     mapping = Mock()
@@ -39,10 +30,7 @@ def test_get_vm_states_returns_legacy_shape():
     states = api.get_vm_states(mapping=mapping)
 
     assert states == {"vm-1": VMState.CONFIGURED, "vm-2": VMState.UNINITIALIZED}
-    mapping.get_all.assert_called_once_with(
-        filter_state=None,
-        project_dict=VM_STATUS_PROJECT_DICT,
-    )
+    mapping.get_all.assert_called_once_with(filter_state=None)
     mapping.close.assert_not_called()
 
 
@@ -61,10 +49,7 @@ def test_get_vm_states_passes_filter_to_status_lookup():
     states = api.get_vm_states(filter_state=VMState.TESTING, mapping=mapping)
 
     assert states == {"vm-1": VMState.TESTING}
-    mapping.get_all.assert_called_once_with(
-        filter_state=VMState.TESTING,
-        project_dict=VM_STATUS_PROJECT_DICT,
-    )
+    mapping.get_all.assert_called_once_with(filter_state=VMState.TESTING)
 
 
 def test_get_vm_statuses_returns_execution_issue_metadata():
@@ -113,10 +98,7 @@ def test_get_vm_times_returns_times_by_server_name():
     times = api.get_vm_times(mapping=mapping)
 
     assert times == {"vm-1": "-50", "vm-2": "0"}
-    mapping.get_all.assert_called_once_with(
-        filter_time=None,
-        project_dict={"_id": 0, "server_name": 1, "current_time": 1},
-    )
+    mapping.get_all.assert_called_once_with(filter_time=None)
     mapping.close.assert_not_called()
 
 
@@ -127,10 +109,7 @@ def test_get_vm_times_passes_filter():
     times = api.get_vm_times(filter_time="0", mapping=mapping)
 
     assert times == {"vm-1": "0"}
-    mapping.get_all.assert_called_once_with(
-        filter_time="0",
-        project_dict={"_id": 0, "server_name": 1, "current_time": 1},
-    )
+    mapping.get_all.assert_called_once_with(filter_time="0")
 
 
 def test_get_vm_times_closes_mapping_when_created_internally():
@@ -365,6 +344,165 @@ def test_experiment_time_wrappers_create_start_when_needed():
         assert api.get_experiment_time_since_start() == 5
 
     assert start_cls.call_count == 6
+
+
+# --- Connection ownership --------------------------------------------------
+
+MAPPING_WRAPPERS = [
+    pytest.param(lambda **kw: api.add_vm("u", "n", "ip", **kw), "put", id="add_vm"),
+    pytest.param(lambda **kw: api.get_vm_times(**kw), "get_all", id="get_vm_times"),
+    pytest.param(
+        lambda **kw: api.get_vm_statuses(**kw), "get_all", id="get_vm_statuses"
+    ),
+    pytest.param(lambda **kw: api.get_vm_states(**kw), "get_all", id="get_vm_states"),
+]
+
+START_WRAPPERS = [
+    pytest.param(api.get_experiment_launch_time, "get_launch_time"),
+    pytest.param(api.set_experiment_launch_time, "set_launch_time"),
+    pytest.param(api.get_experiment_start_time, "get_start_time"),
+    pytest.param(api.add_experiment_start_time, "add_start_time"),
+    pytest.param(api.get_experiment_time_to_start, "get_time_to_start"),
+    pytest.param(api.get_experiment_time_since_start, "get_time_since_start"),
+]
+
+
+@pytest.mark.parametrize(("call", "method"), MAPPING_WRAPPERS)
+def test_internal_mapping_closed_when_call_raises(call, method):
+    mapping = Mock()
+    getattr(mapping, method).side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping),
+        pytest.raises(ConnectionError),
+    ):
+        call()
+
+    mapping.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(("call", "method"), MAPPING_WRAPPERS)
+def test_caller_mapping_never_closed_even_on_error(call, method):
+    mapping = Mock()
+    getattr(mapping, method).side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.api.VMMapping") as mapping_cls,
+        pytest.raises(ConnectionError),
+    ):
+        call(mapping=mapping)
+
+    mapping_cls.assert_not_called()
+    mapping.close.assert_not_called()
+
+
+@pytest.mark.parametrize(("call", "method"), START_WRAPPERS)
+def test_internal_start_closed_on_success(call, method):
+    start = Mock()
+
+    with patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start):
+        assert call() is getattr(start, method).return_value
+
+    start.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(("call", "method"), START_WRAPPERS)
+def test_internal_start_closed_when_call_raises(call, method):
+    start = Mock()
+    getattr(start, method).side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start),
+        pytest.raises(ConnectionError),
+    ):
+        call()
+
+    start.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(("call", "method"), START_WRAPPERS)
+def test_caller_start_never_closed(call, method):
+    start = Mock()
+
+    with patch("firewheel.vm_resource_manager.api.ExperimentStart") as start_cls:
+        call(start=start)
+
+    getattr(start, method).assert_called_once_with()
+    start_cls.assert_not_called()
+    start.close.assert_not_called()
+
+
+def test_destroy_all_closes_internal_start():
+    start = Mock()
+
+    with patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start):
+        api.destroy_all(mapping=Mock(), schedule=Mock())
+
+    start.clear_start_time.assert_called_once_with()
+    start.close.assert_called_once_with()
+
+
+def test_destroy_all_does_not_close_caller_start():
+    start = Mock()
+
+    api.destroy_all(mapping=Mock(), schedule=Mock(), start=start)
+
+    start.close.assert_not_called()
+
+
+def test_destroy_all_closes_internal_mapping_when_destroy_raises():
+    mapping = Mock()
+    mapping.destroy_all.side_effect = ConnectionError("lost connection")
+    schedule = Mock()
+    start = Mock()
+
+    with (
+        patch("firewheel.vm_resource_manager.api.VMMapping", return_value=mapping),
+        pytest.raises(ConnectionError),
+    ):
+        api.destroy_all(schedule=schedule, start=start)
+
+    mapping.close.assert_called_once_with()
+    # A failure clearing the mapping aborts the remaining steps, as before.
+    schedule.destroy_all.assert_not_called()
+    start.clear_start_time.assert_not_called()
+
+
+def test_destroy_all_closes_internal_start_when_clear_raises():
+    start = Mock()
+    start.clear_start_time.side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.api.ExperimentStart", return_value=start),
+        pytest.raises(ConnectionError),
+    ):
+        api.destroy_all(mapping=Mock(), schedule=Mock())
+
+    start.close.assert_called_once_with()
+
+
+def test_destroy_all_raises_start_connection_error_by_default():
+    with (
+        patch(
+            "firewheel.vm_resource_manager.api.ExperimentStart",
+            side_effect=ConnectionError("down"),
+        ),
+        pytest.raises(ConnectionError),
+    ):
+        api.destroy_all(mapping=Mock(), schedule=Mock())
+
+
+def test_destroy_all_does_not_swallow_non_connection_errors_when_ignoring():
+    with (
+        patch(
+            "firewheel.vm_resource_manager.api.VMMapping",
+            side_effect=RuntimeError("bad port"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        api.destroy_all(
+            schedule=Mock(), start=Mock(), ignore_grpc_connection_errors=True
+        )
 
 
 def test_vm_resource_list_returns_distinct_contents():

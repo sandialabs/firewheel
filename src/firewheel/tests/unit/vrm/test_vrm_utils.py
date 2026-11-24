@@ -85,7 +85,9 @@ def test_add_execution_issue():
 
     utils.add_execution_issue("uuid-1", "warning text", mapping=mapping)
 
-    mapping.add_execution_issue_by_uuid.assert_called_once_with("uuid-1", "warning text")
+    mapping.add_execution_issue_by_uuid.assert_called_once_with(
+        "uuid-1", "warning text"
+    )
     mapping.close.assert_not_called()
 
 
@@ -99,7 +101,9 @@ def test_add_execution_issue_creates_and_closes_mapping():
     with patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping):
         utils.add_execution_issue("uuid-1", "warning text")
 
-    mapping.add_execution_issue_by_uuid.assert_called_once_with("uuid-1", "warning text")
+    mapping.add_execution_issue_by_uuid.assert_called_once_with(
+        "uuid-1", "warning text"
+    )
     mapping.close.assert_called_once()
 
 
@@ -121,15 +125,6 @@ def test_not_ready_count_not_zero():
     mapping.close.assert_not_called()
 
 
-def test_not_ready_count_with_ready():
-    mapping = Mock()
-    mapping.get_count_vm_not_ready.return_value = 0
-
-    count = utils.get_vm_count_not_ready(mapping=mapping)
-
-    assert count == 0
-
-
 def test_not_ready_count_creates_and_closes_mapping():
     mapping = Mock()
     mapping.get_count_vm_not_ready.return_value = 3
@@ -139,3 +134,120 @@ def test_not_ready_count_creates_and_closes_mapping():
 
     assert count == 3
     mapping.close.assert_called_once()
+
+
+# --- Connection ownership --------------------------------------------------
+#
+# Each wrapper either uses a caller-supplied mapping (which it must never
+# close) or creates one itself (which it must always close, even on error).
+
+UTILS_WRAPPERS = [
+    pytest.param(
+        lambda **kw: utils.set_vm_state("uuid-1", VMState.FAILED, **kw),
+        "set_vm_state_by_uuid",
+        id="set_vm_state",
+    ),
+    pytest.param(
+        lambda **kw: utils.set_vm_time("uuid-1", "100", **kw),
+        "set_vm_time_by_uuid",
+        id="set_vm_time",
+    ),
+    pytest.param(
+        lambda **kw: utils.add_execution_issue("uuid-1", "warning", **kw),
+        "add_execution_issue_by_uuid",
+        id="add_execution_issue",
+    ),
+    pytest.param(
+        lambda **kw: utils.get_vm_count_not_ready(**kw),
+        "get_count_vm_not_ready",
+        id="get_vm_count_not_ready",
+    ),
+]
+
+
+@pytest.mark.parametrize(("call", "method"), UTILS_WRAPPERS)
+def test_internal_mapping_closed_when_call_raises(call, method):
+    mapping = Mock()
+    getattr(mapping, method).side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping),
+        pytest.raises(ConnectionError),
+    ):
+        call()
+
+    mapping.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("call", "method"),
+    [p for p in UTILS_WRAPPERS if p.id != "get_vm_count_not_ready"],
+)
+def test_internal_mapping_closed_when_uuid_missing(call, method):
+    mapping = Mock()
+    getattr(mapping, method).return_value = None
+
+    with (
+        patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping),
+        pytest.raises(RuntimeError),
+    ):
+        call()
+
+    mapping.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(("call", "method"), UTILS_WRAPPERS)
+def test_caller_mapping_never_closed_even_on_error(call, method):
+    mapping = Mock()
+    getattr(mapping, method).side_effect = ConnectionError("lost connection")
+
+    with (
+        patch("firewheel.vm_resource_manager.utils.VMMapping") as mapping_cls,
+        pytest.raises(ConnectionError),
+    ):
+        call(mapping=mapping)
+
+    mapping_cls.assert_not_called()
+    mapping.close.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_time", ["abc", "", None, "1.5"])
+def test_vm_time_non_numeric_raises_value_error_without_connecting(bad_time):
+    with (
+        patch("firewheel.vm_resource_manager.utils.VMMapping") as mapping_cls,
+        pytest.raises((ValueError, TypeError)),
+    ):
+        utils.set_vm_time("uuid-1", bad_time)
+
+    mapping_cls.assert_not_called()
+
+
+def test_managed_resource_uses_and_does_not_close_supplied_resource():
+    resource = Mock()
+    factory = Mock()
+
+    with utils.managed_resource(resource, factory) as managed:
+        assert managed is resource
+
+    factory.assert_not_called()
+    resource.close.assert_not_called()
+
+
+def test_managed_resource_creates_and_closes_on_error():
+    resource = Mock()
+    factory = Mock(return_value=resource)
+
+    with pytest.raises(KeyError):
+        with utils.managed_resource(None, factory) as managed:
+            assert managed is resource
+            raise KeyError("boom")
+
+    factory.assert_called_once_with()
+    resource.close.assert_called_once_with()
+
+
+def test_managed_resource_propagates_factory_errors():
+    factory = Mock(side_effect=ConnectionError("down"))
+
+    with pytest.raises(ConnectionError):
+        utils.managed_resource(None, factory)

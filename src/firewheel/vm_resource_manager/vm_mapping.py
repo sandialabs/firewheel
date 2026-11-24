@@ -92,8 +92,32 @@ class VMMapping:
     def close(self):
         """
         Close the connection to the GRPC client.
+
+        Safe to call more than once; subsequent calls are no-ops.
         """
-        self.grpc_client.close()
+        if self.grpc_client:
+            self.grpc_client.close()
+            self.grpc_client = None
+
+    def __enter__(self):
+        """
+        Use the mapping as a context manager that closes its connection on exit.
+
+        Returns:
+            VMMapping: This instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close the connection when leaving a ``with`` block, even on error.
+
+        Args:
+            exc_type (type): The exception type, if any.
+            exc_value (BaseException): The exception instance, if any.
+            traceback (types.TracebackType): The traceback, if any.
+        """
+        self.close()
 
     def _serialize_vm_mapping_state(self, vmm):
         """
@@ -170,25 +194,23 @@ class VMMapping:
 
         return self._deserialize_vm_mapping_state(vmm)
 
-    def get_all(
-        self, filter_time=None, filter_state=None, project_dict=None, length=False
-    ):
+    def get_all(self, filter_time=None, filter_state=None, length=False):
         """
         Retrieve multiple entries from the database. May filter on current
         (relative) time or vm resource state.
 
-        **NOTE**: This will not allow filtering for VMs where the time has been not been
-        initialized yet, since both that condition and no filter is represented
-        with `None`.
+        **NOTE**: This will not allow filtering for VMs where the time has not been
+        initialized yet. Both ``None`` and ``""`` mean "no time filter".
 
         Args:
-            filter_time (int): Only return VM information when the current
-                               relative time matches this value.
+            filter_time (int | str | None): Only return VM information when the current
+                               relative time matches this value. Integers and strings
+                               are compared by their string form, so ``0`` and ``"0"``
+                               are equivalent. ``None`` or ``""`` disables the filter.
             filter_state (str | VMState): Only return VM information when the current
                                vm resource state matches this value. If a string is
                                provided, substring matching is used against the
                                serialized enum value.
-            project_dict (dict): Only return VM information from these keys.
             length (bool): Should the function return how many VMs are in the list
                            or should it return the list itself.
 
@@ -197,16 +219,16 @@ class VMMapping:
             dictionary is the same as would be returned for the VM if retrieved
             using `get()`. If length is `True`, returns the length of the list.
         """
-        if not project_dict:
-            project_dict = {"_id": 0}
-
         vmms = self.grpc_client.list_vm_mappings()
         ret = []
+
+        # Times are stored as strings; normalize so integer filters (and 0) work.
+        time_filter = None if filter_time in (None, "") else str(filter_time)
 
         for vmm in vmms:
             vmm = self._deserialize_vm_mapping_state(vmm)
 
-            if filter_time and vmm["current_time"] != filter_time:
+            if time_filter is not None and vmm["current_time"] != time_filter:
                 continue
 
             if filter_state is not None:

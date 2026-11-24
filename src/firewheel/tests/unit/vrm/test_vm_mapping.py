@@ -245,6 +245,40 @@ def test_get_all_filter_time_works(vmmapping):
     assert found[0]["server_name"] == "vm-2"
 
 
+@pytest.fixture
+def vms_at_various_times(vmmapping):
+    vmmapping.put("a", "vm-zero", current_time="0")
+    vmmapping.put("b", "vm-neg", current_time="-50")
+    vmmapping.put("c", "vm-pos", current_time="10")
+    vmmapping.put("d", "vm-unset", current_time="")
+    return vmmapping
+
+
+@pytest.mark.parametrize(
+    ("filter_time", "expected"),
+    [
+        (0, {"vm-zero"}),
+        ("0", {"vm-zero"}),
+        (-50, {"vm-neg"}),
+        ("-50", {"vm-neg"}),
+        (10, {"vm-pos"}),
+        (7, set()),
+        (None, {"vm-zero", "vm-neg", "vm-pos", "vm-unset"}),
+        ("", {"vm-zero", "vm-neg", "vm-pos", "vm-unset"}),
+    ],
+)
+def test_get_all_filter_time_normalizes_value(
+    vms_at_various_times, filter_time, expected
+):
+    found = vms_at_various_times.get_all(filter_time=filter_time)
+
+    assert {vm["server_name"] for vm in found} == expected
+
+
+def test_get_all_filter_time_zero_with_length(vms_at_various_times):
+    assert vms_at_various_times.get_all(filter_time=0, length=True) == 1
+
+
 def test_get_all_filter_state_works_with_substrings(vmmapping):
     vmmapping.put("1234", "vm-1", state=VMState.CONFIGURING)
     vmmapping.put("5678", "vm-2", state=VMState.CONFIGURED)
@@ -389,3 +423,49 @@ def test_get_count_vm_not_ready_returns_server_count(vmmapping):
         assert vmmapping.get_count_vm_not_ready() == 3
 
     count.assert_called_once_with()
+
+
+@pytest.fixture
+def unmanaged_vmmapping():
+    """A VMMapping over the fake client with no teardown, for close() tests."""
+    with patch(
+        "firewheel.vm_resource_manager.vm_mapping.FirewheelGrpcClient",
+        FakeGrpcClient,
+    ):
+        yield VMMapping(hostname="localhost", port="50051", db="test")
+
+
+def test_close_is_idempotent(unmanaged_vmmapping):
+    client = unmanaged_vmmapping.grpc_client
+
+    with patch.object(client, "close") as close:
+        unmanaged_vmmapping.close()
+        unmanaged_vmmapping.close()
+
+    close.assert_called_once_with()
+    assert unmanaged_vmmapping.grpc_client is None
+
+
+def test_context_manager_returns_self_and_closes_on_exit(unmanaged_vmmapping):
+    client = unmanaged_vmmapping.grpc_client
+
+    with patch.object(client, "close") as close:
+        with unmanaged_vmmapping as mapping:
+            assert mapping is unmanaged_vmmapping
+            mapping.put("1234", "vm-1")
+            close.assert_not_called()
+
+    close.assert_called_once_with()
+    assert unmanaged_vmmapping.grpc_client is None
+
+
+def test_context_manager_closes_on_error(unmanaged_vmmapping):
+    client = unmanaged_vmmapping.grpc_client
+
+    with patch.object(client, "close") as close:
+        with pytest.raises(KeyError):
+            with unmanaged_vmmapping:
+                raise KeyError("boom")
+
+    close.assert_called_once_with()
+    assert unmanaged_vmmapping.grpc_client is None

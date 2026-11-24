@@ -11,46 +11,22 @@ external FIREWHEEL infrastructure is required. Deselect with
 ``-m "not integration"`` if needed.
 """
 
-from datetime import datetime, timezone
-from concurrent import futures
 from unittest.mock import Mock
 
-import grpc
 import pytest
 
-from firewheel.lib.grpc import firewheel_grpc_pb2_grpc
 from firewheel.vm_resource_manager import api, utils
-from firewheel.lib.grpc.firewheel_grpc_server import FirewheelServicer
+from firewheel.tests.unit.grpc_test_server import running_grpc_server
 from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
 
 pytestmark = pytest.mark.integration
 
 
-def _build_servicer():
-    """Create a servicer with fresh in-memory DBs, skipping on-disk cache setup."""
-    servicer = object.__new__(FirewheelServicer)
-    servicer.log = Mock()
-    servicer.server_start_time = datetime.now(timezone.utc)
-    servicer.version = "test"
-    servicer.cache_dir = None
-    servicer.dbs = {}
-    for db in ("test", "prod"):
-        servicer._init_db(db)  # pylint: disable=protected-access
-    return servicer
-
-
 @pytest.fixture
 def grpc_server():
     """Start a real gRPC server on an ephemeral localhost port."""
-    servicer = _build_servicer()
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
-    firewheel_grpc_pb2_grpc.add_FirewheelServicer_to_server(servicer, server)
-    port = server.add_insecure_port("127.0.0.1:0")
-    server.start()
-    try:
+    with running_grpc_server() as (servicer, port):
         yield servicer, port
-    finally:
-        server.stop(grace=None)
 
 
 @pytest.fixture
@@ -157,6 +133,26 @@ def test_get_all_filters_through_server(vmmapping):
     assert vmmapping.get_all(length=True) == 3
     found = vmmapping.get_all(filter_time="0", filter_state=VMState.TESTING)
     assert [vm["server_name"] for vm in found] == ["vm-2"]
+
+
+@pytest.mark.parametrize(
+    ("filter_time", "expected"),
+    [
+        (0, {"vm-zero": "0"}),
+        (-50, {"vm-neg": "-50"}),
+        ("-50", {"vm-neg": "-50"}),
+        (None, {"vm-zero": "0", "vm-neg": "-50", "vm-unset": ""}),
+        ("", {"vm-zero": "0", "vm-neg": "-50", "vm-unset": ""}),
+    ],
+)
+def test_get_vm_times_filter_over_real_server(vmmapping, filter_time, expected):
+    api.add_vm("a", "vm-zero", "10.0.0.1", mapping=vmmapping)
+    api.add_vm("b", "vm-neg", "10.0.0.2", mapping=vmmapping)
+    api.add_vm("c", "vm-unset", "10.0.0.3", mapping=vmmapping)
+    utils.set_vm_time("a", 0, mapping=vmmapping)
+    utils.set_vm_time("b", -50, mapping=vmmapping)
+
+    assert api.get_vm_times(filter_time=filter_time, mapping=vmmapping) == expected
 
 
 def test_not_ready_count_tracks_state_transitions(vmmapping):
