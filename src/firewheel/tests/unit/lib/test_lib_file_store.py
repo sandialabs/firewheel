@@ -287,6 +287,23 @@ def test_list_distinct_contents() -> None:
     assert store.list_distinct_contents() == ["a", "b"]
 
 
+def test_list_distinct_contents_removes_duplicates() -> None:
+    """Verify duplicate entries (e.g. one per mesh host) collapse, preserving order."""
+    store = _build_filestore(Path("/tmp"))
+    store.mm_api.mm.file_list.return_value = [
+        {
+            "Tabular": [
+                ["host1", "saved/b.sh", "20"],
+                ["host1", "saved/a.sh", "10"],
+                ["host2", "saved/b.sh", "20"],
+                ["host2", "saved/a.sh", "10"],
+            ]
+        }
+    ]
+
+    assert store.list_distinct_contents() == ["b.sh", "a.sh"]
+
+
 def test_check_mesh_file_consistency_consistent() -> None:
     """Verify mesh consistency check returns consistent=True for matching hosts."""
     store = _build_filestore(Path("/tmp"))

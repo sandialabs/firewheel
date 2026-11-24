@@ -310,26 +310,20 @@ class VMMapping:
         """
         Record a non-fatal vm_resource execution issue on a VM mapping.
 
+        The update is performed atomically by the server: the issue count is
+        incremented and the message replaced without reading or rewriting any
+        other field, so concurrent state/time updates are never lost.
+
         Args:
             uuid (str): UUID of the VM.
             issue_message (str): A short description of the execution issue.
 
         Returns:
-            dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`.
+            dict: Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`,
+            or None if no mapping exists for ``uuid``.
         """
-        current = self.get(server_uuid=uuid)
-        if current is None:
-            return None
-
-        issue_count = int(current.get("execution_issue_count", 0)) + 1
-        updated = {
-            **current,
-            "has_execution_issues": True,
-            "execution_issue_count": issue_count,
-            "last_execution_issue": issue_message,
-        }
-        self.grpc_client.set_vm_mapping(self._serialize_vm_mapping_state(updated))
-        return self._deserialize_vm_mapping_state(updated)
+        ret = self.grpc_client.add_vm_execution_issue_by_uuid(uuid, issue_message)
+        return self._deserialize_vm_mapping_state(ret)
 
     def get_count_vm_not_ready(self):
         """

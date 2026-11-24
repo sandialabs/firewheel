@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 
 import grpc
 import pytest
 
+from firewheel.lib.grpc import firewheel_grpc_pb2
 from firewheel.lib.grpc.firewheel_grpc_server import FirewheelServicer
 from firewheel.vm_resource_manager.vm_mapping import VMState
 
@@ -25,6 +27,7 @@ def _build_servicer_without_init() -> FirewheelServicer:
     """Create a servicer instance without running __init__."""
     servicer = object.__new__(FirewheelServicer)
     servicer.log = Mock()
+    servicer._db_lock = threading.RLock()
     servicer.server_start_time = datetime.now(timezone.utc)
     servicer.version = "1.2.3"
     servicer.cache_dir = "/tmp/cache"
@@ -33,14 +36,14 @@ def _build_servicer_without_init() -> FirewheelServicer:
             "vm_mappings": {},
             "not_ready_vmms": set(),
             "ready_states": {"NA", "CONFIGURED"},
-            "experiment_start_times": [],
+            "experiment_start_time": None,
             "experiment_launch_time": None,
         },
         "test": {
             "vm_mappings": {},
             "not_ready_vmms": set(),
             "ready_states": {"NA", "CONFIGURED"},
-            "experiment_start_times": [],
+            "experiment_start_time": None,
             "experiment_launch_time": None,
         },
     }
@@ -69,9 +72,13 @@ def test_init_db(servicer) -> None:
     servicer.dbs = {}
     servicer._init_db("prod")
 
-    assert "prod" in servicer.dbs
-    assert servicer.dbs["prod"]["vm_mappings"] == {}
-    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+    assert servicer.dbs["prod"] == {
+        "vm_mappings": {},
+        "not_ready_vmms": set(),
+        "ready_states": {VMState.NA.value, VMState.CONFIGURED.value},
+        "experiment_start_time": None,
+        "experiment_launch_time": None,
+    }
 
 
 def test_get_info(servicer) -> None:
@@ -107,8 +114,18 @@ def test_set_and_get_experiment_start_time(servicer) -> None:
     request = Mock()
     request.db = "prod"
 
-    servicer.SetExperimentStartTime(request, Mock())
+    assert servicer.SetExperimentStartTime(request, Mock()) is request
     assert servicer.GetExperimentStartTime(request, Mock()) is request
+
+
+def test_set_experiment_start_time_keeps_first_value(servicer) -> None:
+    """Verify only the first reported start time is stored and returned."""
+    first = Mock(db="prod")
+    second = Mock(db="prod")
+
+    assert servicer.SetExperimentStartTime(first, Mock()) is first
+    assert servicer.SetExperimentStartTime(second, Mock()) is first
+    assert servicer.GetExperimentStartTime(Mock(db="prod"), Mock()) is first
 
 
 def test_get_experiment_start_time_missing_aborts(servicer) -> None:
@@ -125,7 +142,7 @@ def test_get_experiment_start_time_missing_aborts(servicer) -> None:
 def test_initialize_experiment_start_time(servicer) -> None:
     """Verify initialization clears launch/start time state."""
     servicer.dbs["prod"]["experiment_launch_time"] = Mock()
-    servicer.dbs["prod"]["experiment_start_times"] = [Mock()]
+    servicer.dbs["prod"]["experiment_start_time"] = Mock()
 
     request = Mock()
     request.db = "prod"
@@ -133,7 +150,7 @@ def test_initialize_experiment_start_time(servicer) -> None:
     response = servicer.InitializeExperimentStartTime(request, Mock())
     assert response is not None
     assert servicer.dbs["prod"]["experiment_launch_time"] is None
-    assert servicer.dbs["prod"]["experiment_start_times"] == []
+    assert servicer.dbs["prod"]["experiment_start_time"] is None
 
 
 def test_count_vm_mappings_not_ready(servicer) -> None:
@@ -147,14 +164,16 @@ def test_count_vm_mappings_not_ready(servicer) -> None:
 
 
 def test_get_vm_mapping_by_uuid_found(servicer) -> None:
-    """Verify UUID lookup returns the stored mapping."""
-    vm = Mock()
+    """Verify UUID lookup returns a copy of the stored mapping."""
+    vm = firewheel_grpc_pb2.VMMapping(server_uuid="uuid", server_name="vm-1")
     servicer.dbs["prod"]["vm_mappings"]["uuid"] = vm
     request = Mock()
     request.db = "prod"
     request.server_uuid = "uuid"
 
-    assert servicer.GetVMMappingByUUID(request, Mock()) is vm
+    result = servicer.GetVMMappingByUUID(request, Mock())
+    assert result == vm
+    assert result is not vm
 
 
 def test_get_vm_mapping_by_uuid_missing_aborts(servicer) -> None:
@@ -170,8 +189,8 @@ def test_get_vm_mapping_by_uuid_missing_aborts(servicer) -> None:
 
 
 def test_set_vm_time_by_uuid(servicer) -> None:
-    """Verify VM current time can be updated."""
-    vm = Mock()
+    """Verify VM current time is updated and a copy is returned."""
+    vm = firewheel_grpc_pb2.VMMapping(server_uuid="uuid")
     servicer.dbs["prod"]["vm_mappings"]["uuid"] = vm
 
     request = Mock()
@@ -180,8 +199,9 @@ def test_set_vm_time_by_uuid(servicer) -> None:
     request.current_time = "123"
 
     result = servicer.SetVMTimeByUUID(request, Mock())
-    assert result is vm
     assert vm.current_time == "123"
+    assert result == vm
+    assert result is not vm
 
 
 def test_update_not_ready_vmms_add_and_remove(servicer) -> None:
@@ -222,8 +242,8 @@ def test_update_not_ready_vmms_ignores_execution_issue_fields(servicer) -> None:
 
 
 def test_set_vm_state_by_uuid(servicer) -> None:
-    """Verify VM state updates modify stored mappings."""
-    vm = Mock()
+    """Verify VM state updates modify stored mappings and return a copy."""
+    vm = firewheel_grpc_pb2.VMMapping(server_uuid="uuid")
     servicer.dbs["prod"]["vm_mappings"]["uuid"] = vm
 
     request = Mock()
@@ -232,8 +252,95 @@ def test_set_vm_state_by_uuid(servicer) -> None:
     request.state = "RUNNING"
 
     result = servicer.SetVMStateByUUID(request, Mock())
-    assert result is vm
     assert vm.state == "RUNNING"
+    assert result == vm
+    assert result is not vm
+
+
+def test_add_vm_execution_issue_by_uuid_updates_only_issue_fields(servicer) -> None:
+    """Verify recording an issue increments the count and leaves state alone."""
+    vm = firewheel_grpc_pb2.VMMapping(
+        server_uuid="uuid",
+        server_name="vm-1",
+        state="configured",
+        current_time="-5",
+        execution_issue_count=2,
+        last_execution_issue="old",
+    )
+    servicer.dbs["prod"]["vm_mappings"]["uuid"] = vm
+
+    request = firewheel_grpc_pb2.AddVMExecutionIssueByUUIDRequest(
+        db="prod", server_uuid="uuid", issue_message="new"
+    )
+    result = servicer.AddVMExecutionIssueByUUID(request, Mock())
+
+    assert vm.has_execution_issues is True
+    assert vm.execution_issue_count == 3
+    assert vm.last_execution_issue == "new"
+    assert vm.state == "configured"
+    assert vm.current_time == "-5"
+    assert result == vm
+    assert result is not vm
+    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+
+
+def test_add_vm_execution_issue_by_uuid_missing_aborts(servicer) -> None:
+    """Verify an unknown UUID aborts and does not create readiness entries."""
+    request = firewheel_grpc_pb2.AddVMExecutionIssueByUUIDRequest(
+        db="prod", server_uuid="missing", issue_message="x"
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        servicer.AddVMExecutionIssueByUUID(request, _AbortContext())
+
+    assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+    assert servicer.dbs["prod"]["vm_mappings"] == {}
+    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+
+
+@pytest.mark.parametrize(
+    ("handler", "request_kwargs"),
+    [
+        ("GetInfo", {}),
+        ("SetExperimentLaunchTime", {}),
+        ("GetExperimentLaunchTime", {}),
+        ("SetExperimentStartTime", {}),
+        ("GetExperimentStartTime", {}),
+        ("InitializeExperimentStartTime", {}),
+        ("CountVMMappingsNotReady", {}),
+        ("GetVMMappingByUUID", {}),
+        ("SetVMTimeByUUID", {"current_time": "1"}),
+        ("SetVMStateByUUID", {"state": "configured"}),
+        ("AddVMExecutionIssueByUUID", {"issue_message": "x"}),
+        ("DestroyVMMappingByUUID", {}),
+        ("SetVMMapping", {"state": "configured"}),
+        ("DestroyAllVMMappings", {}),
+    ],
+)
+def test_handlers_hold_db_lock(servicer, handler, request_kwargs) -> None:
+    """Verify every handler that touches shared state serializes on ``_db_lock``."""
+    servicer.dbs["prod"]["vm_mappings"]["uuid"] = firewheel_grpc_pb2.VMMapping(
+        server_uuid="uuid"
+    )
+    servicer.dbs["prod"]["experiment_launch_time"] = Mock()
+    servicer.dbs["prod"]["experiment_start_time"] = Mock()
+    servicer.server_start_time = datetime.now(timezone.utc)
+    servicer._db_lock = MagicMock()
+    request = Mock(db="prod", server_uuid="uuid", **request_kwargs)
+
+    getattr(servicer, handler)(request, Mock())
+
+    servicer._db_lock.__enter__.assert_called_once()
+    servicer._db_lock.__exit__.assert_called_once()
+
+
+def test_list_vm_mappings_holds_db_lock(servicer) -> None:
+    """Verify the list snapshot is taken under ``_db_lock``."""
+    servicer._db_lock = MagicMock()
+
+    list(servicer.ListVMMappings(Mock(db="prod"), Mock()))
+
+    servicer._db_lock.__enter__.assert_called_once()
 
 
 def test_destroy_vm_mapping_by_uuid(servicer) -> None:
@@ -252,18 +359,23 @@ def test_destroy_vm_mapping_by_uuid(servicer) -> None:
 
 
 def test_set_vm_mapping(servicer) -> None:
-    """Verify SetVMMapping stores the provided request object."""
-    request = Mock()
-    request.db = "prod"
-    request.server_uuid = "uuid"
-    request.state = "BOOTING"
-    request.has_execution_issues = True
-    request.execution_issue_count = 2
-    request.last_execution_issue = "warning text"
+    """Verify SetVMMapping stores an independent copy of the request."""
+    request = firewheel_grpc_pb2.VMMapping(
+        db="prod",
+        server_uuid="uuid",
+        state="BOOTING",
+        has_execution_issues=True,
+        execution_issue_count=2,
+        last_execution_issue="warning text",
+    )
 
     response = servicer.SetVMMapping(request, Mock())
-    assert response is request
-    assert servicer.dbs["prod"]["vm_mappings"]["uuid"] is request
+    stored = servicer.dbs["prod"]["vm_mappings"]["uuid"]
+    assert stored == request
+    assert response == request
+    assert stored is not request
+    assert response is not stored
+    assert "uuid" in servicer.dbs["prod"]["not_ready_vmms"]
 
 
 def test_destroy_all_vm_mappings(servicer) -> None:
@@ -325,6 +437,33 @@ def test_set_vm_state_by_uuid_missing_aborts(servicer) -> None:
         servicer.SetVMStateByUUID(request, _AbortContext())
 
     assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+
+
+def test_set_vm_state_by_uuid_missing_does_not_mark_not_ready(servicer) -> None:
+    """Verify an unknown uuid does not leave a phantom not-ready entry."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.state = "configuring"
+
+    with pytest.raises(RuntimeError):
+        servicer.SetVMStateByUUID(request, _AbortContext())
+
+    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+
+
+def test_set_vm_time_by_uuid_missing_aborts(servicer) -> None:
+    """Verify missing VM mapping during time update aborts with OUT_OF_RANGE."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.current_time = "10"
+
+    with pytest.raises(RuntimeError) as exc:
+        servicer.SetVMTimeByUUID(request, _AbortContext())
+
+    assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+    assert servicer.dbs["prod"]["vm_mappings"] == {}
 
 
 def test_serve_returns_when_bind_fails() -> None:

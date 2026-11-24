@@ -158,13 +158,16 @@ class FirewheelGrpcClient:
 
     def set_experiment_start_time(self, start_time_dt):
         """
-        Requests to set the `experiment_start_time`.
+        Requests to atomically initialize the `experiment_start_time`.
+
+        If the experiment start time has already been set, the existing value
+        is returned unchanged.
 
         Args:
-            start_time_dt (datetime.datetime): The datetime that the experiment was started.
+            start_time_dt (datetime.datetime): The proposed experiment start time.
 
         Returns:
-            datetime.datetime: The datetime that the experiment was started.
+            datetime.datetime: The stored experiment start time.
         """
         start_time_msg = Timestamp()
         start_time_msg.FromDatetime(start_time_dt)
@@ -194,7 +197,7 @@ class FirewheelGrpcClient:
 
     def initialize_experiment_start_time(self):
         """
-        Requests to initialize the `experiment_start_time`.
+        Requests to initialize the experiment start time state.
 
         Returns:
             dict: Dictionary representation of
@@ -345,6 +348,37 @@ class FirewheelGrpcClient:
                 server_uuid=str(vmm["server_uuid"]), state=str(vmm["state"]), db=self.db
             )
             resp = self.stub.SetVMStateByUUID(mapping)
+            ret = msg_to_dict(resp)
+        except grpc.RpcError as exp:
+            if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
+                self.log.exception(exp)
+            return None
+        return ret
+
+    def add_vm_execution_issue_by_uuid(self, vm_uuid, issue_message):
+        """
+        Requests that the server atomically record a non-fatal execution issue
+        on the `vm_mapping` corresponding to a given uuid.
+
+        The server increments ``execution_issue_count``, sets
+        ``has_execution_issues`` and replaces ``last_execution_issue``. No other
+        field (in particular ``state``) is modified.
+
+        Args:
+            vm_uuid (str): vm uuid to update.
+            issue_message (str): A short description of the execution issue.
+
+        Returns:
+            (dict) Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`,
+            or None if no mapping exists for the uuid.
+        """
+        try:
+            req = firewheel_grpc_pb2.AddVMExecutionIssueByUUIDRequest(
+                server_uuid=str(vm_uuid),
+                issue_message=str(issue_message),
+                db=self.db,
+            )
+            resp = self.stub.AddVMExecutionIssueByUUID(req)
             ret = msg_to_dict(resp)
         except grpc.RpcError as exp:
             if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:

@@ -21,6 +21,9 @@ service Firewheel {
   rpc SetVMTimeByUUID(SetVMTimeByUUIDRequest) returns (VMMapping) {}
   // Sets the state for the vm_mapping associated with the given uuid.
   rpc SetVMStateByUUID(SetVMStateByUUIDRequest) returns (VMMapping) {}
+  // Atomically records a non-fatal execution issue for the vm_mapping
+  // associated with the given uuid. Does not modify state or readiness.
+  rpc AddVMExecutionIssueByUUID(AddVMExecutionIssueByUUIDRequest) returns (VMMapping) {}
   // Sets the given vm_mapping.
   rpc SetVMMapping(VMMapping) returns (VMMapping) {}
   // Iterates through all requested vm_mappings.
@@ -155,4 +158,13 @@ message SetVMStateByUUIDRequest {
     string server_uuid = 2;
     // The state to update the VM with
     string state = 3;
+}
+
+message AddVMExecutionIssueByUUIDRequest {
+    // The database to use. (e.g. "prod" or "test")
+    string db = 1;
+    // The uuid of the VM
+    string server_uuid = 2;
+    // A short description of the execution issue.
+    string issue_message = 3;
 }

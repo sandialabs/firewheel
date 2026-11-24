@@ -77,10 +77,11 @@ def destroy_all(
             connecting to the gRPC server.
     """
     skip_mapping = False
+    close_mapping = False
     if mapping is None:
-        close = True
         try:
             mapping = VMMapping()
+            close_mapping = True
         except ConnectionError as exp:
             if ignore_grpc_connection_errors:
                 skip_mapping = True
@@ -89,14 +90,16 @@ def destroy_all(
 
     if not skip_mapping:
         mapping.destroy_all()
+        if close_mapping:
+            mapping.close()
 
-    close = False
+    close_schedule = False
     if schedule is None:
-        close = True
+        close_schedule = True
         schedule = ScheduleDb()
 
     schedule.destroy_all()
-    if close:
+    if close_schedule:
         schedule.close()
 
     skip_start = False
@@ -133,8 +136,6 @@ def get_vm_times(filter_time=None, mapping=None, log=None):
     if mapping is None:
         close = True
         mapping = VMMapping()
-
-    results = mapping.get_all(filter_time=filter_time)
 
     project_dict = {"_id": 0, "server_name": 1, "current_time": 1}
     results = mapping.get_all(filter_time=filter_time, project_dict=project_dict)
@@ -348,15 +349,10 @@ def vm_resource_list(store=None, log=None):
     Returns:
         list: A list of (unique) file names in the VmResourceStore.
     """
-    close = False
     if store is None:
-        close = True
         store = VmResourceStore()
 
     items = list(store.list_distinct_contents())
-
-    if close:
-        store.close()
 
     if log:
         log.debug("Got the vm resource list: %s", items)

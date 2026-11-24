@@ -145,3 +145,13 @@ class SetVMStateByUUIDRequest(_message.Message):
     server_uuid: str
     state: str
     def __init__(self, db: _Optional[str] = ..., server_uuid: _Optional[str] = ..., state: _Optional[str] = ...) -> None: ...
+
+class AddVMExecutionIssueByUUIDRequest(_message.Message):
+    __slots__ = ("db", "server_uuid", "issue_message")
+    DB_FIELD_NUMBER: _ClassVar[int]
+    SERVER_UUID_FIELD_NUMBER: _ClassVar[int]
+    ISSUE_MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    db: str
+    server_uuid: str
+    issue_message: str
+    def __init__(self, db: _Optional[str] = ..., server_uuid: _Optional[str] = ..., issue_message: _Optional[str] = ...) -> None: ...
