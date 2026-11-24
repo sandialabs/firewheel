@@ -36,6 +36,7 @@ def pytest_configure(config: pytest.Config) -> None:
     markers = [
         "long: mark test as long running",
         "mcs: mark test as dependent on model components",
+        "integration: mark test as exercising multiple components end-to-end",
     ]
     for marker in markers:
         config.addinivalue_line("markers", marker)

@@ -272,7 +272,8 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             context (grpc._server._Context): The gRPC context.
 
         Returns:
-            firewheel_grpc_pb2.VMMapping: The updated vm_mapping.
+            firewheel_grpc_pb2.VMMapping: The updated vm_mapping, or None after
+            aborting with ``OUT_OF_RANGE`` if no mapping exists for the uuid.
         """
         db = request.db
         with self._db_lock:
@@ -312,14 +313,18 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             context (grpc._server._Context): The gRPC context.
 
         Returns:
-            firewheel_grpc_pb2.VMMapping: The updated vm_mapping.
+            firewheel_grpc_pb2.VMMapping: The updated vm_mapping, or None after
+            aborting with ``OUT_OF_RANGE`` if no mapping exists for the uuid.
         """
         db = request.db
         with self._db_lock:
-            self._update_not_ready_vmms(request, db)
+            # Look the mapping up first. Updating readiness bookkeeping for an
+            # unknown VM would leave a phantom not-ready entry that keeps the
+            # not-ready count above zero forever.
             vm_mapping = self._get_server_specific_vm_mapping(
                 db, request.server_uuid, context
             )
+            self._update_not_ready_vmms(request, db)
             vm_mapping.state = request.state
             return copy.deepcopy(vm_mapping)
 

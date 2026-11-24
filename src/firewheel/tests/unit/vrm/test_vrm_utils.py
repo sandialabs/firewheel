@@ -1,81 +1,141 @@
-import unittest
+from unittest.mock import Mock, patch
 
-from firewheel.config import config
+import pytest
+
 from firewheel.vm_resource_manager import utils
-from firewheel.vm_resource_manager.vm_mapping import VMMapping, VMState
+from firewheel.vm_resource_manager.vm_mapping import VMState
 
 
-class UtilsTestCase(unittest.TestCase):
-    def setUp(self):
-        # Create valid and invalid repository directories
-        self.vmmapping_entries = [
-            {"server_name": "1", "control_ip": "2", "server_uuid": "1234"},
-            {
-                "server_name": "2",
-                "control_ip": "3",
-                "state": VMState.TESTING,
-                "current_time": "0",
-                "server_uuid": "12345",
-            },
-        ]
+def test_vm_state_update():
+    mapping = Mock()
+    mapping.set_vm_state_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "state": VMState.FAILED,
+    }
 
-        self.vmmapping = VMMapping(
-            hostname=config["grpc"]["hostname"],
-            port=config["grpc"]["port"],
-            db=config["test"]["grpc_db"],
-        )
+    utils.set_vm_state("uuid-1", VMState.FAILED, mapping=mapping)
 
-        self.vmmapping.batch_put(self.vmmapping_entries)
+    mapping.set_vm_state_by_uuid.assert_called_once_with("uuid-1", VMState.FAILED)
+    mapping.close.assert_not_called()
 
-    def tearDown(self):
-        self.vmmapping.destroy_all()
 
-    def test_vm_state_update(self):
-        pre = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
-        self.assertNotEqual(pre, None)
+def test_vm_state_update_creates_and_closes_mapping():
+    mapping = Mock()
+    mapping.set_vm_state_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "state": VMState.FAILED,
+    }
 
-        new_state = VMState.FAILED
-        utils.set_vm_state(
-            self.vmmapping_entries[1]["server_uuid"], new_state, mapping=self.vmmapping
-        )
+    with patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping):
+        utils.set_vm_state("uuid-1", VMState.FAILED)
 
-        post = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
-        self.assertNotEqual(post, None)
+    mapping.set_vm_state_by_uuid.assert_called_once_with("uuid-1", VMState.FAILED)
+    mapping.close.assert_called_once()
 
-        self.assertNotEqual(pre, post)
-        self.assertEqual(post["state"], new_state)
 
-    def test_vm_state_invalid(self):
-        with self.assertRaises(RuntimeError):
-            utils.set_vm_state("invalid", VMState.FAILED, mapping=self.vmmapping)
+def test_vm_state_invalid():
+    mapping = Mock()
+    mapping.set_vm_state_by_uuid.return_value = None
 
-    def test_vm_time_update(self):
-        pre = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
-        self.assertNotEqual(pre, None)
-        self.assertEqual(pre["current_time"], "0")
+    with pytest.raises(RuntimeError):
+        utils.set_vm_state("invalid", VMState.FAILED, mapping=mapping)
 
-        new_time = "100"
-        utils.set_vm_time(
-            self.vmmapping_entries[1]["server_uuid"], new_time, mapping=self.vmmapping
-        )
 
-        post = self.vmmapping.get(server_uuid=self.vmmapping_entries[1]["server_uuid"])
-        self.assertNotEqual(post, None)
+def test_vm_time_update():
+    mapping = Mock()
+    mapping.set_vm_time_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "current_time": "100",
+    }
 
-        self.assertNotEqual(pre, post)
-        self.assertEqual(post["current_time"], "100")
+    utils.set_vm_time("uuid-1", "100", mapping=mapping)
 
-    def test_vm_time_invalid(self):
-        with self.assertRaises(RuntimeError):
-            utils.set_vm_time("invalid", "100", mapping=self.vmmapping)
+    mapping.set_vm_time_by_uuid.assert_called_once_with("uuid-1", "100")
+    mapping.close.assert_not_called()
 
-    def test_not_ready_count_not_zero(self):
-        count = utils.get_vm_count_not_ready(mapping=self.vmmapping)
-        self.assertEqual(count, len(self.vmmapping_entries))
 
-    def test_not_ready_count_with_ready(self):
-        self.vmmapping.put("5", "ready1", state=VMState.CONFIGURED)
-        self.vmmapping.put("6", "noresources1", state=VMState.NA)
+def test_vm_time_update_creates_and_closes_mapping():
+    mapping = Mock()
+    mapping.set_vm_time_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "current_time": "100",
+    }
 
-        count = utils.get_vm_count_not_ready(mapping=self.vmmapping)
-        self.assertEqual(count, len(self.vmmapping_entries))
+    with patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping):
+        utils.set_vm_time("uuid-1", 100)
+
+    mapping.set_vm_time_by_uuid.assert_called_once_with("uuid-1", "100")
+    mapping.close.assert_called_once()
+
+
+def test_vm_time_invalid():
+    mapping = Mock()
+    mapping.set_vm_time_by_uuid.return_value = None
+
+    with pytest.raises(RuntimeError):
+        utils.set_vm_time("invalid", "100", mapping=mapping)
+
+
+def test_add_execution_issue():
+    mapping = Mock()
+    mapping.add_execution_issue_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "has_execution_issues": True,
+    }
+
+    utils.add_execution_issue("uuid-1", "warning text", mapping=mapping)
+
+    mapping.add_execution_issue_by_uuid.assert_called_once_with("uuid-1", "warning text")
+    mapping.close.assert_not_called()
+
+
+def test_add_execution_issue_creates_and_closes_mapping():
+    mapping = Mock()
+    mapping.add_execution_issue_by_uuid.return_value = {
+        "server_uuid": "uuid-1",
+        "has_execution_issues": True,
+    }
+
+    with patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping):
+        utils.add_execution_issue("uuid-1", "warning text")
+
+    mapping.add_execution_issue_by_uuid.assert_called_once_with("uuid-1", "warning text")
+    mapping.close.assert_called_once()
+
+
+def test_add_execution_issue_invalid():
+    mapping = Mock()
+    mapping.add_execution_issue_by_uuid.return_value = None
+
+    with pytest.raises(RuntimeError):
+        utils.add_execution_issue("invalid", "warning text", mapping=mapping)
+
+
+def test_not_ready_count_not_zero():
+    mapping = Mock()
+    mapping.get_count_vm_not_ready.return_value = 2
+
+    count = utils.get_vm_count_not_ready(mapping=mapping)
+
+    assert count == 2
+    mapping.close.assert_not_called()
+
+
+def test_not_ready_count_with_ready():
+    mapping = Mock()
+    mapping.get_count_vm_not_ready.return_value = 0
+
+    count = utils.get_vm_count_not_ready(mapping=mapping)
+
+    assert count == 0
+
+
+def test_not_ready_count_creates_and_closes_mapping():
+    mapping = Mock()
+    mapping.get_count_vm_not_ready.return_value = 3
+
+    with patch("firewheel.vm_resource_manager.utils.VMMapping", return_value=mapping):
+        count = utils.get_vm_count_not_ready()
+
+    assert count == 3
+    mapping.close.assert_called_once()

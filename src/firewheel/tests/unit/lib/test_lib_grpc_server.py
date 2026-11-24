@@ -327,6 +327,33 @@ def test_set_vm_state_by_uuid_missing_aborts(servicer) -> None:
     assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
 
 
+def test_set_vm_state_by_uuid_missing_does_not_mark_not_ready(servicer) -> None:
+    """Verify an unknown uuid does not leave a phantom not-ready entry."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.state = "configuring"
+
+    with pytest.raises(RuntimeError):
+        servicer.SetVMStateByUUID(request, _AbortContext())
+
+    assert servicer.dbs["prod"]["not_ready_vmms"] == set()
+
+
+def test_set_vm_time_by_uuid_missing_aborts(servicer) -> None:
+    """Verify missing VM mapping during time update aborts with OUT_OF_RANGE."""
+    request = Mock()
+    request.db = "prod"
+    request.server_uuid = "missing"
+    request.current_time = "10"
+
+    with pytest.raises(RuntimeError) as exc:
+        servicer.SetVMTimeByUUID(request, _AbortContext())
+
+    assert exc.value.args[0][0] == grpc.StatusCode.OUT_OF_RANGE
+    assert servicer.dbs["prod"]["vm_mappings"] == {}
+
+
 def test_serve_returns_when_bind_fails() -> None:
     """Verify serve returns cleanly when add_insecure_port fails."""
     server = __import__("unittest").mock.Mock()
