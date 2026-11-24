@@ -316,7 +316,7 @@ class Plugin5(AbstractPlugin):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c12_provides[0])
         mcm.build_dependency_graph([comp])
-        mcm.build_experiment_graph()
+        mcm.build_experiment_graph_result()
 
     @unittest.mock.patch(
         "firewheel.control.repository_db.RepositoryDb.list_repositories"
@@ -326,7 +326,7 @@ class Plugin5(AbstractPlugin):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c13_provides[0])
         mcm.build_dependency_graph([comp])
-        mcm.build_experiment_graph()
+        mcm.build_experiment_graph_result()
 
     @unittest.mock.patch(
         "firewheel.control.repository_db.RepositoryDb.list_repositories"
@@ -336,7 +336,7 @@ class Plugin5(AbstractPlugin):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c14_provides[0])
         mcm.build_dependency_graph([comp])
-        mcm.build_experiment_graph()
+        mcm.build_experiment_graph_result()
 
     @unittest.mock.patch(
         "firewheel.control.repository_db.RepositoryDb.list_repositories"
@@ -346,4 +346,4 @@ class Plugin5(AbstractPlugin):
         mcm = ModelComponentManager(repository_db=self.repository_db)
         comp = mcm.get_default_component_for_attribute(self.c15_provides[0])
         mcm.build_dependency_graph([comp])
-        mcm.build_experiment_graph()
+        mcm.build_experiment_graph_result()
