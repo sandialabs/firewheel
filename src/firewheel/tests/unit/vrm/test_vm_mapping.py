@@ -72,6 +72,15 @@ class FakeGrpcClient:
         mapping.current_time = str(vmm["current_time"])
         return msg_to_dict(mapping)
 
+    def add_vm_execution_issue_by_uuid(self, vm_uuid, issue_message):
+        mapping = self.mappings.get(str(vm_uuid))
+        if mapping is None:
+            return None
+        mapping.has_execution_issues = True
+        mapping.execution_issue_count += 1
+        mapping.last_execution_issue = str(issue_message)
+        return msg_to_dict(mapping)
+
 
 @pytest.fixture
 def vmmapping():
@@ -376,6 +385,22 @@ def test_add_execution_issue_by_uuid_increments_metadata(vmmapping):
 
 def test_add_execution_issue_by_uuid_returns_none_when_missing(vmmapping):
     assert vmmapping.add_execution_issue_by_uuid("missing", "copy failed") is None
+
+
+def test_add_execution_issue_by_uuid_uses_targeted_rpc_only(vmmapping):
+    """The client must not read-modify-write the full record."""
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURED)
+
+    with (
+        patch.object(vmmapping.grpc_client, "get_vm_mapping_by_uuid") as get_vmm,
+        patch.object(vmmapping.grpc_client, "set_vm_mapping") as set_vmm,
+    ):
+        result = vmmapping.add_execution_issue_by_uuid("1234", "copy failed")
+
+    get_vmm.assert_not_called()
+    set_vmm.assert_not_called()
+    assert result["state"] == VMState.CONFIGURED
+    assert result["execution_issue_count"] == 1
 
 
 def test_get_count_vm_not_ready_returns_server_count(vmmapping):

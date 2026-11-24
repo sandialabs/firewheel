@@ -335,6 +335,46 @@ def test_set_vm_state_by_uuid_missing_returns_none() -> None:
     )
 
 
+def test_add_vm_execution_issue_by_uuid_success() -> None:
+    """Verify execution-issue updates send a targeted request and convert the response."""
+    client = _build_client_without_init()
+    client.stub.AddVMExecutionIssueByUUID.return_value = object()
+
+    with patch(
+        "firewheel.lib.grpc.firewheel_grpc_client.msg_to_dict",
+        return_value={"execution_issue_count": 1},
+    ):
+        result = client.add_vm_execution_issue_by_uuid("uuid", "copy failed")
+
+    assert result == {"execution_issue_count": 1}
+    (request,), _ = client.stub.AddVMExecutionIssueByUUID.call_args
+    assert request.server_uuid == "uuid"
+    assert request.issue_message == "copy failed"
+    assert request.db == "prod"
+
+
+def test_add_vm_execution_issue_by_uuid_missing_returns_none() -> None:
+    """Verify a missing target returns None without logging an error."""
+    client = _build_client_without_init()
+    client.stub.AddVMExecutionIssueByUUID.side_effect = _RpcException(
+        grpc.StatusCode.OUT_OF_RANGE
+    )
+
+    assert client.add_vm_execution_issue_by_uuid("uuid", "copy failed") is None
+    client.log.exception.assert_not_called()
+
+
+def test_add_vm_execution_issue_by_uuid_other_error_logs_and_returns_none() -> None:
+    """Verify unexpected RPC errors are logged and reported as None."""
+    client = _build_client_without_init()
+    client.stub.AddVMExecutionIssueByUUID.side_effect = _RpcException(
+        grpc.StatusCode.UNAVAILABLE
+    )
+
+    assert client.add_vm_execution_issue_by_uuid("uuid", "copy failed") is None
+    client.log.exception.assert_called_once()
+
+
 def test_close() -> None:
     """Verify the client closes its gRPC channel."""
     client = _build_client_without_init()

@@ -328,6 +328,33 @@ class FirewheelServicer(firewheel_grpc_pb2_grpc.FirewheelServicer):
             vm_mapping.state = request.state
             return copy.deepcopy(vm_mapping)
 
+    def AddVMExecutionIssueByUUID(self, request, context):  # noqa: N802,ARG002
+        """
+        Atomically record a non-fatal execution issue for the vm_mapping
+        associated with the given uuid.
+
+        Only the execution issue fields are modified: ``has_execution_issues`` is
+        set, ``execution_issue_count`` is incremented, and ``last_execution_issue``
+        is replaced. The VM state and the not-ready bookkeeping are left untouched,
+        so this cannot roll back a concurrent state change.
+
+        Args:
+            request (firewheel_grpc_pb2.AddVMExecutionIssueByUUIDRequest): The gRPC request.
+            context (grpc._server._Context): The gRPC context.
+
+        Returns:
+            firewheel_grpc_pb2.VMMapping: The updated vm_mapping.
+        """
+        db = request.db
+        with self._db_lock:
+            vm_mapping = self._get_server_specific_vm_mapping(
+                db, request.server_uuid, context
+            )
+            vm_mapping.has_execution_issues = True
+            vm_mapping.execution_issue_count += 1
+            vm_mapping.last_execution_issue = request.issue_message
+            return copy.deepcopy(vm_mapping)
+
     def DestroyVMMappingByUUID(self, request, context):  # noqa: N802,ARG002
         """
         Destroys the vm_mapping associated with the given uuid.

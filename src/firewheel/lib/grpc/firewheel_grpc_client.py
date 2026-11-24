@@ -355,6 +355,37 @@ class FirewheelGrpcClient:
             return None
         return ret
 
+    def add_vm_execution_issue_by_uuid(self, vm_uuid, issue_message):
+        """
+        Requests that the server atomically record a non-fatal execution issue
+        on the `vm_mapping` corresponding to a given uuid.
+
+        The server increments ``execution_issue_count``, sets
+        ``has_execution_issues`` and replaces ``last_execution_issue``. No other
+        field (in particular ``state``) is modified.
+
+        Args:
+            vm_uuid (str): vm uuid to update.
+            issue_message (str): A short description of the execution issue.
+
+        Returns:
+            (dict) Dictionary representation of the updated `firewheel_grpc_pb2.VMMapping`,
+            or None if no mapping exists for the uuid.
+        """
+        try:
+            req = firewheel_grpc_pb2.AddVMExecutionIssueByUUIDRequest(
+                server_uuid=str(vm_uuid),
+                issue_message=str(issue_message),
+                db=self.db,
+            )
+            resp = self.stub.AddVMExecutionIssueByUUID(req)
+            ret = msg_to_dict(resp)
+        except grpc.RpcError as exp:
+            if exp.exception().code() != grpc.StatusCode.OUT_OF_RANGE:
+                self.log.exception(exp)
+            return None
+        return ret
+
     def close(self):
         """
         Closes the gRPC channel.

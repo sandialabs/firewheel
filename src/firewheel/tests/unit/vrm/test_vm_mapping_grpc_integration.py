@@ -11,46 +11,23 @@ external FIREWHEEL infrastructure is required. Deselect with
 ``-m "not integration"`` if needed.
 """
 
-from datetime import datetime, timezone
-from concurrent import futures
-from unittest.mock import Mock
+import threading
+from unittest.mock import Mock, patch
 
-import grpc
 import pytest
 
-from firewheel.lib.grpc import firewheel_grpc_pb2_grpc
 from firewheel.vm_resource_manager import api, utils
-from firewheel.lib.grpc.firewheel_grpc_server import FirewheelServicer
+from firewheel.tests.unit.grpc_test_server import running_grpc_server
 from firewheel.vm_resource_manager.vm_mapping import VMState, VMMapping
 
 pytestmark = pytest.mark.integration
 
 
-def _build_servicer():
-    """Create a servicer with fresh in-memory DBs, skipping on-disk cache setup."""
-    servicer = object.__new__(FirewheelServicer)
-    servicer.log = Mock()
-    servicer.server_start_time = datetime.now(timezone.utc)
-    servicer.version = "test"
-    servicer.cache_dir = None
-    servicer.dbs = {}
-    for db in ("test", "prod"):
-        servicer._init_db(db)  # pylint: disable=protected-access
-    return servicer
-
-
 @pytest.fixture
 def grpc_server():
     """Start a real gRPC server on an ephemeral localhost port."""
-    servicer = _build_servicer()
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
-    firewheel_grpc_pb2_grpc.add_FirewheelServicer_to_server(servicer, server)
-    port = server.add_insecure_port("127.0.0.1:0")
-    server.start()
-    try:
+    with running_grpc_server() as (servicer, port):
         yield servicer, port
-    finally:
-        server.stop(grace=None)
 
 
 @pytest.fixture
@@ -185,6 +162,128 @@ def test_not_ready_count_ignores_execution_issue_only_updates(vmmapping):
     found = vmmapping.get(server_uuid="1234")
     assert found["state"] == VMState.CONFIGURED
     assert found["execution_issue_count"] == 1
+
+
+def test_add_execution_issue_does_not_roll_back_concurrent_state_change(vmmapping):
+    """A state change made after a reader's ``get()`` must survive an issue update.
+
+    Previously ``add_execution_issue_by_uuid`` re-wrote the whole record from a
+    stale read, reverting ``state`` and re-adding the VM to the not-ready set.
+    """
+    vmmapping.put("1234", "vm-1")
+    stale = vmmapping.get(server_uuid="1234")
+    vmmapping.set_vm_state_by_uuid("1234", VMState.CONFIGURED)
+    vmmapping.set_vm_time_by_uuid("1234", "0")
+    assert vmmapping.get_count_vm_not_ready() == 0
+
+    with patch.object(vmmapping, "get", return_value=stale):
+        result = vmmapping.add_execution_issue_by_uuid("1234", "copy failed")
+
+    found = vmmapping.get(server_uuid="1234")
+    assert found == result
+    assert found["state"] == VMState.CONFIGURED
+    assert found["current_time"] == "0"
+    assert found["has_execution_issues"] is True
+    assert found["execution_issue_count"] == 1
+    assert found["last_execution_issue"] == "copy failed"
+    assert vmmapping.get_count_vm_not_ready() == 0
+
+
+def test_add_execution_issue_increments_existing_count(vmmapping):
+    vmmapping.put("1234", "vm-1", execution_issue_count=4, last_execution_issue="a")
+
+    vmmapping.add_execution_issue_by_uuid("1234", "b")
+
+    found = vmmapping.get(server_uuid="1234")
+    assert found["execution_issue_count"] == 5
+    assert found["last_execution_issue"] == "b"
+
+
+def test_add_execution_issue_missing_uuid_raises_in_utils(vmmapping):
+    vmmapping.grpc_client.log = Mock()
+
+    with pytest.raises(RuntimeError, match="execution issue"):
+        utils.add_execution_issue("ghost", "copy failed", mapping=vmmapping)
+
+    assert vmmapping.get_count_vm_not_ready() == 0
+    vmmapping.grpc_client.log.exception.assert_not_called()
+
+
+def _run_concurrently(targets):
+    """Start ``targets`` together behind a barrier and wait for all of them."""
+    barrier = threading.Barrier(len(targets))
+    errors = []
+
+    def wrap(target):
+        try:
+            barrier.wait()
+            target()
+        except Exception as exp:  # noqa: BLE001  # pragma: no cover - surfaced below
+            errors.append(exp)
+
+    threads = [threading.Thread(target=wrap, args=(t,)) for t in targets]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+
+
+@pytest.fixture
+def threaded_grpc_server():
+    """A real server with enough workers to actually serve requests in parallel."""
+    with running_grpc_server(max_workers=16) as (_servicer, port):
+        mapping = VMMapping(hostname="127.0.0.1", port=str(port), db="test")
+        try:
+            yield mapping
+        finally:
+            mapping.close()
+
+
+def test_parallel_execution_issues_are_all_counted(threaded_grpc_server):
+    """Mirrors several vm_resource threads in one handler sharing a VMMapping."""
+    vmmapping = threaded_grpc_server
+    vmmapping.put("1234", "vm-1", state=VMState.CONFIGURING)
+    count = 25
+
+    _run_concurrently(
+        [
+            lambda i=i: utils.add_execution_issue(
+                "1234", f"vmr {i} failed", mapping=vmmapping
+            )
+            for i in range(count)
+        ]
+    )
+
+    found = vmmapping.get(server_uuid="1234")
+    assert found["execution_issue_count"] == count
+    assert found["state"] == VMState.CONFIGURING
+
+
+def test_state_change_racing_execution_issue_is_never_lost(threaded_grpc_server):
+    """A ``FAILED`` transition must win regardless of interleaving with issue updates."""
+    vmmapping = threaded_grpc_server
+    trials = 30
+    for trial in range(trials):
+        uuid = f"vm-{trial}"
+        vmmapping.put(uuid, uuid, state=VMState.CONFIGURED)
+
+        _run_concurrently(
+            [
+                lambda uuid=uuid: utils.add_execution_issue(
+                    uuid, "x", mapping=vmmapping
+                ),
+                lambda uuid=uuid: utils.set_vm_state(
+                    uuid, VMState.FAILED, mapping=vmmapping
+                ),
+            ]
+        )
+
+        found = vmmapping.get(server_uuid=uuid)
+        assert found["state"] == VMState.FAILED
+        assert found["execution_issue_count"] == 1
+
+    assert vmmapping.get_count_vm_not_ready() == trials
 
 
 def test_destroy_all_clears_records_and_not_ready_count(vmmapping):
